@@ -1,4 +1,4 @@
-CREATE table(
+CREATE TABLE students(
 	id		INT, 
 	name		VARCHAR(100), 
 	age		INT, 
@@ -8,7 +8,7 @@ CREATE table(
 
 --WARNING: Inserts should be done in the scripts NOT IN THE SQL FILE--
 
-INSERT INTO table(id, name, age) 
+INSERT INTO students(id, name, age) 
 VALUES 
 (1, "Robin", 22),
 (2, "Beast Boy", 21),
