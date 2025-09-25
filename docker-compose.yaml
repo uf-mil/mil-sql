@@ -23,7 +23,8 @@ services:
       DATABASE_URL: postgres://postgres:postgres@db:5432/mydb
     volumes:
       - .:/app
-    command: ["python", "app.py"]
+      - ./src/sql:/docker-entrypoint-initb.d
+    command: ["python", "src/scripts/app.py"]
 
 volumes:
   db_data:
