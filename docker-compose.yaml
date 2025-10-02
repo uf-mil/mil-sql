@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16
@@ -23,9 +21,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@db:5432/mydb
     volumes:
       - .:/app
-      - ./src/sql:/docker-entrypoint-initb.d
-    command: ["python", "src/scripts/app.py"]
+    command: ["sh", "-c", "until pg_isready -h db -p 5432; do sleep 1; done && python src/scripts/app.py"]
 
 volumes:
   db_data:
-

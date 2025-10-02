@@ -1,7 +1,7 @@
 import os
 import psycopg2
 
-DATABASE_URL = "postgres://postgres:admin@localhost:5432/postgres"
+DATABASE_URL = "postgres://postgres:postgres@db:5432/mydb"
 
 try:
     conn = psycopg2.connect(DATABASE_URL)
