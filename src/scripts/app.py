@@ -21,10 +21,10 @@ try:
     cur = conn.cursor()
     cur.execute("SELECT version();")
     print("Postgres version:", cur.fetchone())
-    
+
     # Execute SQL files
-    execute_sql_file('/app/src/sql/students.sql')
-    execute_sql_file('/app/src/sql/student_progress.sql')
+    execute_sql_file('/app/src/sql/members.sql')
+    execute_sql_file('/app/src/sql/member_progress.sql')
 
     # Finish up
     print("Creation of all SQL Tables succeeded or attempted.")

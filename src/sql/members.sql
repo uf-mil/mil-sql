@@ -1,4 +1,4 @@
-CREATE TABLE students (
+CREATE TABLE members (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     uf_id SERIAL PRIMARY KEY,
