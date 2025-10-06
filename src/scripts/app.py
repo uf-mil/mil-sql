@@ -1,7 +1,8 @@
 import os
 import psycopg2
 
-DATABASE_URL = "postgres://postgres:postgres@db:5432/mydb"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgres://postgres:postgres@db:5432/mydb")
+
 
 try:
     conn = psycopg2.connect(DATABASE_URL)
@@ -10,7 +11,7 @@ try:
     print("Postgres version:", cur.fetchone())
 
     # Execute SQL from file
-    with open("../sql/table.sql", "r") as f:
+    with open("/app/src/sql/table.sql", "r") as f:
         sql = f.read()
     print("Executing SQL from file...")
     print(sql)
