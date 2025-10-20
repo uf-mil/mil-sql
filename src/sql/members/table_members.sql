@@ -4,7 +4,7 @@ CREATE TABLE members (
     uf_id           CHAR(8) NOT NULL CHECK (uf_id ~ '^[0-9]{8}$') PRIMARY KEY,
     uf_email        VARCHAR(150) NOT NULL UNIQUE,
     phone_number    VARCHAR(50),
-    team            VARCHAR(50),
+    team            VARCHAR(50) REFERENCES teams(name),
     discord         VARCHAR(150) NOT NULL UNIQUE,
     github          VARCHAR(150) NOT NULL UNIQUE,
     grad_date       DATE,
