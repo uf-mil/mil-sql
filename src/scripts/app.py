@@ -4,10 +4,23 @@ import psycopg2
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgres://postgres:postgres@db:5432/mydb")
 
-# Global SQL strings
-insert_member = Path("/app/src/sql/insert_member.sql").read_text()
-members_table = Path("/app/src/sql/tables/members.sql").read_text()
-member_progress_table = Path("/app/src/sql/tables/member_progress.sql").read_text()
+# Create Table SQL strings
+table_members = Path("/app/src/sql/members/table_members.sql").read_text()
+table_weekly_reports = Path("/app/src/sql/weekly_reports/table_weekly_reports.sql").read_text()
+table_teams = Path("/app/src/sql/teams/table_teams.sql").read_text()
+table_supplies = Path("/app/src/sql/supplies/table_supplies.sql").read_text()
+table_orders = Path("/app/src/sql/orders/table_orders.sql").read_text()
+# Insert SQL strings
+insert_member = Path("/app/src/sql/members/insert_member.sql").read_text()
+
+# Make table, log if success or failure
+def make_table(cur, table_sql, table_name):
+    try:
+        cur.execute(table_sql)
+    except Exception as e:
+        print(f"Make {table_name} table failed.", e)
+    else:
+        print(f"Make {table_name} table succeeded.")
 
 try:
     conn = psycopg2.connect(DATABASE_URL)
@@ -16,29 +29,26 @@ try:
     print("Postgres version:", cur.fetchone())
 
     # Drop old tables for testing purposes
-    cur.execute("DROP TABLE IF EXISTS member_progress;")
-    cur.execute("DROP TABLE IF EXISTS members;")
+    cur.execute("DROP TABLE IF EXISTS members CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS weekly_reports;")
+    cur.execute("DROP TABLE IF EXISTS teams;")
+    cur.execute("DROP TABLE IF EXISTS supplies;")
+    cur.execute("DROP TABLE IF EXISTS orders;")
     conn.commit()
 
     # Make SQL Tables
-    try:
-        cur.execute(members_table)
-    except Exception as e:
-        print("Make member table failed.", e)
-    else:
-        print("Make member table succeeded.")
-    try:
-        cur.execute(member_progress_table)
-    except Exception as e:
-        print("Make progress table failed.", e)
-    else:
-        print("Make progress table succeeded.")
+    make_table(cur, table_members, "members")
+    make_table(cur, table_weekly_reports, "weekly_reports")
+    make_table(cur, table_teams, "teams")
+    make_table(cur, table_supplies, "supplies")
+    make_table(cur, table_orders, "orders")
 
     # Insert a test member
     try:
         cur.execute(insert_member, {
             "first":  "Albert",
             "last":   "Gator",
+            "ufid":   "12345678",
             "email":  "albert.gator@ufl.edu",
             "phone":  "352-201-0001",
             "team":   "Mechanical",
