@@ -10,6 +10,8 @@ table_weekly_reports = Path("/app/src/sql/weekly_reports/table_weekly_reports.sq
 table_teams = Path("/app/src/sql/teams/table_teams.sql").read_text()
 table_supplies = Path("/app/src/sql/supplies/table_supplies.sql").read_text()
 table_orders = Path("/app/src/sql/orders/table_orders.sql").read_text()
+table_applicants = Path("/app/src/sql/applicants/table_applicants.sql").read_text()
+table_locations = Path("/app/src/sql/location/table_location.sql").read_text()
 # Insert SQL strings
 insert_member = Path("/app/src/sql/members/insert_member.sql").read_text()
 
@@ -34,14 +36,18 @@ try:
     cur.execute("DROP TABLE IF EXISTS teams;")
     cur.execute("DROP TABLE IF EXISTS supplies;")
     cur.execute("DROP TABLE IF EXISTS orders;")
+    cur.execute("DROP TABLE IF EXISTS applicants;")
+    cur.execute("DROP TABLE IF EXISTS locations;")
     conn.commit()
 
     # Make SQL Tables
+    make_table(cur, table_teams, "teams")
+    make_table(cur, table_locations, "locations")
     make_table(cur, table_members, "members")
     make_table(cur, table_weekly_reports, "weekly_reports")
-    make_table(cur, table_teams, "teams")
     make_table(cur, table_supplies, "supplies")
     make_table(cur, table_orders, "orders")
+    make_table(cur, table_applicants, "applicants")
 
     # Insert a test member
     try:
