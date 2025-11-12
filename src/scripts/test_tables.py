@@ -65,6 +65,41 @@ def initialize_schema(cur, database_name=None):
     return success_count, len(sorted_tables)
 
 
+def drop_all_tables(cur, database_name):
+    """Drop all tables from the test database."""
+    print(f"\n🗑️  Dropping all existing tables from '{database_name}'...")
+    
+    # Get all table names from the database
+    cur.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
+        (database_name,)
+    )
+    tables = cur.fetchall()
+    
+    if not tables:
+        print("  ⊘ No tables to drop")
+        return
+    
+    table_names = [table[0] for table in tables]
+    print(f"  Found {len(table_names)} table(s) to drop")
+    
+    # Disable foreign key checks to avoid constraint issues
+    cur.execute("SET FOREIGN_KEY_CHECKS = 0")
+    
+    dropped_count = 0
+    for table_name in table_names:
+        try:
+            cur.execute(f"DROP TABLE IF EXISTS `{table_name}`")
+            dropped_count += 1
+        except Exception as e:
+            print(f"  ⚠ Warning: Failed to drop table '{table_name}': {e}")
+    
+    # Re-enable foreign key checks
+    cur.execute("SET FOREIGN_KEY_CHECKS = 1")
+    
+    print(f"  ✓ Dropped {dropped_count}/{len(table_names)} table(s)")
+
+
 def verify_tables(cur, database_name):
     """Verify that all expected tables exist and have valid structure."""
     print("\n🔍 Verifying table structure...")
@@ -179,6 +214,10 @@ def main():
                 print(f"✓ Connected successfully after creating user")
             else:
                 raise
+        
+        # Drop all existing tables from test database for a clean start
+        drop_all_tables(cur, test_db_name)
+        conn.commit()
         
         # Initialize schema in test database
         created_count, total_count = initialize_schema(cur, test_db_name)
