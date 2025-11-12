@@ -338,10 +338,9 @@ def create_table_viewer(locations_data, supplies_data):
             # Refresh display
             update_display()
             
-            if failed_count == 0:
-                tk.messagebox.showinfo("Success", f"Moved {moved_count} supply type(s) from {from_container} to {to_container}.")
-            else:
-                tk.messagebox.showwarning("Partial Success", f"Moved {moved_count} supply type(s), {failed_count} failed.")
+            # Only show error messages, not success messages
+            if failed_count > 0:
+                tk.messagebox.showerror("Error", f"Failed to move {failed_count} supply type(s). {moved_count} succeeded.")
                 
         except requests.exceptions.ConnectionError:
             tk.messagebox.showerror("Error", "Cannot connect to API. Make sure the API is running on http://localhost:5000")
