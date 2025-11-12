@@ -1,7 +1,7 @@
 PROJECT_NAME=mysql_service
 COMPOSE=docker-compose -p $(PROJECT_NAME)
 
-## up:          Start the mysql and app containers in the background
+## up:          Start the mysql and api containers in the background
 .PHONY: up
 up:
 	$(COMPOSE) up -d
@@ -10,6 +10,11 @@ up:
 .PHONY: down
 down:
 	$(COMPOSE) down
+
+## status:      Show status of all services
+.PHONY: status
+status:
+	$(COMPOSE) ps
 
 ## logs:        Follow logs from all services
 .PHONY: logs
@@ -21,10 +26,14 @@ logs:
 mysql:
 	$(COMPOSE) exec db mysql -u mysqluser -pmysqlpassword mydb
 
-## test:       Run table creation tests in a test database
+## test:       Open GUI test runner (starts services if not running)
 .PHONY: test
 test:
-	$(COMPOSE) exec app python src/scripts/test_tables.py
+	@echo "Ensuring services are running..."
+	@$(COMPOSE) up -d
+	@echo "Waiting for services to be ready..."
+	@timeout /t 5 /nobreak >nul 2>&1 || sleep 5 2>/dev/null || true
+	@python src/scripts/test_gui.py
 
 ## build:       Build or rebuild services
 .PHONY: build

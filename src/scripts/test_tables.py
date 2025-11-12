@@ -13,6 +13,7 @@ Environment variables:
 """
 import os
 import sys
+import json
 import mysql.connector
 from helpers import (
     get_sql_base_path,
@@ -223,8 +224,48 @@ def main():
         created_count, total_count = initialize_schema(cur, test_db_name)
         conn.commit()
         
-        # Verify tables
+        # Verify tables and collect status
+        table_files = discover_table_files(SQL_BASE_PATH)
+        sorted_tables = topological_sort_tables(table_files)
+        
+        # Track which tables were created successfully and which failed
+        successful_tables = []
+        failed_tables = []
+        
+        for table_name, _ in sorted_tables:
+            if table_exists(cur, table_name, test_db_name):
+                # Check if it has valid structure
+                columns = get_table_columns(cur, table_name, test_db_name)
+                if len(columns) > 0:
+                    successful_tables.append(table_name)
+                else:
+                    failed_tables.append(table_name)
+            else:
+                failed_tables.append(table_name)
+        
+        # Also check verify_tables for overall status
         all_valid = verify_tables(cur, test_db_name)
+        
+        # Output JSON data for GUI viewer
+        table_data = {
+            'database': test_db_name,
+            'successful_tables': successful_tables,
+            'failed_tables': failed_tables,
+            'summary': {
+                'created': created_count,
+                'total': total_count,
+                'all_valid': all_valid,
+                'successful_count': len(successful_tables),
+                'failed_count': len(failed_tables)
+            }
+        }
+        
+        # Output JSON with special marker for test_gui.py to detect
+        print("\n" + "=" * 60)
+        print("TABLE_DATA_JSON_START")
+        print(json.dumps(table_data, indent=2))
+        print("TABLE_DATA_JSON_END")
+        print("=" * 60)
         
         # Summary
         print("\n" + "="*50)

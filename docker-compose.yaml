@@ -18,18 +18,25 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
+  api:
     build: .
-    container_name: mysql_app
+    container_name: mysql_api
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: mysql://mysqluser:mysqlpassword@db:3306/mydb
-      MYSQL_ROOT_PASSWORD: rootpassword
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: mysqluser
+      DB_PASSWORD: mysqlpassword
+      DB_NAME: mydb
+      PORT: 5000
+    ports:
+      - "5000:5000"
     volumes:
       - .:/app
-    command: ["sh", "-c", "until mysqladmin ping -h db -u mysqluser -pmysqlpassword --silent 2>/dev/null; do sleep 1; done && python src/scripts/app.py"]
+    command: ["python", "-m", "src.api.app"]
 
 volumes:
   db_data:
