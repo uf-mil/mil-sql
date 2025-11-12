@@ -16,6 +16,7 @@ import json
 import mysql.connector
 import mysql.connector.errors
 import tkinter.messagebox
+import requests
 from helpers import parse_database_url, table_exists
 
 # Try to import tkinter, but don't fail if not available (e.g., in Docker)
@@ -104,24 +105,27 @@ def insert_sample_locations(cur):
 
 
 def insert_sample_supplies(cur):
-    """Insert sample supplies data - distributed across 3 containers."""
+    """Insert sample supplies data - DISTRIBUTED SUPPLY in all containers plus 9 different supplies."""
     print("\n📦 Inserting sample supplies...")
     
+    # Same supply name in all containers, different amounts
+    supply_name = "DISTRIBUTED SUPPLY"
     sample_supplies = [
-        # Container A
-        ('Resistors 1kΩ', 50, '2024-01-15', 'Container A'),
-        ('Capacitors 100µF', 30, '2024-01-20', 'Container A'),
+        # DISTRIBUTED SUPPLY in all 3 containers
+        (supply_name, 10, '2024-01-15', 'Container A'),
+        (supply_name, 25, '2024-01-20', 'Container B'),
+        (supply_name, 5, '2024-02-01', 'Container C'),
+        # Container A - 3 additional supplies
+        ('Resistors 1K', 50, '2024-01-15', 'Container A'),
+        ('Capacitors 100UF', 30, '2024-01-20', 'Container A'),
         ('Arduino Uno', 5, '2024-02-01', 'Container A'),
-        ('Breadboards', 10, '2024-02-10', 'Container A'),
-        # Container B
+        # Container B - 3 additional supplies
         ('Screws M3', 200, '2024-01-10', 'Container B'),
         ('Bolts M3', 150, '2024-01-10', 'Container B'),
         ('Nuts M3', 300, '2024-01-10', 'Container B'),
-        ('Wires Red', 100, '2024-01-05', 'Container B'),
-        # Container C
+        # Container C - 3 additional supplies
         ('LEDs Red', 50, '2024-01-12', 'Container C'),
         ('LEDs Green', 50, '2024-01-12', 'Container C'),
-        ('LEDs Blue', 50, '2024-01-12', 'Container C'),
         ('Multimeter', 2, '2024-01-08', 'Container C'),
     ]
     
@@ -206,18 +210,37 @@ def create_table_viewer(locations_data, supplies_data):
             raise
     
     def refresh_supplies():
-        """Refresh supplies data from database - only for our 3 containers."""
-        conn = get_db_connection()
-        cur = conn.cursor()
-        placeholders = ','.join(['%s'] * len(container_names))
-        cur.execute(
-            f"SELECT id, name, amount, last_order_date, location FROM supplies WHERE location IN ({placeholders}) ORDER BY location, name",
-            container_names
-        )
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        return rows
+        """Refresh supplies data from API - only for our 3 containers."""
+        try:
+            api_url = "http://localhost:5000/api/supplies"
+            response = requests.get(api_url)
+            
+            if response.status_code != 200:
+                print(f"Warning: API returned {response.status_code}: {response.text}")
+                return []
+            
+            all_supplies = response.json()
+            
+            # Filter to only our containers and convert to tuple format
+            filtered_supplies = []
+            for supply in all_supplies:
+                if supply.get('location') in container_names:
+                    # Convert to tuple format: (id, name, amount, last_order_date, location)
+                    filtered_supplies.append((
+                        supply.get('id'),
+                        supply.get('name'),
+                        supply.get('amount'),
+                        supply.get('last_order_date'),
+                        supply.get('location')
+                    ))
+            
+            return filtered_supplies
+        except requests.exceptions.ConnectionError:
+            print("Warning: Cannot connect to API, returning empty list")
+            return []
+        except Exception as e:
+            print(f"Warning: Error fetching supplies from API: {e}")
+            return []
     
     def update_display(supplies_rows=None):
         """Update the display with current supplies.
@@ -269,60 +292,61 @@ def create_table_viewer(locations_data, supplies_data):
                         container_labels[container_name].config(text=f"{container_name} (empty)")
     
     def move_supply(from_container, to_container):
-        """Move all supplies from one container to another."""
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Get all supplies in source container
-        cur.execute(
-            "SELECT id, name, amount FROM supplies WHERE location = %s",
-            (from_container,)
-        )
-        supplies_to_move = cur.fetchall()
-        
-        if not supplies_to_move:
-            tk.messagebox.showinfo("Info", f"No supplies in {from_container} to move.")
-            cur.close()
-            conn.close()
-            return
-        
-        # Move each supply
-        moved_count = 0
-        for supply_id, name, amount in supplies_to_move:
-            try:
-                # Check if supply exists at destination
-                cur.execute(
-                    "SELECT id, amount FROM supplies WHERE name = %s AND location = %s",
-                    (name, to_container)
-                )
-                dest_entry = cur.fetchone()
-                
-                if dest_entry:
-                    # Update destination
-                    new_amount = dest_entry[1] + amount
-                    cur.execute(
-                        "UPDATE supplies SET amount = %s WHERE id = %s",
-                        (new_amount, dest_entry[0])
+        """Move all supplies from one container to another using the API."""
+        try:
+            # Get all supplies in source container using API
+            api_url = "http://localhost:5000/api/supplies"
+            response = requests.get(api_url, params={"location": from_container})
+            
+            if response.status_code != 200:
+                tk.messagebox.showerror("Error", f"Failed to fetch supplies: {response.text}")
+                return
+            
+            supplies_to_move = response.json()
+            
+            if not supplies_to_move:
+                tk.messagebox.showinfo("Info", f"No supplies in {from_container} to move.")
+                return
+            
+            # Move each supply using the API move endpoint
+            moved_count = 0
+            failed_count = 0
+            
+            for supply in supplies_to_move:
+                try:
+                    # Move all of this supply - omit amount to move all
+                    move_payload = {
+                        "name": supply["name"],
+                        "from_location": from_container,
+                        "to_location": to_container
+                    }
+                    # Don't include amount - API will move all if amount is not provided
+                    move_response = requests.post(
+                        "http://localhost:5000/api/supplies/move",
+                        json=move_payload
                     )
-                else:
-                    # Create at destination
-                    cur.execute(
-                        "INSERT INTO supplies (name, amount, location) VALUES (%s, %s, %s)",
-                        (name, amount, to_container)
-                    )
+                    
+                    if move_response.status_code == 200:
+                        moved_count += 1
+                    else:
+                        failed_count += 1
+                        print(f"Failed to move {supply['name']}: {move_response.text}")
+                except Exception as e:
+                    failed_count += 1
+                    print(f"Error moving {supply['name']}: {e}")
+            
+            # Refresh display
+            update_display()
+            
+            if failed_count == 0:
+                tk.messagebox.showinfo("Success", f"Moved {moved_count} supply type(s) from {from_container} to {to_container}.")
+            else:
+                tk.messagebox.showwarning("Partial Success", f"Moved {moved_count} supply type(s), {failed_count} failed.")
                 
-                # Delete from source
-                cur.execute("DELETE FROM supplies WHERE id = %s", (supply_id,))
-                moved_count += 1
-            except Exception as e:
-                print(f"Error moving {name}: {e}")
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        update_display()
-        tk.messagebox.showinfo("Success", f"Moved {moved_count} supply type(s) from {from_container} to {to_container}.")
+        except requests.exceptions.ConnectionError:
+            tk.messagebox.showerror("Error", "Cannot connect to API. Make sure the API is running on http://localhost:5000")
+        except Exception as e:
+            tk.messagebox.showerror("Error", f"Failed to move supplies: {str(e)}")
     
     # Main container
     main_frame = tk.Frame(root, padx=20, pady=20)
