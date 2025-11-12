@@ -1,5 +1,5 @@
 CREATE TABLE supplies (
-    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,              
+    id              BIGINT AUTO_INCREMENT PRIMARY KEY,              
     name            VARCHAR(200) NOT NULL,
     amount          INTEGER NOT NULL DEFAULT 0,
     last_order_date DATE,

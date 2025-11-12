@@ -1,7 +1,7 @@
-PROJECT_NAME=postgres_service
+PROJECT_NAME=mysql_service
 COMPOSE=docker-compose -p $(PROJECT_NAME)
 
-## up:          Start the postgres and app containers in the background
+## up:          Start the mysql and app containers in the background
 .PHONY: up
 up:
 	$(COMPOSE) up -d
@@ -16,10 +16,15 @@ down:
 logs:
 	$(COMPOSE) logs -f
 
-## psql:        Open a psql shell into the postgres container
-.PHONY: psql
-psql:
-	$(COMPOSE) exec db psql -U postgres -d mydb
+## mysql:      Open a mysql shell into the mysql container
+.PHONY: mysql
+mysql:
+	$(COMPOSE) exec db mysql -u mysqluser -pmysqlpassword mydb
+
+## test:       Run table creation tests in a test database
+.PHONY: test
+test:
+	$(COMPOSE) exec app python src/scripts/test_tables.py
 
 ## build:       Build or rebuild services
 .PHONY: build

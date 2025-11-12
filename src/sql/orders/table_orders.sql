@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS orders (
-    order_id			BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_id			BIGINT AUTO_INCREMENT PRIMARY KEY,
     item_name			VARCHAR(50),
     count			    INT,
     company			    VARCHAR(50),

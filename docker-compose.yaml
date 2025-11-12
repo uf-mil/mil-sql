@@ -1,27 +1,35 @@
 services:
   db:
-    image: postgres:16
-    container_name: postgres_db
+    image: mysql:8.0
+    container_name: mysql_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: mydb
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: mydb
+      MYSQL_USER: mysqluser
+      MYSQL_PASSWORD: mysqlpassword
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   app:
     build: .
-    container_name: postgres_app
+    container_name: mysql_app
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/mydb
+      DATABASE_URL: mysql://mysqluser:mysqlpassword@db:3306/mydb
+      MYSQL_ROOT_PASSWORD: rootpassword
     volumes:
       - .:/app
-    command: ["sh", "-c", "until pg_isready -h db -p 5432; do sleep 1; done && python src/scripts/app.py"]
+    command: ["sh", "-c", "until mysqladmin ping -h db -u mysqluser -pmysqlpassword --silent 2>/dev/null; do sleep 1; done && python src/scripts/app.py"]
 
 volumes:
   db_data:
