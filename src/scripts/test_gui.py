@@ -341,36 +341,8 @@ class TestRunnerGUI:
                     locations_data = [tuple(row) for row in table_data['locations']['data']]
                     supplies_data = [tuple(row) for row in table_data['supplies']['data']]
                     
-                    # Create cleanup function to drop test database
-                    def cleanup_test_db():
-                        """Clean up test database when viewer closes."""
-                        try:
-                            import mysql.connector
-                            from helpers import parse_database_url
-                            
-                            database_url = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@localhost:3306/mydb")
-                            base_params = parse_database_url(database_url)
-                            test_db_name = f"{base_params['database']}_test"
-                            root_password = os.getenv("MYSQL_ROOT_PASSWORD", "rootpassword")
-                            
-                            # Connect as root to drop database
-                            root_conn = mysql.connector.connect(
-                                host=base_params['host'] if base_params['host'] != 'db' else 'localhost',
-                                port=base_params['port'],
-                                user='root',
-                                password=root_password
-                            )
-                            root_cur = root_conn.cursor()
-                            root_cur.execute(f"DROP DATABASE IF EXISTS `{test_db_name}`")
-                            root_conn.commit()
-                            root_cur.close()
-                            root_conn.close()
-                            self.log(f"\n✓ Test database '{test_db_name}' cleaned up")
-                        except Exception as e:
-                            self.log(f"\n⚠ Could not clean up test database: {e}")
-                    
-                    # Use the interactive viewer with cleanup function
-                    test_module.create_table_viewer(locations_data, supplies_data, cleanup_callback=cleanup_test_db)
+                    # Use the interactive viewer (no cleanup needed - API manages the test database)
+                    test_module.create_table_viewer(locations_data, supplies_data, cleanup_callback=None)
                 except Exception as e:
                     # Fallback to simple viewer
                     self.log(f"\n⚠ Could not load interactive viewer, using simple viewer: {e}", "error")

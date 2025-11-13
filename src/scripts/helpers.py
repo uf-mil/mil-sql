@@ -15,7 +15,14 @@ import os
 API_URL = os.getenv("API_URL", "http://localhost:5000/api")
 
 # Test API (port 5001, database: mydb_test)
-TEST_API_URL = os.getenv("TEST_API_URL", "http://localhost:5001/api")
+# Detect if running in Docker (check for /app path or container name)
+# When in Docker, use service name 'api-test', otherwise use 'localhost'
+if os.path.exists("/app") or os.getenv("HOSTNAME", "").startswith("mysql_api"):
+    # Running in Docker container - use service name
+    TEST_API_URL = os.getenv("TEST_API_URL", "http://api-test:5001/api")
+else:
+    # Running locally - use localhost
+    TEST_API_URL = os.getenv("TEST_API_URL", "http://localhost:5001/api")
 
 
 def get_sql_base_path(script_file):
