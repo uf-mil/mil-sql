@@ -8,6 +8,14 @@ from pathlib import Path
 import re
 from urllib.parse import urlparse
 from collections import defaultdict, deque
+import os
+
+# API URLs for test scripts
+# Production API (port 5000, database: mydb)
+API_URL = os.getenv("API_URL", "http://localhost:5000/api")
+
+# Test API (port 5001, database: mydb_test)
+TEST_API_URL = os.getenv("TEST_API_URL", "http://localhost:5001/api")
 
 
 def get_sql_base_path(script_file):

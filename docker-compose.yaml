@@ -31,9 +31,31 @@ services:
       DB_USER: mysqluser
       DB_PASSWORD: mysqlpassword
       DB_NAME: mydb
+      MYSQL_ROOT_PASSWORD: rootpassword
       PORT: 5000
     ports:
       - "5000:5000"
+    volumes:
+      - .:/app
+    command: ["python", "-m", "src.api.app"]
+
+  api-test:
+    build: .
+    container_name: mysql_api_test
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql://mysqluser:mysqlpassword@db:3306/mydb_test
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: mysqluser
+      DB_PASSWORD: mysqlpassword
+      DB_NAME: mydb_test
+      MYSQL_ROOT_PASSWORD: rootpassword
+      PORT: 5001
+    ports:
+      - "5001:5001"
     volumes:
       - .:/app
     command: ["python", "-m", "src.api.app"]

@@ -1,9 +1,17 @@
 PROJECT_NAME=mysql_service
 COMPOSE=docker-compose -p $(PROJECT_NAME)
 
-## up:          Start the mysql and api containers in the background
+## up:          Start the mysql, api (port 5000), and api-test (port 5001) containers and seed default locations
 .PHONY: up
 up:
+	$(COMPOSE) up -d
+	@echo "Waiting for services to be ready..."
+	@timeout /t 5 /nobreak >nul 2>&1 || sleep 5 2>/dev/null || true
+	@$(COMPOSE) exec api python src/scripts/seed_locations.py
+
+## up-empty:    Start the mysql, api (port 5000), and api-test (port 5001) containers without seeding data
+.PHONY: up-empty
+up-empty:
 	$(COMPOSE) up -d
 
 ## down:        Stop and remove containers (keeps volumes)
@@ -26,7 +34,7 @@ logs:
 mysql:
 	$(COMPOSE) exec db mysql -u mysqluser -pmysqlpassword mydb
 
-## test:       Open GUI test runner (starts services if not running)
+## test:       Open GUI test runner (starts services if not running, including test API on port 5001)
 .PHONY: test
 test:
 	@echo "Ensuring services are running..."

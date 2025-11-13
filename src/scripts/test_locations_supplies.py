@@ -13,11 +13,19 @@ Usage:
 import os
 import sys
 import json
+import time
 import mysql.connector
 import mysql.connector.errors
 import tkinter.messagebox
 import requests
-from helpers import parse_database_url, table_exists
+from helpers import (
+    parse_database_url, 
+    table_exists, 
+    get_sql_base_path,
+    discover_table_files,
+    topological_sort_tables,
+    execute_sql_file
+)
 
 # Try to import tkinter, but don't fail if not available (e.g., in Docker)
 try:
@@ -27,51 +35,80 @@ try:
 except ImportError:
     HAS_TKINTER = False
 
-# Get database URL
-DATABASE_URL = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@db:3306/mydb")
+# Get base database URL - test will use a separate test database
+BASE_DATABASE_URL = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@db:3306/mydb")
+
+# Base path for SQL files (works in Docker and locally)
+SQL_BASE_PATH = get_sql_base_path(__file__)
 
 
-def get_connection():
-    """Get database connection."""
-    db_params = parse_database_url(DATABASE_URL)
-    return mysql.connector.connect(**db_params)
-
-
-def ensure_tables_exist(cur):
-    """Ensure locations and supplies tables exist, create if needed."""
-    from helpers import get_sql_base_path, discover_table_files, topological_sort_tables, execute_sql_file
+def drop_all_tables(cur, database_name):
+    """Drop all tables from the test database."""
+    print(f"\n🗑️  Dropping all existing tables from '{database_name}'...")
     
-    SQL_BASE_PATH = get_sql_base_path(__file__)
+    # Get all table names from the database
+    cur.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
+        (database_name,)
+    )
+    tables = cur.fetchall()
+    
+    if not tables:
+        print("  ⊘ No tables to drop")
+        return
+    
+    table_names = [table[0] for table in tables]
+    print(f"  Found {len(table_names)} table(s) to drop")
+    
+    # Disable foreign key checks to avoid constraint issues
+    cur.execute("SET FOREIGN_KEY_CHECKS = 0")
+    
+    dropped_count = 0
+    for table_name in table_names:
+        try:
+            cur.execute(f"DROP TABLE IF EXISTS `{table_name}`")
+            dropped_count += 1
+        except Exception as e:
+            print(f"  ⚠ Warning: Failed to drop table '{table_name}': {e}")
+    
+    # Re-enable foreign key checks
+    cur.execute("SET FOREIGN_KEY_CHECKS = 1")
+    
+    print(f"  ✓ Dropped {dropped_count}/{len(table_names)} table(s)")
+
+
+def initialize_schema(cur, database_name=None):
+    """Initialize database schema in correct dependency order."""
+    print("\n📋 Discovering table files...")
+    
+    # Discover all table_*.sql files recursively
     table_files = discover_table_files(SQL_BASE_PATH)
     
-    # Find locations and supplies tables
-    locations_file = None
-    supplies_file = None
+    if not table_files:
+        print(f"⚠ No table_*.sql files found in {SQL_BASE_PATH}")
+        return 0, 0
     
-    for table_name, sql_file in table_files:
-        if table_name.lower() == 'locations':
-            locations_file = sql_file
-        elif table_name.lower() == 'supplies':
-            supplies_file = sql_file
+    print(f"✓ Found {len(table_files)} table file(s)")
     
-    # Create tables if they don't exist
-    if not table_exists(cur, 'locations'):
-        if locations_file:
-            print("📋 Creating locations table...")
-            execute_sql_file(cur, locations_file, "locations table")
-        else:
-            print("✗ locations table not found and cannot be created")
-            return False
+    # Sort tables by dependency order
+    print("📊 Analyzing dependencies...")
+    sorted_tables = topological_sort_tables(table_files)
     
-    if not table_exists(cur, 'supplies'):
-        if supplies_file:
-            print("📋 Creating supplies table...")
-            execute_sql_file(cur, supplies_file, "supplies table")
-        else:
-            print("✗ supplies table not found and cannot be created")
-            return False
+    print("\n📋 Initializing database schema...")
     
-    return True
+    success_count = 0
+    for table_name, sql_file in sorted_tables:
+        description = f"{table_name} table"
+        # Check if table already exists (for idempotency)
+        if table_exists(cur, table_name, database_name):
+            print(f"⊘ {description} already exists, skipping")
+            continue
+        
+        if execute_sql_file(cur, sql_file, description):
+            success_count += 1
+    
+    print(f"\n✓ Schema initialization complete ({success_count}/{len(sorted_tables)} tables created)")
+    return success_count, len(sorted_tables)
 
 
 def insert_sample_locations(cur):
@@ -176,70 +213,141 @@ def display_table_contents(table_name, columns, rows):
     print(f"\n  Total rows: {len(rows)}")
 
 
-def create_table_viewer(locations_data, supplies_data):
+def create_table_viewer(locations_data, supplies_data, test_db_name=None, base_params=None, cleanup_callback=None):
     """Create an interactive tkinter window to display and move supplies between containers."""
     root = tk.Tk()
     root.title("Container Supplies - Move Supplies Between Containers")
     root.geometry("1000x700")
+    
+    # Set up cleanup when window closes
+    cleanup_called = {'value': False}
+    
+    def on_closing():
+        if cleanup_callback and not cleanup_called['value']:
+            cleanup_called['value'] = True
+            cleanup_callback()
+        root.destroy()
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing)
     
     # Get container names
     container_names = [row[0] for row in locations_data if 'Container' in row[0]]
     if len(container_names) < 3:
         container_names = ['Container A', 'Container B', 'Container C']
     
+    # Test database connection at startup
+    db_connection_available = False
+    try:
+        # Try to connect to test if connection is available
+        if test_db_name is None or base_params is None:
+            base_params_test = parse_database_url(BASE_DATABASE_URL)
+            test_db_name_test = f"{base_params_test['database']}_test"
+        else:
+            base_params_test = base_params
+            test_db_name_test = test_db_name
+        
+        db_params_test = {
+            'host': base_params_test['host'] if base_params_test['host'] != 'db' else 'localhost',
+            'port': base_params_test['port'],
+            'user': base_params_test['user'],
+            'password': base_params_test['password'],
+            'database': test_db_name_test
+        }
+        
+        # Try to connect with different auth plugins
+        auth_plugins = [None, 'caching_sha2_password', 'mysql_native_password']
+        for auth_plugin in auth_plugins:
+            try:
+                test_params = db_params_test.copy()
+                if auth_plugin:
+                    test_params['auth_plugin'] = auth_plugin
+                test_conn = mysql.connector.connect(**test_params)
+                test_conn.close()
+                db_connection_available = True
+                break
+            except:
+                continue
+    except:
+        db_connection_available = False
+    
     # Database connection for refreshing data
-    # When running locally (not in Docker), use localhost instead of 'db'
+    # Use test database only (passed from main function)
     def get_db_connection():
-        db_params = parse_database_url(DATABASE_URL)
+        if not db_connection_available:
+            raise Exception("Database connection not available")
+        
+        # Use parameters passed from main function
+        if test_db_name is None or base_params is None:
+            # Fallback to parsing from environment
+            base_params_fallback = parse_database_url(BASE_DATABASE_URL)
+            test_db_name_fallback = f"{base_params_fallback['database']}_test"
+        else:
+            base_params_fallback = base_params
+            test_db_name_fallback = test_db_name
+        
+        db_params = {
+            'host': base_params_fallback['host'],
+            'port': base_params_fallback['port'],
+            'user': base_params_fallback['user'],
+            'password': base_params_fallback['password'],
+            'database': test_db_name_fallback
+        }
         # If host is 'db' and we're not in Docker, use localhost
         if db_params.get('host') == 'db' and not os.path.exists("/app"):
             db_params['host'] = 'localhost'
-        # Try to connect - if auth plugin fails, try without specifying it
-        try:
-            return mysql.connector.connect(**db_params)
-        except mysql.connector.errors.DatabaseError as e:
-            if 'auth' in str(e).lower() or 'plugin' in str(e).lower():
-                # Try with different auth plugin
-                db_params['auth_plugin'] = 'caching_sha2_password'
-                try:
-                    return mysql.connector.connect(**db_params)
-                except:
-                    # Last resort: try mysql_native_password
-                    db_params['auth_plugin'] = 'mysql_native_password'
-                    return mysql.connector.connect(**db_params)
-            raise
+        
+        # Try different authentication plugins in order
+        auth_plugins = [None, 'caching_sha2_password', 'mysql_native_password']
+        last_error = None
+        
+        for auth_plugin in auth_plugins:
+            try:
+                test_params = db_params.copy()
+                if auth_plugin:
+                    test_params['auth_plugin'] = auth_plugin
+                return mysql.connector.connect(**test_params)
+            except mysql.connector.errors.DatabaseError as e:
+                last_error = e
+                error_str = str(e).lower()
+                # If it's an auth/plugin error, try next plugin
+                if 'auth' in error_str or 'plugin' in error_str:
+                    continue
+                # If it's a different error, raise it immediately
+                raise
+            except Exception as e:
+                last_error = e
+                # For non-auth errors, try next plugin anyway
+                continue
+        
+        # If all plugins failed, raise the last error
+        if last_error:
+            raise last_error
+        raise Exception("Failed to connect to database with any authentication plugin")
     
     def refresh_supplies():
-        """Refresh supplies data from API - only for our 3 containers."""
+        """Refresh supplies data from test database - only for our 3 containers."""
+        if not db_connection_available:
+            return []  # Return empty if connection not available
+        
         try:
-            api_url = "http://localhost:5000/api/supplies"
-            response = requests.get(api_url)
+            # Read directly from test database, not API
+            conn = get_db_connection()
+            cur = conn.cursor()
             
-            if response.status_code != 200:
-                print(f"Warning: API returned {response.status_code}: {response.text}")
-                return []
+            # Get supplies from test database for our containers
+            placeholders = ','.join(['%s'] * len(container_names))
+            cur.execute(
+                f"SELECT id, name, amount, last_order_date, location FROM supplies WHERE location IN ({placeholders}) ORDER BY location, name",
+                container_names
+            )
+            supplies = cur.fetchall()
             
-            all_supplies = response.json()
+            cur.close()
+            conn.close()
             
-            # Filter to only our containers and convert to tuple format
-            filtered_supplies = []
-            for supply in all_supplies:
-                if supply.get('location') in container_names:
-                    # Convert to tuple format: (id, name, amount, last_order_date, location)
-                    filtered_supplies.append((
-                        supply.get('id'),
-                        supply.get('name'),
-                        supply.get('amount'),
-                        supply.get('last_order_date'),
-                        supply.get('location')
-                    ))
-            
-            return filtered_supplies
-        except requests.exceptions.ConnectionError:
-            print("Warning: Cannot connect to API, returning empty list")
-            return []
+            return list(supplies)
         except Exception as e:
-            print(f"Warning: Error fetching supplies from API: {e}")
+            print(f"Warning: Error fetching supplies from test database: {e}")
             return []
     
     def update_display(supplies_rows=None):
@@ -292,48 +400,113 @@ def create_table_viewer(locations_data, supplies_data):
                         container_labels[container_name].config(text=f"{container_name} (empty)")
     
     def move_supply(from_container, to_container):
-        """Move all supplies from one container to another using the API."""
+        """Move all supplies from one container to another in test database."""
+        if not db_connection_available:
+            tk.messagebox.showwarning(
+                "Database Unavailable",
+                "Cannot move supplies: Database connection is not available.\n\n"
+                "This may be due to MySQL authentication issues when connecting from Windows to Docker.\n"
+                "The data is displayed in read-only mode."
+            )
+            return
+        
+        conn = None
         try:
-            # Get all supplies in source container using API
-            api_url = "http://localhost:5000/api/supplies"
-            response = requests.get(api_url, params={"location": from_container})
+            # Get all supplies in source container from test database
+            # Create a fresh connection to avoid any auth issues
+            conn = get_db_connection()
+            cur = conn.cursor()
             
-            if response.status_code != 200:
-                tk.messagebox.showerror("Error", f"Failed to fetch supplies: {response.text}")
-                return
-            
-            supplies_to_move = response.json()
+            cur.execute(
+                "SELECT id, name, amount, last_order_date, location FROM supplies WHERE location = %s",
+                (from_container,)
+            )
+            supplies_to_move = cur.fetchall()
             
             if not supplies_to_move:
                 tk.messagebox.showinfo("Info", f"No supplies in {from_container} to move.")
+                cur.close()
+                if conn:
+                    conn.close()
                 return
             
-            # Move each supply using the API move endpoint
+            # Move each supply in the test database
             moved_count = 0
             failed_count = 0
             
             for supply in supplies_to_move:
+                supply_id, name, amount, last_order_date, location = supply
                 try:
-                    # Move all of this supply - omit amount to move all
-                    move_payload = {
-                        "name": supply["name"],
-                        "from_location": from_container,
-                        "to_location": to_container
-                    }
-                    # Don't include amount - API will move all if amount is not provided
-                    move_response = requests.post(
-                        "http://localhost:5000/api/supplies/move",
-                        json=move_payload
+                    # Check if supply already exists in target location
+                    cur.execute(
+                        "SELECT id, amount FROM supplies WHERE name = %s AND location = %s",
+                        (name, to_container)
                     )
+                    existing = cur.fetchone()
                     
-                    if move_response.status_code == 200:
-                        moved_count += 1
+                    if existing:
+                        # Merge: add amounts
+                        existing_id, existing_amount = existing
+                        new_amount = existing_amount + amount
+                        cur.execute(
+                            "UPDATE supplies SET amount = %s WHERE id = %s",
+                            (new_amount, existing_id)
+                        )
+                        # Delete from source
+                        cur.execute("DELETE FROM supplies WHERE id = %s", (supply_id,))
                     else:
-                        failed_count += 1
-                        print(f"Failed to move {supply['name']}: {move_response.text}")
+                        # Move: update location
+                        cur.execute(
+                            "UPDATE supplies SET location = %s WHERE id = %s",
+                            (to_container, supply_id)
+                        )
+                    
+                    moved_count += 1
+                except mysql.connector.errors.DatabaseError as e:
+                    failed_count += 1
+                    error_str = str(e).lower()
+                    # If it's an auth/packet error, try to reconnect
+                    if 'malformed packet' in error_str or 'auth' in error_str or 'plugin' in error_str:
+                        print(f"Connection error moving {name}, will retry with fresh connection: {e}")
+                        # Close current connection and try again with fresh one
+                        try:
+                            cur.close()
+                            if conn:
+                                conn.close()
+                        except:
+                            pass
+                        # Retry with fresh connection
+                        try:
+                            conn = get_db_connection()
+                            cur = conn.cursor()
+                            # Re-check if supply exists in target (need to re-query)
+                            cur.execute(
+                                "SELECT id, amount FROM supplies WHERE name = %s AND location = %s",
+                                (name, to_container)
+                            )
+                            existing_retry = cur.fetchone()
+                            # Retry the operation
+                            if existing_retry:
+                                existing_id, existing_amount = existing_retry
+                                new_amount = existing_amount + amount
+                                cur.execute("UPDATE supplies SET amount = %s WHERE id = %s", (new_amount, existing_id))
+                                cur.execute("DELETE FROM supplies WHERE id = %s", (supply_id,))
+                            else:
+                                cur.execute("UPDATE supplies SET location = %s WHERE id = %s", (to_container, supply_id))
+                            moved_count += 1
+                            failed_count -= 1  # Adjust count since retry succeeded
+                        except Exception as retry_e:
+                            print(f"Retry also failed for {name}: {retry_e}")
+                    else:
+                        print(f"Error moving {name}: {e}")
                 except Exception as e:
                     failed_count += 1
-                    print(f"Error moving {supply['name']}: {e}")
+                    print(f"Error moving {name}: {e}")
+            
+            if conn:
+                conn.commit()
+                cur.close()
+                conn.close()
             
             # Refresh display
             update_display()
@@ -342,14 +515,48 @@ def create_table_viewer(locations_data, supplies_data):
             if failed_count > 0:
                 tk.messagebox.showerror("Error", f"Failed to move {failed_count} supply type(s). {moved_count} succeeded.")
                 
-        except requests.exceptions.ConnectionError:
-            tk.messagebox.showerror("Error", "Cannot connect to API. Make sure the API is running on http://localhost:5000")
+        except mysql.connector.errors.DatabaseError as e:
+            error_str = str(e).lower()
+            if 'malformed packet' in error_str or 'auth' in error_str:
+                # Try one more time with a completely fresh connection
+                try:
+                    if conn:
+                        try:
+                            conn.close()
+                        except:
+                            pass
+                    conn = get_db_connection()
+                    # If we can get a connection, show a more helpful message
+                    conn.close()
+                    tk.messagebox.showerror("Error", f"Database connection issue. Please try again. Error: {str(e)}")
+                except Exception as cleanup_e:
+                    tk.messagebox.showerror("Error", f"Failed to connect to database. Make sure MySQL is running. Original error: {str(e)}, Cleanup error: {str(cleanup_e)}")
+            else:
+                tk.messagebox.showerror("Error", f"Failed to move supplies: {str(e)}")
         except Exception as e:
             tk.messagebox.showerror("Error", f"Failed to move supplies: {str(e)}")
+        finally:
+            # Ensure connection is closed
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
     
     # Main container
     main_frame = tk.Frame(root, padx=20, pady=20)
     main_frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Show warning if database connection unavailable
+    if not db_connection_available:
+        warning_label = tk.Label(
+            main_frame,
+            text="⚠ Database connection unavailable - Move operations disabled\n(Data is read-only)",
+            font=("Arial", 10),
+            fg="orange",
+            bg="yellow"
+        )
+        warning_label.pack(pady=10)
     
     # Title
     title_label = tk.Label(main_frame, text="Container Supplies", font=("Arial", 16, "bold"))
@@ -392,18 +599,20 @@ def create_table_viewer(locations_data, supplies_data):
                     width=20,
                     height=2,
                     font=("Arial", 10, "bold"),
-                    bg="#4CAF50",
-                    fg="white"
+                    bg="#4CAF50" if db_connection_available else "#cccccc",
+                    fg="white",
+                    state=tk.NORMAL if db_connection_available else tk.DISABLED
                 )
                 btn.pack(pady=5, fill=tk.X)
     
-    # Refresh button
+    # Refresh button (only enabled if DB connection available)
     refresh_btn = tk.Button(
         main_frame,
         text="Refresh",
         command=update_display,
         width=15,
-        height=2
+        height=2,
+        state=tk.NORMAL if db_connection_available else tk.DISABLED
     )
     refresh_btn.pack(pady=10)
     
@@ -430,52 +639,118 @@ def create_table_viewer(locations_data, supplies_data):
 
 
 def main():
-    """Main test function."""
+    """Main test function - uses test database only, deletes and recreates it."""
+    root_conn = None
+    conn = None
     try:
-        print("🧪 Starting Locations & Supplies Data Test")
-        print("=" * 60)
+        # Parse base database URL
+        base_params = parse_database_url(BASE_DATABASE_URL)
+        test_db_name = f"{base_params['database']}_test"
         
-        # Connect to database
-        print("\n🔌 Connecting to database...")
-        conn = get_connection()
-        cur = conn.cursor()
+        print("🧪 Starting Locations & Supplies Data Test")
+        print(f"📊 Test database: {test_db_name}")
+        print("=" * 60)
+        print(f"🔌 Connecting to MySQL server...")
+        
+        # Use root credentials for database operations
+        root_password = os.getenv("MYSQL_ROOT_PASSWORD", "rootpassword")
+        
+        # Connect as root
+        root_conn_params = {
+            'host': base_params['host'],
+            'port': base_params['port'],
+            'user': 'root',
+            'password': root_password
+        }
+        
+        root_conn = mysql.connector.connect(**root_conn_params)
+        root_cur = root_conn.cursor()
         
         # Verify connection
-        cur.execute("SELECT VERSION();")
-        version = cur.fetchone()[0]
+        root_cur.execute("SELECT VERSION();")
+        version = root_cur.fetchone()[0]
         print(f"✓ Connected to MySQL: {version}")
         
-        # Ensure tables exist
-        print("\n🔍 Checking tables...")
-        if not ensure_tables_exist(cur):
-            print("✗ Required tables not available")
-            conn.rollback()
-            cur.close()
-            conn.close()
-            sys.exit(1)
+        # STEP 1: Drop test database if it exists (clean start)
+        print(f"\n🗑️  Dropping test database '{test_db_name}' if it exists...")
+        root_cur.execute(f"DROP DATABASE IF EXISTS `{test_db_name}`")
+        root_conn.commit()
+        print(f"✓ Test database dropped (if it existed)")
+        
+        # Small delay to ensure database is fully dropped
+        time.sleep(0.5)
+        
+        # STEP 2: Create fresh test database
+        print(f"\n📦 Creating fresh test database '{test_db_name}'...")
+        root_cur.execute(f"CREATE DATABASE `{test_db_name}`")
+        
+        # Grant permissions to mysqluser on the test database
+        username = base_params['user']
+        root_cur.execute(f"GRANT ALL PRIVILEGES ON `{test_db_name}`.* TO '{username}'@'%'")
+        root_cur.execute("FLUSH PRIVILEGES")
+        root_conn.commit()
+        print(f"✓ Test database created and permissions granted")
+        
+        root_cur.close()
+        root_conn.close()
+        root_conn = None
+        
+        # Small delay to ensure privileges are propagated
+        time.sleep(0.5)
+        
+        # STEP 3: Connect as mysqluser to test database
+        print(f"\n🔌 Connecting as '{base_params['user']}' to test database...")
+        conn_params = {
+            'host': base_params['host'],
+            'port': base_params['port'],
+            'user': base_params['user'],
+            'password': base_params['password'],
+            'database': test_db_name
+        }
+        
+        try:
+            conn = mysql.connector.connect(**conn_params)
+            cur = conn.cursor()
+            print(f"✓ Connected successfully to test database")
+        except mysql.connector.Error as e:
+            print(f"✗ Failed to connect as {base_params['user']}: {e}")
+            print(f"  Attempting to verify privileges...")
+            # Try to reconnect as root to check if user exists
+            root_conn = mysql.connector.connect(**root_conn_params)
+            root_cur = root_conn.cursor()
+            root_cur.execute(f"SELECT User, Host FROM mysql.user WHERE User = '{username}'")
+            users = root_cur.fetchall()
+            if not users:
+                print(f"  ⚠ User '{username}' does not exist. Creating user...")
+                root_cur.execute(f"CREATE USER IF NOT EXISTS '{username}'@'%' IDENTIFIED BY '{base_params['password']}'")
+                root_cur.execute(f"GRANT ALL PRIVILEGES ON `{test_db_name}`.* TO '{username}'@'%'")
+                root_cur.execute("FLUSH PRIVILEGES")
+                root_conn.commit()
+                root_cur.close()
+                root_conn.close()
+                root_conn = None
+                time.sleep(0.5)
+                # Retry connection
+                conn = mysql.connector.connect(**conn_params)
+                cur = conn.cursor()
+                print(f"✓ Connected successfully after creating user")
+            else:
+                raise
+        
+        # STEP 4: Initialize schema in test database
+        created_count, total_count = initialize_schema(cur, test_db_name)
         conn.commit()
         
-        # Insert sample locations
+        # STEP 5: Insert sample locations
         loc_inserted, loc_skipped = insert_sample_locations(cur)
         conn.commit()
         
-        # Clear old supplies for our containers to start fresh
+        # STEP 6: Insert sample supplies
         container_names = ['Container A', 'Container B', 'Container C']
-        print("\n🗑️  Clearing old supplies for test containers...")
-        placeholders = ','.join(['%s'] * len(container_names))
-        cur.execute(
-            f"DELETE FROM supplies WHERE location IN ({placeholders})",
-            container_names
-        )
-        cleared_count = cur.rowcount
-        conn.commit()
-        print(f"  ✓ Cleared {cleared_count} old supply entry/entries")
-        
-        # Insert sample supplies
         sup_inserted, sup_failed = insert_sample_supplies(cur)
         conn.commit()
         
-        # Get table contents for GUI display - only our 3 containers
+        # STEP 7: Get table contents for GUI display - only our 3 containers
         print("\n📊 Fetching table contents...")
         placeholders = ','.join(['%s'] * len(container_names))
         cur.execute(
@@ -502,11 +777,13 @@ def main():
         print(f"   Supplies: {sup_inserted} inserted, {sup_failed} failed")
         print("=" * 60)
         
+        # Close user connection - database stays alive for GUI
         cur.close()
         conn.close()
+        conn = None
+        # IMPORTANT: Database must remain alive for GUI to use it!
         
         # Convert data for JSON output (for test_gui.py to display locally)
-        # Convert tuples to lists for JSON serialization
         locations_json = [list(row) for row in locations_data]
         supplies_json = [list(row) for row in supplies_data]
         
@@ -533,31 +810,87 @@ def main():
         print("TABLE_DATA_JSON_END")
         print("=" * 60)
         
-        # Try to open GUI window locally if tkinter is available and we're not in Docker
-        if HAS_TKINTER and not os.path.exists("/app"):
-            print("\n🪟 Opening table viewer window...")
-            try:
-                create_table_viewer(locations_data, supplies_data)
-            except Exception as e:
-                print(f"⚠ Could not open GUI window: {e}")
-                print("  Table contents displayed above in console output.")
+        # IMPORTANT: Database MUST stay alive - do NOT drop it here!
+        # The GUI will be opened by test_gui.py locally, and cleanup will happen when GUI closes
+        # If running directly (not through test_gui.py), we'll handle cleanup differently
         
-        # Exit with appropriate code
+        # Check if we're being run through test_gui.py (which will open GUI locally)
+        # test_gui.py will detect the JSON output and open the viewer
+        # So we should NOT drop the database here - let test_gui.py handle it
+        
+        # Exit with appropriate code (but don't drop database - let GUI handle cleanup)
         if sup_failed > 0:
             print("\n⚠ Some supplies failed to insert (may be due to missing locations)")
+            # Drop database on failure
+            print(f"\n🗑️  Cleaning up: Dropping test database '{test_db_name}'...")
+            root_conn = mysql.connector.connect(**root_conn_params)
+            root_cur = root_conn.cursor()
+            root_cur.execute(f"DROP DATABASE IF EXISTS `{test_db_name}`")
+            root_conn.commit()
+            root_cur.close()
+            root_conn.close()
+            print(f"✓ Test database '{test_db_name}' dropped")
             sys.exit(1)
         else:
             print("\n✅ All data inserted successfully!")
+            # DO NOT drop database here - test_gui.py will open GUI and handle cleanup
+            # The database must stay alive for the GUI to use it
+            print(f"   (Test database '{test_db_name}' will be cleaned up when GUI closes)")
             sys.exit(0)
         
     except mysql.connector.Error as e:
         print(f"\n✗ Database error: {e}")
+        # Try to clean up test database on error
+        try:
+            if root_conn is None:
+                root_conn = mysql.connector.connect(**root_conn_params)
+            root_cur = root_conn.cursor()
+            root_cur.execute(f"DROP DATABASE IF EXISTS `{test_db_name}`")
+            root_conn.commit()
+            root_cur.close()
+            root_conn.close()
+            print(f"✓ Cleaned up test database '{test_db_name}'")
+        except:
+            pass
         sys.exit(1)
     except Exception as e:
         print(f"\n✗ Unexpected error: {e}")
         import traceback
         traceback.print_exc()
+        # Try to clean up test database on error
+        try:
+            base_params = parse_database_url(BASE_DATABASE_URL)
+            test_db_name = f"{base_params['database']}_test"
+            root_password = os.getenv("MYSQL_ROOT_PASSWORD", "rootpassword")
+            root_conn_params = {
+                'host': base_params['host'],
+                'port': base_params['port'],
+                'user': 'root',
+                'password': root_password
+            }
+            if root_conn is None:
+                root_conn = mysql.connector.connect(**root_conn_params)
+            root_cur = root_conn.cursor()
+            root_cur.execute(f"DROP DATABASE IF EXISTS `{test_db_name}`")
+            root_conn.commit()
+            root_cur.close()
+            root_conn.close()
+            print(f"✓ Cleaned up test database '{test_db_name}'")
+        except:
+            pass
         sys.exit(1)
+    finally:
+        # Ensure connections are closed
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
+        if root_conn:
+            try:
+                root_conn.close()
+            except:
+                pass
 
 
 if __name__ == "__main__":

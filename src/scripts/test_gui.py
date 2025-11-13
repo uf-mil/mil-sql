@@ -8,7 +8,7 @@ Usage:
     python src/scripts/test_gui.py
 """
 import tkinter as tk
-from tkinter import scrolledtext, ttk
+from tkinter import scrolledtext, ttk, messagebox
 import subprocess
 import sys
 import os
@@ -29,6 +29,8 @@ class TestRunnerGUI:
         
         # Discover test files
         self.test_files = self.discover_tests()
+        # Discover command files
+        self.command_files = self.discover_commands()
         
         # Create UI
         self.create_ui()
@@ -45,12 +47,24 @@ class TestRunnerGUI:
                     test_files.append((test_name, test_file))
         return sorted(test_files)
     
+    def discover_commands(self):
+        """Discover all command_*.py files in the scripts directory."""
+        command_files = []
+        for command_file in self.scripts_dir.glob("command_*.py"):
+            # Extract command name from filename: command_<name>.py -> <name>
+            match = re.match(r"command_(.+)\.py$", command_file.name, re.IGNORECASE)
+            if match:
+                command_name = match.group(1).replace("_", " ").title()
+                command_files.append((command_name, command_file))
+        return sorted(command_files)
+    
     def create_ui(self):
         """Create the user interface."""
         # Top frame for buttons
         button_frame = tk.Frame(self.root, padx=10, pady=10)
         button_frame.pack(fill=tk.X)
         
+        # Tests section
         tk.Label(button_frame, text="Available Tests:", font=("Arial", 12, "bold")).pack(anchor=tk.W)
         
         # Create buttons for each test
@@ -82,6 +96,30 @@ class TestRunnerGUI:
                 bg="#4CAF50",
                 fg="white"
             ).pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Commands section (separate from tests)
+        if self.command_files:
+            # Separator
+            separator = tk.Frame(button_frame, height=2, bg="gray", relief=tk.SUNKEN)
+            separator.pack(fill=tk.X, pady=15)
+            
+            tk.Label(button_frame, text="Commands:", font=("Arial", 12, "bold"), fg="#d32f2f").pack(anchor=tk.W, pady=(10, 5))
+            
+            commands_frame = tk.Frame(button_frame)
+            commands_frame.pack(fill=tk.X, pady=5)
+            
+            for command_name, command_file in self.command_files:
+                btn = tk.Button(
+                    commands_frame,
+                    text=f"⚠ {command_name}",
+                    command=lambda cf=command_file, cn=command_name: self.run_command(cf, cn),
+                    width=20,
+                    height=2,
+                    font=("Arial", 10),
+                    bg="#d32f2f",
+                    fg="white"
+                )
+                btn.pack(side=tk.LEFT, padx=5, pady=5)
         
         # Output area
         output_frame = tk.Frame(self.root, padx=10, pady=10)
@@ -141,6 +179,80 @@ class TestRunnerGUI:
         # Run test in a separate thread to avoid blocking UI
         thread = threading.Thread(target=self._run_test_thread, args=(test_file,), daemon=True)
         thread.start()
+    
+    def run_command(self, command_file, command_name):
+        """Run a command file with a warning dialog."""
+        # Show warning dialog
+        warning_msg = (
+            f"⚠️  WARNING: You are about to execute a command!\n\n"
+            f"Command: {command_name}\n"
+            f"File: {command_file.name}\n\n"
+            f"This action may modify or delete data.\n"
+            f"Are you sure you want to continue?"
+        )
+        
+        result = messagebox.askyesno(
+            "Confirm Command Execution",
+            warning_msg,
+            icon="warning",
+            default="no"
+        )
+        
+        if not result:
+            self.log(f"\n⚠ Command '{command_name}' was cancelled by user.")
+            return
+        
+        # User confirmed - proceed with execution
+        self.log(f"\n{'='*60}")
+        self.log(f"Executing Command: {command_name}")
+        self.log(f"File: {command_file.name}")
+        self.log(f"{'='*60}\n")
+        self.status_var.set(f"Executing: {command_name}...")
+        
+        # Run command in a separate thread to avoid blocking UI
+        thread = threading.Thread(target=self._run_command_thread, args=(command_file, command_name), daemon=True)
+        thread.start()
+    
+    def _run_command_thread(self, command_file, command_name):
+        """Run command in a separate thread and capture output."""
+        try:
+            # Get the command filename relative to scripts directory
+            command_filename = command_file.name
+            
+            # Run command in Docker container
+            # Use docker-compose exec to run the command in the api container
+            compose_cmd = ["docker-compose", "-p", "mysql_service", "exec", "-T", "api", "python", f"src/scripts/{command_filename}"]
+            
+            # Run the command
+            process = subprocess.Popen(
+                compose_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding='utf-8',
+                errors='replace',  # Replace invalid characters instead of failing
+                bufsize=1,
+                universal_newlines=True,
+                cwd=str(self.scripts_dir.parent.parent)  # Run from project root
+            )
+            
+            # Stream output in real-time
+            for line in process.stdout:
+                line_stripped = line.rstrip()
+                self.log(line_stripped)
+            
+            process.wait()
+            
+            if process.returncode == 0:
+                self.log(f"\n✓ Command completed successfully!", "success")
+                self.status_var.set("Command completed!")
+            else:
+                self.log(f"\n✗ Command failed with exit code {process.returncode}", "error")
+                self.status_var.set("Command failed!")
+                
+        except Exception as e:
+            self.log(f"\n✗ Error running command: {e}", "error")
+            self.status_var.set(f"Error: {str(e)}")
     
     def _run_test_thread(self, test_file):
         """Run test in a separate thread and capture output."""
@@ -219,6 +331,7 @@ class TestRunnerGUI:
                 try:
                     # Import the interactive viewer from test_locations_supplies
                     import importlib.util
+                    import os
                     viewer_path = self.scripts_dir / "test_locations_supplies.py"
                     spec = importlib.util.spec_from_file_location("test_locations_supplies", viewer_path)
                     test_module = importlib.util.module_from_spec(spec)
@@ -228,8 +341,36 @@ class TestRunnerGUI:
                     locations_data = [tuple(row) for row in table_data['locations']['data']]
                     supplies_data = [tuple(row) for row in table_data['supplies']['data']]
                     
-                    # Use the interactive viewer
-                    test_module.create_table_viewer(locations_data, supplies_data)
+                    # Create cleanup function to drop test database
+                    def cleanup_test_db():
+                        """Clean up test database when viewer closes."""
+                        try:
+                            import mysql.connector
+                            from helpers import parse_database_url
+                            
+                            database_url = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@localhost:3306/mydb")
+                            base_params = parse_database_url(database_url)
+                            test_db_name = f"{base_params['database']}_test"
+                            root_password = os.getenv("MYSQL_ROOT_PASSWORD", "rootpassword")
+                            
+                            # Connect as root to drop database
+                            root_conn = mysql.connector.connect(
+                                host=base_params['host'] if base_params['host'] != 'db' else 'localhost',
+                                port=base_params['port'],
+                                user='root',
+                                password=root_password
+                            )
+                            root_cur = root_conn.cursor()
+                            root_cur.execute(f"DROP DATABASE IF EXISTS `{test_db_name}`")
+                            root_conn.commit()
+                            root_cur.close()
+                            root_conn.close()
+                            self.log(f"\n✓ Test database '{test_db_name}' cleaned up")
+                        except Exception as e:
+                            self.log(f"\n⚠ Could not clean up test database: {e}")
+                    
+                    # Use the interactive viewer with cleanup function
+                    test_module.create_table_viewer(locations_data, supplies_data, cleanup_callback=cleanup_test_db)
                 except Exception as e:
                     # Fallback to simple viewer
                     self.log(f"\n⚠ Could not load interactive viewer, using simple viewer: {e}", "error")
