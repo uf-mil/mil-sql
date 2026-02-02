@@ -1,0 +1,146 @@
+[
+  {
+    "name": "Workbench",
+    "x": 140,
+    "y": 300,
+    "width": 150,
+    "height": 170,
+    "type": "workbench"
+  },
+  {
+    "name": "File Cabinet A",
+    "x": 145.28757073395286,
+    "y": 549.0339785321784,
+    "width": 200,
+    "height": 260,
+    "type": "cabinet"
+  },
+  {
+    "name": "File Cabinet B",
+    "x": 549.5638790942664,
+    "y": 347.58042869539736,
+    "width": 200,
+    "height": 260,
+    "type": "cabinet"
+  },
+  {
+    "name": "Drawer T1",
+    "x": 200,
+    "y": 120,
+    "width": 190,
+    "height": 120,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer T2",
+    "x": 571.6379292805989,
+    "y": 734.2241668701167,
+    "width": 190,
+    "height": 120,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer T3",
+    "x": 620,
+    "y": 120,
+    "width": 190,
+    "height": 120,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer T4",
+    "x": 830,
+    "y": 120,
+    "width": 190,
+    "height": 120,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer T5",
+    "x": 1014.1379801432291,
+    "y": 309.65517679850245,
+    "width": 190,
+    "height": 120,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer T6",
+    "x": 1250,
+    "y": 120,
+    "width": 190,
+    "height": 120,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer R1",
+    "x": 1340,
+    "y": 320,
+    "width": 170,
+    "height": 170,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer R2",
+    "x": 1340,
+    "y": 520,
+    "width": 170,
+    "height": 170,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer R3",
+    "x": 1340,
+    "y": 720,
+    "width": 170,
+    "height": 170,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer R4",
+    "x": 1340,
+    "y": 920,
+    "width": 170,
+    "height": 170,
+    "type": "drawer"
+  },
+  {
+    "name": "Drawer R5",
+    "x": 1340,
+    "y": 1120,
+    "width": 170,
+    "height": 170,
+    "type": "drawer"
+  },
+  {
+    "name": "Table A",
+    "x": 749.2605178443803,
+    "y": 1381.5237662477757,
+    "width": 300,
+    "height": 200,
+    "type": "table"
+  },
+  {
+    "name": "Table B",
+    "x": 880,
+    "y": 520,
+    "width": 300,
+    "height": 200,
+    "type": "table"
+  },
+  {
+    "name": "Table C",
+    "x": 420,
+    "y": 940,
+    "width": 300,
+    "height": 200,
+    "type": "table"
+  },
+  {
+    "name": "Table D",
+    "x": 880,
+    "y": 940,
+    "width": 300,
+    "height": 200,
+    "type": "table"
+  }
+]

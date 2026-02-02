@@ -11,29 +11,29 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import mysql.connector
 import time
+import json
 from helpers import parse_database_url, get_sql_base_path, execute_sql_file, table_exists
 
-# Default locations from milventory frontend (InventoryContext.js)
-DEFAULT_LOCATIONS = [
-    {'name': 'Workbench', 'x': 140, 'y': 300, 'width': 150, 'height': 170, 'type': 'workbench'},
-    {'name': 'File Cabinet A', 'x': 140, 'y': 700, 'width': 200, 'height': 260, 'type': 'cabinet'},
-    {'name': 'File Cabinet B', 'x': 140, 'y': 1000, 'width': 200, 'height': 260, 'type': 'cabinet'},
-    {'name': 'Drawer T1', 'x': 200, 'y': 120, 'width': 190, 'height': 120, 'type': 'drawer'},
-    {'name': 'Drawer T2', 'x': 410, 'y': 120, 'width': 190, 'height': 120, 'type': 'drawer'},
-    {'name': 'Drawer T3', 'x': 620, 'y': 120, 'width': 190, 'height': 120, 'type': 'drawer'},
-    {'name': 'Drawer T4', 'x': 830, 'y': 120, 'width': 190, 'height': 120, 'type': 'drawer'},
-    {'name': 'Drawer T5', 'x': 1040, 'y': 120, 'width': 190, 'height': 120, 'type': 'drawer'},
-    {'name': 'Drawer T6', 'x': 1250, 'y': 120, 'width': 190, 'height': 120, 'type': 'drawer'},
-    {'name': 'Drawer R1', 'x': 1340, 'y': 320, 'width': 170, 'height': 170, 'type': 'drawer'},
-    {'name': 'Drawer R2', 'x': 1340, 'y': 520, 'width': 170, 'height': 170, 'type': 'drawer'},
-    {'name': 'Drawer R3', 'x': 1340, 'y': 720, 'width': 170, 'height': 170, 'type': 'drawer'},
-    {'name': 'Drawer R4', 'x': 1340, 'y': 920, 'width': 170, 'height': 170, 'type': 'drawer'},
-    {'name': 'Drawer R5', 'x': 1340, 'y': 1120, 'width': 170, 'height': 170, 'type': 'drawer'},
-    {'name': 'Table A', 'x': 420, 'y': 520, 'width': 300, 'height': 200, 'type': 'table'},
-    {'name': 'Table B', 'x': 880, 'y': 520, 'width': 300, 'height': 200, 'type': 'table'},
-    {'name': 'Table C', 'x': 420, 'y': 940, 'width': 300, 'height': 200, 'type': 'table'},
-    {'name': 'Table D', 'x': 880, 'y': 940, 'width': 300, 'height': 200, 'type': 'table'},
-]
+
+def load_default_locations():
+    """Load default locations from inventory_locations.json."""
+    script_dir = Path(__file__).parent
+    json_path = script_dir / "inventory_locations.json"
+    
+    if not json_path.exists():
+        print(f"⚠ Warning: {json_path} not found, using empty locations list")
+        return []
+    
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            locations = json.load(f)
+        return locations
+    except json.JSONDecodeError as e:
+        print(f"✗ Error parsing {json_path}: {e}")
+        return []
+    except Exception as e:
+        print(f"✗ Error reading {json_path}: {e}")
+        return []
 
 
 def seed_locations():
@@ -139,6 +139,15 @@ def seed_locations():
         
         if count > 0:
             print(f"✓ Found {count} existing location(s), skipping seed")
+            cur.close()
+            conn.close()
+            return
+        
+        # Load default locations from JSON
+        DEFAULT_LOCATIONS = load_default_locations()
+        
+        if not DEFAULT_LOCATIONS:
+            print("⚠ No default locations to seed")
             cur.close()
             conn.close()
             return

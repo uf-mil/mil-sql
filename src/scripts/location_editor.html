@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Location Editor</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root {
+      --panel: #0e1116;
+      --room: #1b1f2a;
+      --stroke: #0a0d12;
+      --accent: #9bb7ff;
+      --text: #e6ebf4;
+      --muted: #9aa8c2;
+      --drawer: #1e8a4a;
+      --table: #0d86b5;
+      --files: #b72a2a;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: radial-gradient(1200px 800px at 50% 0%, #0d0f14, #07080c);
+      color: var(--text);
+      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: var(--panel);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,.2);
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    button {
+      background: var(--accent);
+      color: #0e1116;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.danger {
+      background: #b72a2a;
+      color: var(--text);
+    }
+
+    .map-container {
+      flex: 1;
+      position: relative;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    svg.map {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .room {
+      fill: var(--room);
+      stroke: #2c3344;
+      stroke-width: 6;
+    }
+
+    .box {
+      vector-effect: non-scaling-stroke;
+      stroke: var(--stroke);
+      stroke-width: 2;
+      rx: 10;
+      ry: 10;
+      cursor: move;
+    }
+
+    .box:hover {
+      filter: brightness(1.06);
+    }
+
+    .box.selected {
+      filter: brightness(1.15);
+      stroke: var(--accent);
+      stroke-width: 3;
+    }
+
+    .box-label {
+      fill: var(--text);
+      font-size: 12px;
+      font-weight: 500;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .resize-handle {
+      fill: var(--accent);
+      stroke: var(--panel);
+      stroke-width: 2;
+      cursor: nwse-resize;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .box.selected .resize-handle {
+      opacity: 1;
+    }
+
+    .resize-handle.nw { cursor: nw-resize; }
+    .resize-handle.ne { cursor: ne-resize; }
+    .resize-handle.sw { cursor: sw-resize; }
+    .resize-handle.se { cursor: se-resize; }
+    .resize-handle.n { cursor: n-resize; }
+    .resize-handle.s { cursor: s-resize; }
+    .resize-handle.w { cursor: w-resize; }
+    .resize-handle.e { cursor: e-resize; }
+
+    .titlebar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(255,255,255,.08);
+      color: var(--text);
+      padding: .4rem .6rem;
+      border-radius: 12px;
+      font-size: 13px;
+      pointer-events: none;
+    }
+
+    .kbd {
+      background: #0008;
+      border: 1px solid #fff2;
+      padding: 0 .35rem;
+      border-radius: 6px;
+      font-size: 12px;
+      margin: 0 .15rem;
+    }
+
+    .info-panel {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(255,255,255,.08);
+      color: var(--text);
+      padding: .6rem .8rem;
+      border-radius: 12px;
+      font-size: 13px;
+      pointer-events: none;
+    }
+
+    .info-panel strong {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Location Editor</h1>
+    <div class="controls">
+      <button id="loadBtn">Reload</button>
+      <button id="saveBtn">Save</button>
+    </div>
+  </div>
+  <div class="map-container">
+    <div class="titlebar">
+      Zoom: <span class="kbd">wheel</span> · Pan: <span class="kbd">drag</span> · Move: <span class="kbd">drag box</span> · Resize: <span class="kbd">drag edge</span> · Delete: <span class="kbd">Del</span>
+    </div>
+    <div class="info-panel" id="infoPanel">
+      <strong id="selectedName">No selection</strong> | 
+      <span id="selectedInfo"></span>
+    </div>
+    <svg class="map" viewBox="0 0 1600 1800">
+      <g id="world">
+        <rect class="room" x="80" y="80" width="1440" height="1600" rx="18" ry="18"/>
+      </g>
+    </svg>
+  </div>
+
+  <script>
+    let locations = [];
+    let selectedLocation = null;
+    let isDragging = false;
+    let isResizing = false;
+    let resizeHandle = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let initialBox = null;
+
+    const svg = d3.select('svg.map');
+    const world = d3.select('#world');
+    const infoPanel = document.getElementById('infoPanel');
+    const selectedName = document.getElementById('selectedName');
+    const selectedInfo = document.getElementById('selectedInfo');
+
+    // Color mapping
+    const getFillColor = (type) => {
+      const typeLower = (type || '').toLowerCase();
+      if (typeLower.includes('workbench')) return '#e7ebf3';
+      if (typeLower.includes('file') || typeLower.includes('cabinet')) return '#b72a2a';
+      if (typeLower.includes('drawer')) return '#1e8a4a';
+      if (typeLower.includes('table')) return '#0d86b5';
+      return '#b72a2a';
+    };
+
+    // Setup D3 zoom
+    const zoom = d3.zoom()
+      .scaleExtent([0.6, 6])
+      .filter(function(e) {
+        // Only allow zoom/pan if not clicking on a box or resize handle
+        const target = e.target;
+        return !target.classList.contains('box') && 
+               !target.classList.contains('resize-handle') &&
+               !target.closest('.location-group');
+      })
+      .on('zoom', (e) => {
+        world.attr('transform', e.transform);
+      });
+
+    svg.call(zoom).on('dblclick.zoom', null);
+    svg.call(zoom.transform, d3.zoomIdentity.scale(1.03));
+
+    // Load locations from Python API
+    async function loadLocations() {
+      try {
+        if (typeof window.pywebview === 'undefined' || !window.pywebview.api) {
+          throw new Error('Python API not available. Make sure you are running location_editor_tk.py');
+        }
+        const result = await window.pywebview.api.load_locations();
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to load locations');
+        }
+        locations = result.locations || [];
+        renderLocations();
+        console.log(`Loaded ${locations.length} locations`);
+      } catch (error) {
+        console.error('Error loading locations:', error);
+        alert(`Failed to load locations: ${error.message}`);
+      }
+    }
+
+    // Render all locations
+    function renderLocations() {
+      // Remove existing boxes
+      world.selectAll('.location-group').remove();
+
+      // Create groups for each location
+      const groups = world.selectAll('.location-group')
+        .data(locations)
+        .enter()
+        .append('g')
+        .attr('class', 'location-group')
+        .attr('data-name', d => d.name);
+
+      // Add box rectangle
+      groups.append('rect')
+        .attr('class', 'box')
+        .attr('x', d => d.x)
+        .attr('y', d => d.y)
+        .attr('width', d => d.width)
+        .attr('height', d => d.height)
+        .attr('fill', d => getFillColor(d.type))
+        .on('click', (e, d) => {
+          e.stopPropagation();
+          selectLocation(d);
+        });
+
+      // Add label
+      groups.append('text')
+        .attr('class', 'box-label')
+        .attr('x', d => d.x + d.width / 2)
+        .attr('y', d => d.y + d.height / 2)
+        .text(d => d.name);
+
+      // Add resize handles (only show when selected)
+      const handlePositions = [
+        { class: 'nw', x: d => d.x, y: d => d.y },
+        { class: 'ne', x: d => d.x + d.width, y: d => d.y },
+        { class: 'sw', x: d => d.x, y: d => d.y + d.height },
+        { class: 'se', x: d => d.x + d.width, y: d => d.y + d.height },
+        { class: 'n', x: d => d.x + d.width / 2, y: d => d.y },
+        { class: 's', x: d => d.x + d.width / 2, y: d => d.y + d.height },
+        { class: 'w', x: d => d.x, y: d => d.y + d.height / 2 },
+        { class: 'e', x: d => d.x + d.width, y: d => d.y + d.height / 2 },
+      ];
+
+      handlePositions.forEach(pos => {
+          groups.append('circle')
+          .attr('class', `resize-handle ${pos.class}`)
+          .attr('cx', pos.x)
+          .attr('cy', pos.y)
+          .attr('r', 6)
+          .on('mousedown', function(e, d) {
+            e.stopPropagation();
+            startResize(d, pos.class, e);
+          });
+      });
+
+      // Setup drag for boxes
+      const drag = d3.drag()
+        .on('start', function(e, d) {
+          if (e.sourceEvent.target.classList.contains('resize-handle')) {
+            return; // Don't drag if clicking resize handle
+          }
+          e.sourceEvent.stopPropagation();
+          isDragging = true;
+          // e.x and e.y are in the coordinate system of the dragged element (the group)
+          // Since the group is inside the transformed world, we need to account for that
+          const transform = d3.zoomTransform(svg.node());
+          // Convert screen coordinates to SVG coordinates
+          const startPoint = d3.pointer(e.sourceEvent, svg.node());
+          dragStartX = (startPoint[0] - transform.x) / transform.k;
+          dragStartY = (startPoint[1] - transform.y) / transform.k;
+          initialBox = { x: d.x, y: d.y };
+          selectLocation(d);
+        })
+        .on('drag', function(e, d) {
+          if (!isDragging) return;
+          const transform = d3.zoomTransform(svg.node());
+          // Get current mouse position in SVG coordinates
+          const currentPoint = d3.pointer(e.sourceEvent, svg.node());
+          const currentX = (currentPoint[0] - transform.x) / transform.k;
+          const currentY = (currentPoint[1] - transform.y) / transform.k;
+          const dx = currentX - dragStartX;
+          const dy = currentY - dragStartY;
+          d.x = initialBox.x + dx;
+          d.y = initialBox.y + dy;
+          updateLocationVisual(d);
+        })
+        .on('end', function() {
+          isDragging = false;
+        });
+
+      groups.call(drag);
+    }
+
+    // Update visual representation of a location
+    function updateLocationVisual(location) {
+      const group = world.select(`.location-group[data-name="${location.name}"]`);
+      if (group.empty()) return;
+
+      group.select('rect.box')
+        .attr('x', location.x)
+        .attr('y', location.y)
+        .attr('width', location.width)
+        .attr('height', location.height);
+
+      group.select('text.box-label')
+        .attr('x', location.x + location.width / 2)
+        .attr('y', location.y + location.height / 2);
+
+      // Update resize handles
+      const handles = {
+        nw: { x: location.x, y: location.y },
+        ne: { x: location.x + location.width, y: location.y },
+        sw: { x: location.x, y: location.y + location.height },
+        se: { x: location.x + location.width, y: location.y + location.height },
+        n: { x: location.x + location.width / 2, y: location.y },
+        s: { x: location.x + location.width / 2, y: location.y + location.height },
+        w: { x: location.x, y: location.y + location.height / 2 },
+        e: { x: location.x + location.width, y: location.y + location.height / 2 },
+      };
+
+      Object.keys(handles).forEach(handleClass => {
+        const pos = handles[handleClass];
+        group.select(`.resize-handle.${handleClass}`)
+          .attr('cx', pos.x)
+          .attr('cy', pos.y);
+      });
+    }
+
+    // Select a location
+    function selectLocation(location) {
+      selectedLocation = location;
+      
+      // Update visual selection
+      world.selectAll('.box').classed('selected', false);
+      const group = world.select(`.location-group[data-name="${location.name}"]`);
+      group.select('.box').classed('selected', true);
+
+      // Update info panel
+      selectedName.textContent = location.name;
+      selectedInfo.textContent = `${location.type} | ${location.width}×${location.height} | (${location.x}, ${location.y})`;
+    }
+
+    // Start resizing
+    function startResize(location, handleClass, event) {
+      isResizing = true;
+      resizeHandle = handleClass;
+      selectedLocation = location;
+      selectLocation(location);
+
+      const transform = d3.zoomTransform(svg.node());
+      const startPoint = d3.pointer(event, svg.node());
+      dragStartX = (startPoint[0] - transform.x) / transform.k;
+      dragStartY = (startPoint[1] - transform.y) / transform.k;
+      
+      initialBox = {
+        x: location.x,
+        y: location.y,
+        width: location.width,
+        height: location.height
+      };
+
+      // Setup resize drag
+      const resizeDrag = d3.drag()
+        .on('start', function(e) {
+          e.sourceEvent.stopPropagation();
+        })
+        .on('drag', function(e) {
+          if (!isResizing) return;
+          const transform = d3.zoomTransform(svg.node());
+          const currentPoint = d3.pointer(e, svg.node());
+          const currentX = (currentPoint[0] - transform.x) / transform.k;
+          const currentY = (currentPoint[1] - transform.y) / transform.k;
+          const dx = currentX - dragStartX;
+          const dy = currentY - dragStartY;
+
+          let newX = initialBox.x;
+          let newY = initialBox.y;
+          let newWidth = initialBox.width;
+          let newHeight = initialBox.height;
+
+          // Handle different resize directions
+          if (resizeHandle.includes('w')) {
+            newX = Math.min(initialBox.x + initialBox.width - 50, initialBox.x + dx);
+            newWidth = initialBox.width - (newX - initialBox.x);
+          }
+          if (resizeHandle.includes('e')) {
+            newWidth = Math.max(50, initialBox.width + dx);
+          }
+          if (resizeHandle.includes('n')) {
+            newY = Math.min(initialBox.y + initialBox.height - 50, initialBox.y + dy);
+            newHeight = initialBox.height - (newY - initialBox.y);
+          }
+          if (resizeHandle.includes('s')) {
+            newHeight = Math.max(50, initialBox.height + dy);
+          }
+
+          location.x = newX;
+          location.y = newY;
+          location.width = newWidth;
+          location.height = newHeight;
+          updateLocationVisual(location);
+        })
+        .on('end', function() {
+          isResizing = false;
+          resizeHandle = null;
+        });
+
+      d3.select(svg.node())
+        .call(resizeDrag);
+    }
+
+    // Delete selected location
+    function deleteSelectedLocation() {
+      if (!selectedLocation) return;
+
+      if (confirm(`Delete location "${selectedLocation.name}"?`)) {
+        locations = locations.filter(loc => loc.name !== selectedLocation.name);
+        selectedLocation = null;
+        selectedName.textContent = 'No selection';
+        selectedInfo.textContent = '';
+        renderLocations();
+      }
+    }
+
+    // Save to JSON via Python API
+    async function saveLocations() {
+      if (!confirm(`Save ${locations.length} locations?`)) {
+        return;
+      }
+
+      try {
+        if (typeof window.pywebview === 'undefined' || !window.pywebview.api) {
+          throw new Error('Python API not available. Make sure you are running location_editor_tk.py');
+        }
+        const result = await window.pywebview.api.save_locations(locations);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to save locations');
+        }
+        alert(`Saved ${result.count} locations successfully!`);
+        console.log(`Saved ${result.count} locations`);
+      } catch (error) {
+        console.error('Error saving locations:', error);
+        alert(`Failed to save locations: ${error.message}`);
+      }
+    }
+
+    // Event listeners
+    document.getElementById('saveBtn').addEventListener('click', saveLocations);
+    document.getElementById('loadBtn').addEventListener('click', loadLocations);
+
+    // Delete key handler
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Delete' && selectedLocation) {
+        deleteSelectedLocation();
+      }
+    });
+
+    // Click outside to deselect
+    svg.on('click', function(e) {
+      if (e.target.classList.contains('box') || e.target.classList.contains('resize-handle')) {
+        return;
+      }
+      selectedLocation = null;
+      world.selectAll('.box').classed('selected', false);
+      selectedName.textContent = 'No selection';
+      selectedInfo.textContent = '';
+    });
+
+    // Load on startup
+    loadLocations();
+  </script>
+</body>
+</html>
+
