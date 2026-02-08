@@ -33,25 +33,95 @@ export const InventoryProvider = ({ children }) => {
 
   // Initialize inventory data
   useEffect(() => {
+    // Top drawers A-K (11 drawers) - square and smaller
+    const topDrawers = [];
+    const drawerSize = 100; // Square drawers
+    const drawerSpacing = 5;
+    const topStartX = 150;
+    const topY = 80;
+    
+    const drawerLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
+    drawerLabels.forEach((label, index) => {
+      topDrawers.push({
+        title: `Drawer ${label}`,
+        x: topStartX + index * (drawerSize + drawerSpacing),
+        y: topY,
+        width: drawerSize,
+        height: drawerSize,
+        fill: 'var(--drawer)'
+      });
+    });
+    
+    // Right side drawers L-AA (L through Z = 15, plus AA = 16 total) - square and smaller
+    const rightDrawers = [];
+    const rightDrawerSize = drawerSize; // Square drawers
+    const rightDrawerSpacing = 5;
+    const rightX = 1750;
+    const rightStartY = 300;
+    
+    const rightDrawerLabels = ['L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA'];
+    rightDrawerLabels.forEach((label, index) => {
+      rightDrawers.push({
+        title: `Drawer ${label}`,
+        x: rightX,
+        y: rightStartY + index * (rightDrawerSize + rightDrawerSpacing),
+        width: rightDrawerSize,
+        height: rightDrawerSize,
+        fill: 'var(--drawer)'
+      });
+    });
+    
+    // Top cabinets 1-4 (each is 2 drawers wide, positioned below drawers A-K)
+    const topCabinets = [];
+    const cabinetWidth = drawerSize * 2 + drawerSpacing; // 2 drawers wide
+    const cabinetHeight = drawerSize + drawerSpacing;
+    const cabinetSpacing = drawerSize + drawerSpacing*2; // Chair space between cabinets
+    const cabinetY = topY + drawerSize + 20; // Below the drawers
+    
+    for (let i = 0; i < 4; i++) {
+      const cabinetX = topStartX + i * (cabinetWidth + cabinetSpacing);
+      topCabinets.push({
+        title: `Cabinet ${i + 1}`,
+        x: cabinetX,
+        y: cabinetY,
+        width: cabinetWidth,
+        height: cabinetHeight,
+        fill: 'var(--table)' // Using table color, adjust if needed
+      });
+    }
+    
+    // Right side cabinets 5-12 (each is 2 drawers wide, positioned to the left of drawers L-AA)
+    const rightCabinets = [];
+    const rightCabinetWidth = rightDrawerSize + rightDrawerSpacing; // 1 drawers wide
+    const rightCabinetHeight = rightDrawerSize * 2 + rightDrawerSpacing; // 2 drawers tall
+    const rightCabinetX = rightX - rightCabinetWidth - 20; // To the left of drawers
+    
+    for (let i = 0; i < 8; i++) {
+      const cabinetY = rightStartY + i * 2 * (rightDrawerSize + rightDrawerSpacing);
+      rightCabinets.push({
+        title: `Cabinet ${i + 5}`,
+        x: rightCabinetX,
+        y: cabinetY,
+        width: rightCabinetWidth,
+        height: rightCabinetHeight,
+        fill: 'var(--table)' // Using table color, adjust if needed
+      });
+    }
+    
     const boxes = [
-      { title: 'Workbench', x: 140, y: 300, width: 150, height: 170, fill: '#e7ebf3', isWorkbench: true },
-      { title: 'File Cabinet A', x: 140, y: 700, width: 200, height: 260, fill: 'var(--files)' },
-      { title: 'File Cabinet B', x: 140, y: 1000, width: 200, height: 260, fill: 'var(--files)' },
-      { title: 'Drawer T1', x: 200, y: 120, width: 190, height: 120, fill: 'var(--drawer)' },
-      { title: 'Drawer T2', x: 410, y: 120, width: 190, height: 120, fill: 'var(--drawer)' },
-      { title: 'Drawer T3', x: 620, y: 120, width: 190, height: 120, fill: 'var(--drawer)' },
-      { title: 'Drawer T4', x: 830, y: 120, width: 190, height: 120, fill: 'var(--drawer)' },
-      { title: 'Drawer T5', x: 1040, y: 120, width: 190, height: 120, fill: 'var(--drawer)' },
-      { title: 'Drawer T6', x: 1250, y: 120, width: 190, height: 120, fill: 'var(--drawer)' },
-      { title: 'Drawer R1', x: 1340, y: 320, width: 170, height: 170, fill: 'var(--drawer)' },
-      { title: 'Drawer R2', x: 1340, y: 520, width: 170, height: 170, fill: 'var(--drawer)' },
-      { title: 'Drawer R3', x: 1340, y: 720, width: 170, height: 170, fill: 'var(--drawer)' },
-      { title: 'Drawer R4', x: 1340, y: 920, width: 170, height: 170, fill: 'var(--drawer)' },
-      { title: 'Drawer R5', x: 1340, y: 1120, width: 170, height: 170, fill: 'var(--drawer)' },
-      { title: 'Table A', x: 420, y: 520, width: 300, height: 200, fill: 'var(--table)' },
-      { title: 'Table B', x: 880, y: 520, width: 300, height: 200, fill: 'var(--table)' },
-      { title: 'Table C', x: 420, y: 940, width: 300, height: 200, fill: 'var(--table)' },
-      { title: 'Table D', x: 880, y: 940, width: 300, height: 200, fill: 'var(--table)' },
+      ...topDrawers,
+      ...rightDrawers,
+      ...topCabinets,
+      ...rightCabinets,
+      { title: 'Workbench', x: 140, y: 400, width: 150, height: 170, fill: '#e7ebf3', isWorkbench: true },
+      { title: 'File Cabinet 103', x: 140, y: 800, width: 200, height: 280, fill: 'var(--files)' },
+      { title: 'File Cabinet 102', x: 140, y: 1100, width: 200, height: 280, fill: 'var(--files)' },
+      { title: 'File Cabinet 101', x: 140, y: 1400, width: 200, height: 280, fill: 'var(--files)' },
+      { title: 'File Cabinet 100', x: 140, y: 1700, width: 200, height: 280, fill: 'var(--files)' },
+      { title: 'Table A', x: 600, y: 720, width: 300, height: 200, fill: 'var(--table)' },
+      { title: 'Table B', x: 1060, y: 720, width: 300, height: 200, fill: 'var(--table)' },
+      { title: 'Table C', x: 600, y: 1340, width: 300, height: 200, fill: 'var(--table)' },
+      { title: 'Table D', x: 1060, y: 1340, width: 300, height: 200, fill: 'var(--table)' },
     ];
 
     const newInventoryData = new Map();

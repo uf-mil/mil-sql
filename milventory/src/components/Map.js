@@ -59,7 +59,7 @@ const MapComponent = forwardRef((props, ref) => {
   return (
     <svg ref={ref} className="map" viewBox="0 0 1600 1800" aria-label="Room map">
       <g ref={worldRef} id="world">
-        <rect className="room" x="80" y="80" width="1440" height="1600" rx="18" ry="18"/>
+        <rect className="room" x="80" y="80" width="1800" height="2000" rx="18" ry="18"/>
         
         {boxes.map((box, idx) => (
           <rect
