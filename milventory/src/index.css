@@ -234,6 +234,45 @@ body {
   padding-top: 0.5rem;
 }
 
+/* Shelf sections for file cabinets */
+.shelf-section {
+  margin-bottom: 1.5rem;
+  background: rgba(0,0,0,.2);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  padding: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.shelf-section:last-of-type {
+  margin-bottom: 1rem;
+}
+
+.shelf-header {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shelf-table {
+  margin-top: 0;
+  background: transparent;
+}
+
+.shelf-table th {
+  background: rgba(0,0,0,.2);
+}
+
+.shelf-add-button {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+}
+
 .right-tab .inventory-list.empty {
   color: var(--muted);
   font-style: italic;

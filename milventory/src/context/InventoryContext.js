@@ -19,6 +19,7 @@ export const InventoryProvider = ({ children }) => {
   const [currentEditingBox, setCurrentEditingBox] = useState(null);
   const [currentEditingIndex, setCurrentEditingIndex] = useState(null);
   const [currentAddingBox, setCurrentAddingBox] = useState(null);
+  const [currentAddingIndex, setCurrentAddingIndex] = useState(null);
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
   const [draggedItemData, setDraggedItemData] = useState(null);
   const [currentDragOverBox, setCurrentDragOverBox] = useState(null);
@@ -262,6 +263,7 @@ export const InventoryProvider = ({ children }) => {
     currentEditingBox,
     currentEditingIndex,
     currentAddingBox,
+    currentAddingIndex,
     lastSelectedIndex,
     draggedItemData,
     currentDragOverBox,
@@ -274,6 +276,7 @@ export const InventoryProvider = ({ children }) => {
     setCurrentEditingBox,
     setCurrentEditingIndex,
     setCurrentAddingBox,
+    setCurrentAddingIndex,
     setLastSelectedIndex,
     setDraggedItemData,
     setCurrentDragOverBox,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
 const AddModal = () => {
-  const { currentAddingBox, setCurrentAddingBox, inventoryData, updateInventory } = useInventory();
+  const { currentAddingBox, currentAddingIndex, setCurrentAddingBox, setCurrentAddingIndex, inventoryData, updateInventory } = useInventory();
   
   const [name, setName] = useState('');
   const [qty, setQty] = useState(1);
@@ -22,20 +22,31 @@ const AddModal = () => {
     if (currentAddingBox && name.trim()) {
       const boxData = inventoryData.get(currentAddingBox);
       if (boxData) {
-        const newInventory = [...boxData.inventory, {
+        const newItem = {
           name: name.trim(),
           qty: parseInt(qty) || 1,
           description: description.trim(),
           image: null
-        }];
+        };
+        
+        const newInventory = [...boxData.inventory];
+        // Insert at specific index if provided, otherwise append to end
+        if (currentAddingIndex !== null) {
+          newInventory.splice(currentAddingIndex, 0, newItem);
+        } else {
+          newInventory.push(newItem);
+        }
+        
         updateInventory(currentAddingBox, newInventory);
         setCurrentAddingBox(null);
+        setCurrentAddingIndex(null);
       }
     }
   };
 
   const handleCancel = () => {
     setCurrentAddingBox(null);
+    setCurrentAddingIndex(null);
   };
 
   const handleOverlayClick = (e) => {
