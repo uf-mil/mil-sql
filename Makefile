@@ -66,6 +66,16 @@ install:
 	sudo apt-get install -y docker.io docker-compose make python3-pip
 	pip3 install -r requirements.txt
 
+## locations:   Generate inventory-locations.json from generate-locations.js
+.PHONY: locations
+locations:
+	@cd milventory && node generate-locations.js
+
+## milventory:  Start the milventory React app
+.PHONY: milventory
+milventory:
+	@cd milventory && npm start
+
 ## help:        Show this help menu
 help:
 	@echo "Available commands:"
