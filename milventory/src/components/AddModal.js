@@ -7,16 +7,36 @@ const AddModal = () => {
   const [name, setName] = useState('');
   const [qty, setQty] = useState(1);
   const [description, setDescription] = useState('');
+  const [selectedShelf, setSelectedShelf] = useState(null);
   const nameInputRef = useRef(null);
+
+  // Check if this is a file cabinet
+  const isFileCabinet = currentAddingBox && currentAddingBox.startsWith('File Cabinet');
+  
+  // Shelf definitions for file cabinets
+  const SHELF_NAMES = [
+    'Shelf 6 (Top)',
+    'Shelf 5',
+    'Shelf 4',
+    'Shelf 3',
+    'Shelf 2',
+    'Shelf 1 (Bottom)'
+  ];
 
   useEffect(() => {
     if (currentAddingBox) {
       setName('');
       setQty(1);
       setDescription('');
+      // Set default shelf to first one if file cabinet
+      if (isFileCabinet) {
+        setSelectedShelf(0);
+      } else {
+        setSelectedShelf(null);
+      }
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
-  }, [currentAddingBox]);
+  }, [currentAddingBox, isFileCabinet]);
 
   const handleSave = () => {
     if (currentAddingBox && name.trim()) {
@@ -29,9 +49,24 @@ const AddModal = () => {
           image: null
         };
         
+        // Tag item with shelf number if file cabinet
+        if (isFileCabinet && selectedShelf !== null) {
+          newItem.shelf = selectedShelf;
+        }
+        
         const newInventory = [...boxData.inventory];
-        // Insert at specific index if provided, otherwise append to end
-        if (currentAddingIndex !== null) {
+        
+        // For file cabinets, insert after the last item in the same shelf
+        if (isFileCabinet && selectedShelf !== null) {
+          let lastIndexInShelf = -1;
+          for (let i = newInventory.length - 1; i >= 0; i--) {
+            if ((newInventory[i].shelf ?? 0) === selectedShelf) {
+              lastIndexInShelf = i;
+              break;
+            }
+          }
+          newInventory.splice(lastIndexInShelf + 1, 0, newItem);
+        } else if (currentAddingIndex !== null) {
           newInventory.splice(currentAddingIndex, 0, newItem);
         } else {
           newInventory.push(newItem);
@@ -40,6 +75,7 @@ const AddModal = () => {
         updateInventory(currentAddingBox, newInventory);
         setCurrentAddingBox(null);
         setCurrentAddingIndex(null);
+        setSelectedShelf(null);
       }
     }
   };
@@ -47,6 +83,7 @@ const AddModal = () => {
   const handleCancel = () => {
     setCurrentAddingBox(null);
     setCurrentAddingIndex(null);
+    setSelectedShelf(null);
   };
 
   const handleOverlayClick = (e) => {
@@ -72,6 +109,19 @@ const AddModal = () => {
     >
       <div className="modal">
         <h3>Add Item</h3>
+        {isFileCabinet && (
+          <select
+            value={selectedShelf !== null ? selectedShelf : 0}
+            onChange={(e) => setSelectedShelf(parseInt(e.target.value))}
+            className="modal-select"
+          >
+            {SHELF_NAMES.map((name, index) => (
+              <option key={index} value={index}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           ref={nameInputRef}
           type="text"

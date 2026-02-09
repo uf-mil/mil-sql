@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import EditForm from './EditForm';
 import InventoryTable from './InventoryTable';
 
 const RightPanel = () => {
@@ -53,7 +52,6 @@ const RightPanel = () => {
           <div className="inventory-list empty">Click on any inventory box to view its contents.</div>
         )}
       </div>
-      <EditForm />
     </div>
   );
 };

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
-const EditForm = () => {
-  const { currentEditingBox, currentEditingIndex, inventoryData, setCurrentEditingBox, setCurrentEditingIndex, setLastSelectedIndex, updateInventory, editFormHeight, setEditFormHeight } = useInventory();
+const EditModal = () => {
+  const { currentEditingBox, currentEditingIndex, inventoryData, setCurrentEditingBox, setCurrentEditingIndex, setLastSelectedIndex, updateInventory } = useInventory();
   
   const boxData = currentEditingBox ? inventoryData.get(currentEditingBox) : null;
   const item = boxData && currentEditingIndex !== null ? boxData.inventory[currentEditingIndex] : null;
@@ -11,9 +11,7 @@ const EditForm = () => {
   const [qty, setQty] = useState(1);
   const [description, setDescription] = useState('');
   const [image, setImage] = useState(null);
-  const [isResizingEditForm, setIsResizingEditForm] = useState(false);
   const nameInputRef = useRef(null);
-  const editFormResizeRef = useRef(null);
 
   useEffect(() => {
     if (item) {
@@ -57,6 +55,12 @@ const EditForm = () => {
     setImage(null);
   };
 
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) {
+      handleCancel();
+    }
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') {
       handleCancel();
@@ -66,90 +70,54 @@ const EditForm = () => {
     }
   };
 
-  const handleResizeStart = (e) => {
-    setIsResizingEditForm(true);
-    e.preventDefault();
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (isResizingEditForm && editFormResizeRef.current) {
-        const startY = editFormResizeRef.current.getBoundingClientRect().top;
-        const diff = startY - e.clientY;
-        const newHeight = Math.max(250, Math.min(800, editFormHeight + diff));
-        setEditFormHeight(newHeight);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingEditForm(false);
-    };
-
-    if (isResizingEditForm) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isResizingEditForm, editFormHeight, setEditFormHeight]);
-
   const isVisible = currentEditingBox !== null && currentEditingIndex !== null;
 
   return (
-    <div className={`edit-form ${isVisible ? 'visible' : ''}`} onKeyDown={handleKeyDown}>
-      <div className="edit-form-resize-wrapper">
-        <div
-          ref={editFormResizeRef}
-          className={`edit-form-resize ${isResizingEditForm ? 'dragging' : ''}`}
-          onMouseDown={handleResizeStart}
+    <div
+      className={`modal-overlay ${isVisible ? 'visible' : ''}`}
+      onClick={handleOverlayClick}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="modal">
+        <h3>Edit Item</h3>
+        <input
+          ref={nameInputRef}
+          type="text"
+          placeholder="Item name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
         />
-      </div>
-      {!isVisible ? (
-        <div className="edit-form-placeholder">Select Item to Edit It</div>
-      ) : (
-        <div className="edit-form-content">
-          <h3>Edit Item</h3>
-          <input
-            ref={nameInputRef}
-            type="text"
-            placeholder="Item name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <div className="edit-form-image-container">
-            {image ? (
-              <img src={image} alt="Item image" />
-            ) : (
-              <div className="edit-form-image-placeholder">No image</div>
-            )}
-          </div>
-          <input
-            type="number"
-            placeholder="Quantity"
-            value={qty}
-            min="0"
-            onChange={(e) => setQty(e.target.value)}
-          />
-          <textarea
-            placeholder="Description (optional)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          <div className="edit-form-actions">
-            <button type="button" className="cancel" onClick={handleCancel}>
-              Cancel
-            </button>
-            <button type="button" className="save" onClick={handleSave}>
-              Save
-            </button>
-          </div>
+        <div className="edit-form-image-container">
+          {image ? (
+            <img src={image} alt="Item image" />
+          ) : (
+            <div className="edit-form-image-placeholder">No image</div>
+          )}
         </div>
-      )}
+        <input
+          type="number"
+          placeholder="Quantity"
+          value={qty}
+          min="0"
+          onChange={(e) => setQty(e.target.value)}
+        />
+        <textarea
+          placeholder="Description (optional)"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+        <div className="modal-actions">
+          <button type="button" className="cancel" onClick={handleCancel}>
+            Cancel
+          </button>
+          <button type="button" className="save" onClick={handleSave}>
+            Save
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default EditForm;
+export default EditModal;
 

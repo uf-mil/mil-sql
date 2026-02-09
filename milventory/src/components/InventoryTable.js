@@ -15,58 +15,35 @@ const InventoryTable = () => {
   const [selectedIndices, setSelectedIndices] = useState(new Set());
   const [draggedRow, setDraggedRow] = useState(null);
   const [draggedIndex, setDraggedIndex] = useState(null);
-  const [draggedShelf, setDraggedShelf] = useState(null);
   const isInternalUpdateRef = useRef(false);
   
-  // Split inventory into 3 shelves for file cabinets
+  // Shelf names for file cabinets
+  const SHELF_NAMES = [
+    'Shelf 6 (Top)',
+    'Shelf 5',
+    'Shelf 4',
+    'Shelf 3',
+    'Shelf 2',
+    'Shelf 1 (Bottom)'
+  ];
+
+  // Group inventory items by their shelf tag for file cabinets
   const shelves = useMemo(() => {
-    if (!isFileCabinet || !inventory.length) {
+    if (!isFileCabinet) {
       return null;
     }
     
-    const totalItems = inventory.length;
-    const itemsPerShelf = Math.ceil(totalItems / 3);
-    
-    return [
-      {
-        name: 'Top Shelf',
-        items: inventory.slice(0, itemsPerShelf),
-        startIndex: 0
-      },
-      {
-        name: 'Middle Shelf',
-        items: inventory.slice(itemsPerShelf, itemsPerShelf * 2),
-        startIndex: itemsPerShelf
-      },
-      {
-        name: 'Bottom Shelf',
-        items: inventory.slice(itemsPerShelf * 2),
-        startIndex: itemsPerShelf * 2
-      }
-    ];
+    return SHELF_NAMES.map((name, shelfNum) => {
+      // Collect items that belong to this shelf, tracking their original array index
+      const items = [];
+      inventory.forEach((item, arrayIndex) => {
+        if ((item.shelf ?? 0) === shelfNum) {
+          items.push({ ...item, _globalIndex: arrayIndex });
+        }
+      });
+      return { name, shelfNum, items };
+    });
   }, [inventory, isFileCabinet]);
-  
-  // Helper to get global index from shelf and shelf-local index
-  const getGlobalIndex = (shelfIndex, shelfLocalIndex) => {
-    if (!shelves) return shelfLocalIndex;
-    return shelves[shelfIndex].startIndex + shelfLocalIndex;
-  };
-  
-  // Helper to get shelf info from global index
-  const getShelfInfo = (globalIndex) => {
-    if (!shelves) return { shelfIndex: 0, shelfLocalIndex: globalIndex };
-    
-    for (let i = 0; i < shelves.length; i++) {
-      const shelf = shelves[i];
-      if (globalIndex >= shelf.startIndex && globalIndex < shelf.startIndex + shelf.items.length) {
-        return {
-          shelfIndex: i,
-          shelfLocalIndex: globalIndex - shelf.startIndex
-        };
-      }
-    }
-    return { shelfIndex: 0, shelfLocalIndex: 0 };
-  };
 
   useEffect(() => {
     // Only sync selectedIndices when lastSelectedIndex is cleared (null)
@@ -77,11 +54,8 @@ const InventoryTable = () => {
     isInternalUpdateRef.current = false;
   }, [lastSelectedIndex]);
 
-  const handleNameClick = (e, index, shelfIndex = null) => {
+  const handleNameClick = (e, globalIndex) => {
     e.stopPropagation();
-    
-    // Convert shelf-local index to global index if needed
-    const globalIndex = shelfIndex !== null ? getGlobalIndex(shelfIndex, index) : index;
     
     if (e.shiftKey && lastSelectedIndex !== null) {
       const start = Math.min(lastSelectedIndex, globalIndex);
@@ -104,14 +78,12 @@ const InventoryTable = () => {
     }
   };
 
-  const handleDragStartRow = (e, index, shelfIndex = null) => {
+  const handleDragStartRow = (e, globalIndex) => {
     if (e.target.closest('.name-cell')) {
       e.preventDefault();
       return;
     }
 
-    // Convert shelf-local index to global index if needed
-    const globalIndex = shelfIndex !== null ? getGlobalIndex(shelfIndex, index) : index;
     const isMultiple = selectedIndices.size > 1 && selectedIndices.has(globalIndex);
     
     if (isMultiple) {
@@ -119,7 +91,6 @@ const InventoryTable = () => {
       handleDragStart(boxTitle, globalIndex, true, indices);
       setDraggedRow(e.currentTarget);
       setDraggedIndex(globalIndex);
-      setDraggedShelf(shelfIndex);
       e.currentTarget.classList.add('dragging');
       selectedIndices.forEach(idx => {
         const row = document.querySelector(`tr[data-index="${idx}"]`);
@@ -129,7 +100,6 @@ const InventoryTable = () => {
       handleDragStart(boxTitle, globalIndex, false, []);
       setDraggedRow(e.currentTarget);
       setDraggedIndex(globalIndex);
-      setDraggedShelf(shelfIndex);
       e.currentTarget.classList.add('dragging');
     }
 
@@ -144,7 +114,6 @@ const InventoryTable = () => {
     });
     setDraggedRow(null);
     setDraggedIndex(null);
-    setDraggedShelf(null);
     // Note: draggedItemData is cleared in context when drop happens
   };
 
@@ -158,35 +127,38 @@ const InventoryTable = () => {
     }
   };
 
-  const handleDropRow = (e, dropShelfIndex = null, dropShelfLocalIndex = null) => {
+  const handleDropRow = (e) => {
     e.preventDefault();
-    if (draggedRow !== e.currentTarget && draggedIndex !== null) {
-      const items = [...inventory];
-      const draggedItem = items[draggedIndex];
-      
-      // Calculate drop index
-      let dropIndex;
-      if (dropShelfIndex !== null && dropShelfLocalIndex !== null) {
-        // Dropping in a shelf table
-        dropIndex = getGlobalIndex(dropShelfIndex, dropShelfLocalIndex);
-      } else {
-        // Dropping in regular table
-        const allRows = Array.from(e.currentTarget.parentElement.children);
-        dropIndex = allRows.indexOf(e.currentTarget);
-      }
-      
-      // Remove dragged item first
+    if (draggedIndex === null) return;
+    
+    const targetGlobalIndex = parseInt(e.currentTarget.dataset.index);
+    const targetShelfNum = parseInt(e.currentTarget.dataset.shelf);
+    
+    const items = [...inventory];
+    const draggedItem = items[draggedIndex];
+    
+    // Dropping on an empty shelf placeholder
+    if (!isNaN(targetShelfNum) && isNaN(targetGlobalIndex)) {
+      draggedItem.shelf = targetShelfNum;
       items.splice(draggedIndex, 1);
-      
-      // Adjust drop index if dragging from before the drop position
-      if (draggedIndex < dropIndex) {
-        dropIndex--;
-      }
-      
-      // Insert at new position
-      items.splice(dropIndex, 0, draggedItem);
+      items.push(draggedItem);
       updateInventory(boxTitle, items);
+      return;
     }
+    
+    if (isNaN(targetGlobalIndex)) return; // header row
+    if (draggedRow === e.currentTarget) return;
+    
+    // If file cabinet, adopt the drop target's shelf tag
+    if (isFileCabinet) {
+      draggedItem.shelf = items[targetGlobalIndex].shelf ?? 0;
+    }
+    
+    let dropIndex = targetGlobalIndex;
+    items.splice(draggedIndex, 1);
+    if (draggedIndex < dropIndex) dropIndex--;
+    items.splice(dropIndex, 0, draggedItem);
+    updateInventory(boxTitle, items);
   };
 
   const getDragAfterElement = (container, y) => {
@@ -204,22 +176,13 @@ const InventoryTable = () => {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
   };
 
-  // Handle adding item to a specific shelf
-  const handleAddToShelf = (shelfIndex) => {
-    if (!shelves) return;
-    const shelf = shelves[shelfIndex];
-    // Set the target index to the end of this shelf
-    const targetIndex = shelf.startIndex + shelf.items.length;
-    setCurrentAddingBox(boxTitle);
-    setCurrentAddingIndex(targetIndex);
-  };
-
-  // Render a single shelf table
-  const renderShelfTable = (shelf, shelfIndex) => {
+  // Render combined table with shelf sections
+  const renderCombinedShelfTable = () => {
+    if (!shelves) return null;
+    
     return (
-      <div key={shelfIndex} className="shelf-section">
-        <div className="shelf-header">{shelf.name}</div>
-        <table className="inventory-table shelf-table">
+      <>
+        <table className="inventory-table">
           <thead>
             <tr>
               <th>Name</th>
@@ -227,39 +190,49 @@ const InventoryTable = () => {
             </tr>
           </thead>
           <tbody>
-            {shelf.items.map((item, shelfLocalIndex) => {
-              const globalIndex = getGlobalIndex(shelfIndex, shelfLocalIndex);
-              return (
-                <tr
-                  key={shelfLocalIndex}
-                  data-index={globalIndex}
-                  draggable="true"
-                  className={`${selectedIndices.has(globalIndex) ? 'selected' : ''}`}
-                  onDragStart={(e) => handleDragStartRow(e, shelfLocalIndex, shelfIndex)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => {
-                    const allRows = Array.from(e.currentTarget.parentElement.children);
-                    const dropShelfLocalIndex = allRows.indexOf(e.currentTarget);
-                    handleDropRow(e, shelfIndex, dropShelfLocalIndex);
-                  }}
-                >
-                  <td className="name-cell" onClick={(e) => handleNameClick(e, shelfLocalIndex, shelfIndex)}>
-                    <span>{escapeHtml(item.name)}</span>
+            {shelves.map((shelf) => (
+              <React.Fragment key={`shelf-${shelf.shelfNum}`}>
+                <tr className="shelf-header-row">
+                  <td colSpan="2" className="shelf-header-cell">
+                    {shelf.name}
                   </td>
-                  <td className="qty-cell readonly">{escapeHtml(String(item.qty))}</td>
                 </tr>
-              );
-            })}
+                {shelf.items.length === 0 && (
+                  <tr
+                    className="shelf-empty-row"
+                    data-shelf={shelf.shelfNum}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDropRow}
+                  >
+                    <td colSpan="2" className="shelf-empty-cell">Empty</td>
+                  </tr>
+                )}
+                {shelf.items.map((item) => (
+                  <tr
+                    key={item._globalIndex}
+                    data-index={item._globalIndex}
+                    draggable="true"
+                    className={`${selectedIndices.has(item._globalIndex) ? 'selected' : ''}`}
+                    onDragStart={(e) => handleDragStartRow(e, item._globalIndex)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDropRow}
+                  >
+                    <td className="name-cell" onClick={(e) => handleNameClick(e, item._globalIndex)}>
+                      <span>{escapeHtml(item.name)}</span>
+                    </td>
+                    <td className="qty-cell readonly">{escapeHtml(String(item.qty))}</td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
           </tbody>
         </table>
-        <button 
-          className="add-item-button shelf-add-button" 
-          onClick={() => handleAddToShelf(shelfIndex)}
-        >
+        <div className="inventory-separator"></div>
+        <button className="add-item-button" onClick={() => setCurrentAddingBox(boxTitle)}>
           Add Item
         </button>
-      </div>
+      </>
     );
   };
 
@@ -274,13 +247,9 @@ const InventoryTable = () => {
     );
   }
 
-  // Render file cabinet with 3 shelves
+  // Render file cabinet with combined table
   if (isFileCabinet && shelves) {
-    return (
-      <>
-        {shelves.map((shelf, shelfIndex) => renderShelfTable(shelf, shelfIndex))}
-      </>
-    );
+    return renderCombinedShelfTable();
   }
 
   // Render regular single table for non-file cabinets

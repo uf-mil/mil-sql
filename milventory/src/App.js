@@ -4,6 +4,7 @@ import MapComponent from './components/Map';
 import RightPanel from './components/RightPanel';
 import Tooltip from './components/Tooltip';
 import AddModal from './components/AddModal';
+import EditModal from './components/EditForm';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function AppContent() {
       </div>
       <RightPanel />
       <AddModal />
+      <EditModal />
     </>
   );
 }

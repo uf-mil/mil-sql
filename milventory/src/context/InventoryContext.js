@@ -25,7 +25,6 @@ export const InventoryProvider = ({ children }) => {
   const [currentDragOverBox, setCurrentDragOverBox] = useState(null);
   const [tooltip, setTooltip] = useState({ visible: false, title: '', x: 0, y: 0 });
   const [rightTabWidth, setRightTabWidth] = useState(300);
-  const [editFormHeight, setEditFormHeight] = useState(400);
   
   // Refs
   const wrapRef = useRef(null);
@@ -34,91 +33,58 @@ export const InventoryProvider = ({ children }) => {
 
   // Initialize inventory data
   useEffect(() => {
-    // Top drawers A-K (11 drawers) - square and smaller
-    const topDrawers = [];
-    const drawerSize = 100; // Square drawers
-    const drawerSpacing = 5;
-    const topStartX = 150;
-    const topY = 80;
-    
-    const drawerLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
-    drawerLabels.forEach((label, index) => {
-      topDrawers.push({
-        title: `Drawer ${label}`,
-        x: topStartX + index * (drawerSize + drawerSpacing),
-        y: topY,
-        width: drawerSize,
-        height: drawerSize,
-        fill: 'var(--drawer)'
-      });
-    });
-    
-    // Right side drawers L-AA (L through Z = 15, plus AA = 16 total) - square and smaller
-    const rightDrawers = [];
-    const rightDrawerSize = drawerSize; // Square drawers
-    const rightDrawerSpacing = 5;
-    const rightX = 1750;
-    const rightStartY = 300;
-    
-    const rightDrawerLabels = ['L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA'];
-    rightDrawerLabels.forEach((label, index) => {
-      rightDrawers.push({
-        title: `Drawer ${label}`,
-        x: rightX,
-        y: rightStartY + index * (rightDrawerSize + rightDrawerSpacing),
-        width: rightDrawerSize,
-        height: rightDrawerSize,
-        fill: 'var(--drawer)'
-      });
-    });
-    
-    // Top cabinets 1-4 (each is 2 drawers wide, positioned below drawers A-K)
-    const topCabinets = [];
-    const cabinetWidth = drawerSize * 2 + drawerSpacing; // 2 drawers wide
-    const cabinetHeight = drawerSize + drawerSpacing;
-    const cabinetSpacing = drawerSize + drawerSpacing*2; // Chair space between cabinets
-    const cabinetY = topY + drawerSize + 20; // Below the drawers
-    
-    for (let i = 0; i < 4; i++) {
-      const cabinetX = topStartX + i * (cabinetWidth + cabinetSpacing);
-      topCabinets.push({
-        title: `Cabinet ${i + 1}`,
-        x: cabinetX,
-        y: cabinetY,
-        width: cabinetWidth,
-        height: cabinetHeight,
-        fill: 'var(--table)' // Using table color, adjust if needed
-      });
-    }
-    
-    // Right side cabinets 5-12 (each is 2 drawers wide, positioned to the left of drawers L-AA)
-    const rightCabinets = [];
-    const rightCabinetWidth = rightDrawerSize + rightDrawerSpacing; // 1 drawers wide
-    const rightCabinetHeight = rightDrawerSize * 2 + rightDrawerSpacing; // 2 drawers tall
-    const rightCabinetX = rightX - rightCabinetWidth - 20; // To the left of drawers
-    
-    for (let i = 0; i < 8; i++) {
-      const cabinetY = rightStartY + i * 2 * (rightDrawerSize + rightDrawerSpacing);
-      rightCabinets.push({
-        title: `Cabinet ${i + 5}`,
-        x: rightCabinetX,
-        y: cabinetY,
-        width: rightCabinetWidth,
-        height: rightCabinetHeight,
-        fill: 'var(--table)' // Using table color, adjust if needed
-      });
-    }
     
     const boxes = [
-      ...topDrawers,
-      ...rightDrawers,
-      ...topCabinets,
-      ...rightCabinets,
-      { title: 'Workbench', x: 140, y: 400, width: 150, height: 170, fill: '#e7ebf3', isWorkbench: true },
-      { title: 'File Cabinet 103', x: 140, y: 800, width: 200, height: 280, fill: 'var(--files)' },
-      { title: 'File Cabinet 102', x: 140, y: 1100, width: 200, height: 280, fill: 'var(--files)' },
-      { title: 'File Cabinet 101', x: 140, y: 1400, width: 200, height: 280, fill: 'var(--files)' },
-      { title: 'File Cabinet 100', x: 140, y: 1700, width: 200, height: 280, fill: 'var(--files)' },
+      // Top Drawers A-K
+      { title: 'Drawer A', x: 400, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer B', x: 505, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer C', x: 610, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer D', x: 715, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer E', x: 820, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer F', x: 925, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer G', x: 1030, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer H', x: 1135, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer I', x: 1240, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer J', x: 1345, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer K', x: 1450, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
+
+// Right Drawers L-AA
+      { title: 'Drawer L', x: 1750, y: 300, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer M', x: 1750, y: 405, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer N', x: 1750, y: 510, width: 100, height: 205, fill: 'var(--drawer)' },
+      { title: 'Drawer O', x: 1750, y: 720, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer P', x: 1750, y: 825, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer R', x: 1750, y: 930, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer S', x: 1750, y: 1035, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer T', x: 1750, y: 1140, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer U', x: 1750, y: 1245, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer V', x: 1750, y: 1350, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer W', x: 1750, y: 1455, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer X', x: 1750, y: 1560, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer Y', x: 1750, y: 1665, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer Z', x: 1750, y: 1770, width: 100, height: 100, fill: 'var(--drawer)' },
+      { title: 'Drawer AA', x: 1750, y: 1875, width: 100, height: 100, fill: 'var(--drawer)' },
+
+// Top Cabinets 1-4
+      { title: 'Cabinet 1', x: 400, y: 200, width: 205, height: 105, fill: 'var(--table)' },
+      { title: 'Cabinet 2', x: 715, y: 200, width: 205, height: 105, fill: 'var(--table)' },
+      { title: 'Cabinet 3', x: 1030, y: 200, width: 205, height: 105, fill: 'var(--table)' },
+      { title: 'Cabinet 4', x: 1345, y: 200, width: 205, height: 105, fill: 'var(--table)' },
+
+// Right Cabinets 5-12
+      { title: 'Cabinet 5', x: 1625, y: 300, width: 105, height: 205, fill: 'var(--table)' },
+      { title: 'Cabinet 6', x: 1625, y: 510, width: 105, height: 205, fill: 'var(--table)' },
+      { title: 'Cabinet 7', x: 1625, y: 720, width: 105, height: 205, fill: 'var(--table)' },
+      { title: 'Cabinet 8', x: 1625, y: 930, width: 105, height: 205, fill: 'var(--table)' },
+      { title: 'Cabinet 9', x: 1625, y: 1140, width: 105, height: 205, fill: 'var(--table)' },
+      { title: 'Cabinet 10', x: 1625, y: 1350, width: 105, height: 205, fill: 'var(--table)' },
+      { title: 'Cabinet 11', x: 1625, y: 1560, width: 105, height: 205, fill: 'var(--table)' },
+      { title: 'Cabinet 12', x: 1625, y: 1770, width: 105, height: 205, fill: 'var(--table)' },
+      { title: 'Workbench', x: 140, y: 500, width: 200, height: 280, fill: '#e7ebf3', isWorkbench: true },
+      { title: 'File Cabinet 103', x: 140, y: 800, width: 160, height: 280, fill: 'var(--files)' },
+      { title: 'File Cabinet 102', x: 140, y: 1100, width: 160, height: 280, fill: 'var(--files)' },
+      { title: 'File Cabinet 101', x: 140, y: 1400, width: 160, height: 280, fill: 'var(--files)' },
+      { title: 'File Cabinet 100', x: 140, y: 1700, width: 160, height: 280, fill: 'var(--files)' },
       { title: 'Table A', x: 600, y: 720, width: 300, height: 200, fill: 'var(--table)' },
       { title: 'Table B', x: 1060, y: 720, width: 300, height: 200, fill: 'var(--table)' },
       { title: 'Table C', x: 600, y: 1340, width: 300, height: 200, fill: 'var(--table)' },
@@ -161,12 +127,6 @@ export const InventoryProvider = ({ children }) => {
     document.body.style.setProperty('--right-tab-width', `${rightTabWidth}px`);
   }, [rightTabWidth]);
 
-  useEffect(() => {
-    const rightTab = document.querySelector('.right-tab');
-    if (rightTab) {
-      rightTab.style.setProperty('--edit-form-height', `${editFormHeight}px`);
-    }
-  }, [editFormHeight]);
 
   // Handlers
   const handleBoxClick = useCallback((boxTitle) => {
@@ -269,7 +229,6 @@ export const InventoryProvider = ({ children }) => {
     currentDragOverBox,
     tooltip,
     rightTabWidth,
-    editFormHeight,
     // Setters
     setInventoryData,
     setSelectedBox,
@@ -282,7 +241,6 @@ export const InventoryProvider = ({ children }) => {
     setCurrentDragOverBox,
     setTooltip,
     setRightTabWidth,
-    setEditFormHeight,
     // Refs
     wrapRef,
     svgRef,
