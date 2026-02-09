@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import * as d3 from 'd3';
-import { POOL, WORKBENCH_ITEMS, sample } from '../utils';
 
 const InventoryContext = createContext(null);
 
@@ -15,6 +14,7 @@ export const useInventory = () => {
 export const InventoryProvider = ({ children }) => {
   // State
   const [inventoryData, setInventoryData] = useState(new Map());
+  const [inventoryBounds, setInventoryBounds] = useState(null);
   const [selectedBox, setSelectedBox] = useState(null);
   const [currentEditingBox, setCurrentEditingBox] = useState(null);
   const [currentEditingIndex, setCurrentEditingIndex] = useState(null);
@@ -31,78 +31,47 @@ export const InventoryProvider = ({ children }) => {
   const svgRef = useRef(null);
   const worldRef = useRef(null);
 
-  // Initialize inventory data
+  // Initialize inventory data from JSON
   useEffect(() => {
+    const loadInventoryData = async () => {
+      try {
+        const response = await fetch('/inventory-locations.json');
+        if (!response.ok) {
+          throw new Error('Failed to load inventory data');
+        }
+        const data = await response.json();
+        
+        // Store inventory bounds
+        if (data['inventory-bounds']) {
+          setInventoryBounds(data['inventory-bounds']);
+        }
+        
+        const newInventoryData = new Map();
+        data.boxes.forEach(box => {
+          // Ensure inventory array exists and items have the correct structure
+          const inventory = (box.inventory || []).map(item => ({
+            name: item.name || '',
+            qty: item.qty || 1,
+            description: item.description || '',
+            image: item.image || null,
+            shelf: item.shelf !== undefined ? item.shelf : undefined
+          }));
+          
+          newInventoryData.set(box.title, {
+            ...box,
+            inventory
+          });
+        });
+        
+        setInventoryData(newInventoryData);
+      } catch (error) {
+        console.error('Error loading inventory data:', error);
+        // Fallback to empty data if JSON fails to load
+        setInventoryData(new Map());
+      }
+    };
     
-    const boxes = [
-      // Top Drawers A-K
-      { title: 'Drawer A', x: 400, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer B', x: 505, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer C', x: 610, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer D', x: 715, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer E', x: 820, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer F', x: 925, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer G', x: 1030, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer H', x: 1135, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer I', x: 1240, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer J', x: 1345, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer K', x: 1450, y: 80, width: 100, height: 100, fill: 'var(--drawer)' },
-
-// Right Drawers L-AA
-      { title: 'Drawer L', x: 1750, y: 300, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer M', x: 1750, y: 405, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer N', x: 1750, y: 510, width: 100, height: 205, fill: 'var(--drawer)' },
-      { title: 'Drawer O', x: 1750, y: 720, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer P', x: 1750, y: 825, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer R', x: 1750, y: 930, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer S', x: 1750, y: 1035, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer T', x: 1750, y: 1140, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer U', x: 1750, y: 1245, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer V', x: 1750, y: 1350, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer W', x: 1750, y: 1455, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer X', x: 1750, y: 1560, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer Y', x: 1750, y: 1665, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer Z', x: 1750, y: 1770, width: 100, height: 100, fill: 'var(--drawer)' },
-      { title: 'Drawer AA', x: 1750, y: 1875, width: 100, height: 100, fill: 'var(--drawer)' },
-
-// Top Cabinets 1-4
-      { title: 'Cabinet 1', x: 400, y: 200, width: 205, height: 105, fill: 'var(--table)' },
-      { title: 'Cabinet 2', x: 715, y: 200, width: 205, height: 105, fill: 'var(--table)' },
-      { title: 'Cabinet 3', x: 1030, y: 200, width: 205, height: 105, fill: 'var(--table)' },
-      { title: 'Cabinet 4', x: 1345, y: 200, width: 205, height: 105, fill: 'var(--table)' },
-
-// Right Cabinets 5-12
-      { title: 'Cabinet 5', x: 1625, y: 300, width: 105, height: 205, fill: 'var(--table)' },
-      { title: 'Cabinet 6', x: 1625, y: 510, width: 105, height: 205, fill: 'var(--table)' },
-      { title: 'Cabinet 7', x: 1625, y: 720, width: 105, height: 205, fill: 'var(--table)' },
-      { title: 'Cabinet 8', x: 1625, y: 930, width: 105, height: 205, fill: 'var(--table)' },
-      { title: 'Cabinet 9', x: 1625, y: 1140, width: 105, height: 205, fill: 'var(--table)' },
-      { title: 'Cabinet 10', x: 1625, y: 1350, width: 105, height: 205, fill: 'var(--table)' },
-      { title: 'Cabinet 11', x: 1625, y: 1560, width: 105, height: 205, fill: 'var(--table)' },
-      { title: 'Cabinet 12', x: 1625, y: 1770, width: 105, height: 205, fill: 'var(--table)' },
-      { title: 'Workbench', x: 140, y: 500, width: 200, height: 280, fill: '#e7ebf3', isWorkbench: true },
-      { title: 'File Cabinet 103', x: 140, y: 800, width: 160, height: 280, fill: 'var(--files)' },
-      { title: 'File Cabinet 102', x: 140, y: 1100, width: 160, height: 280, fill: 'var(--files)' },
-      { title: 'File Cabinet 101', x: 140, y: 1400, width: 160, height: 280, fill: 'var(--files)' },
-      { title: 'File Cabinet 100', x: 140, y: 1700, width: 160, height: 280, fill: 'var(--files)' },
-      { title: 'Table A', x: 600, y: 720, width: 300, height: 200, fill: 'var(--table)' },
-      { title: 'Table B', x: 1060, y: 720, width: 300, height: 200, fill: 'var(--table)' },
-      { title: 'Table C', x: 600, y: 1340, width: 300, height: 200, fill: 'var(--table)' },
-      { title: 'Table D', x: 1060, y: 1340, width: 300, height: 200, fill: 'var(--table)' },
-    ];
-
-    const newInventoryData = new Map();
-    boxes.forEach(box => {
-      const items = box.isWorkbench ? sample(WORKBENCH_ITEMS, 4) : sample(POOL, 4);
-      const inventory = items.map(name => ({
-        name: name.trim(),
-        qty: Math.floor(Math.random() * 5) + 1,
-        description: '',
-        image: null
-      }));
-      newInventoryData.set(box.title, { ...box, inventory });
-    });
-    setInventoryData(newInventoryData);
+    loadInventoryData();
   }, []);
 
   // Setup D3 zoom
@@ -219,6 +188,7 @@ export const InventoryProvider = ({ children }) => {
   const value = {
     // State
     inventoryData,
+    inventoryBounds,
     selectedBox,
     currentEditingBox,
     currentEditingIndex,

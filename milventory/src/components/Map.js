@@ -2,7 +2,7 @@ import React, { forwardRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
 const MapComponent = forwardRef((props, ref) => {
-  const { worldRef, inventoryData, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox } = useInventory();
+  const { worldRef, inventoryData, inventoryBounds, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox } = useInventory();
 
   const handleBoxMouseEnter = (e, boxTitle) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -55,11 +55,25 @@ const MapComponent = forwardRef((props, ref) => {
   };
 
   const boxes = Array.from(inventoryData.values());
+  
+  // Default bounds if not loaded yet
+  const viewBox = inventoryBounds?.viewBox 
+    ? `${inventoryBounds.viewBox.x} ${inventoryBounds.viewBox.y} ${inventoryBounds.viewBox.width} ${inventoryBounds.viewBox.height}`
+    : "0 0 2000 2200";
+  
+  const roomBounds = inventoryBounds?.room || {
+    x: 80,
+    y: 80,
+    width: 1840,
+    height: 2000,
+    rx: 18,
+    ry: 18
+  };
 
   return (
-    <svg ref={ref} className="map" viewBox="0 0 1600 1800" aria-label="Room map">
+    <svg ref={ref} className="map" viewBox={viewBox} aria-label="Room map">
       <g ref={worldRef} id="world">
-        <rect className="room" x="80" y="80" width="1800" height="2000" rx="18" ry="18"/>
+        <rect className="room" x={roomBounds.x} y={roomBounds.y} width={roomBounds.width} height={roomBounds.height} rx={roomBounds.rx} ry={roomBounds.ry}/>
         
         {boxes.map((box, idx) => (
           <rect

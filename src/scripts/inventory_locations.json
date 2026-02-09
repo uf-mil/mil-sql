@@ -8,7 +8,7 @@
     "type": "workbench"
   },
   {
-    "name": "File Cabinet A",
+    "name": "Tall Cabinet A",
     "x": 145.28757073395286,
     "y": 549.0339785321784,
     "width": 200,
@@ -16,7 +16,7 @@
     "type": "cabinet"
   },
   {
-    "name": "File Cabinet B",
+    "name": "Tall Cabinet B",
     "x": 549.5638790942664,
     "y": 347.58042869539736,
     "width": 200,

@@ -10,8 +10,8 @@ const AddModal = () => {
   const [selectedShelf, setSelectedShelf] = useState(null);
   const nameInputRef = useRef(null);
 
-  // Check if this is a file cabinet
-  const isFileCabinet = currentAddingBox && currentAddingBox.startsWith('File Cabinet');
+  // Check if this is a Tall Cabinet
+  const isFileCabinet = currentAddingBox && currentAddingBox.startsWith('Tall Cabinet');
   
   // Shelf definitions for file cabinets
   const SHELF_NAMES = [
@@ -28,7 +28,7 @@ const AddModal = () => {
       setName('');
       setQty(1);
       setDescription('');
-      // Set default shelf to first one if file cabinet
+      // Set default shelf to first one if Tall Cabinet
       if (isFileCabinet) {
         setSelectedShelf(0);
       } else {
@@ -49,7 +49,7 @@ const AddModal = () => {
           image: null
         };
         
-        // Tag item with shelf number if file cabinet
+        // Tag item with shelf number if Tall Cabinet
         if (isFileCabinet && selectedShelf !== null) {
           newItem.shelf = selectedShelf;
         }

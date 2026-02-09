@@ -9,8 +9,8 @@ const InventoryTable = () => {
   const inventory = boxData ? boxData.inventory : [];
   const boxTitle = selectedBox;
   
-  // Check if this is a file cabinet
-  const isFileCabinet = boxTitle && boxTitle.startsWith('File Cabinet');
+  // Check if this is a Tall Cabinet
+  const isFileCabinet = boxTitle && boxTitle.startsWith('Tall Cabinet');
 
   const [selectedIndices, setSelectedIndices] = useState(new Set());
   const [draggedRow, setDraggedRow] = useState(null);
@@ -149,7 +149,7 @@ const InventoryTable = () => {
     if (isNaN(targetGlobalIndex)) return; // header row
     if (draggedRow === e.currentTarget) return;
     
-    // If file cabinet, adopt the drop target's shelf tag
+    // If Tall Cabinet, adopt the drop target's shelf tag
     if (isFileCabinet) {
       draggedItem.shelf = items[targetGlobalIndex].shelf ?? 0;
     }
@@ -236,23 +236,12 @@ const InventoryTable = () => {
     );
   };
 
-  if (!inventory || inventory.length === 0) {
-    return (
-      <>
-        <div className="inventory-list empty">No inventory listed.</div>
-        <button className="add-item-button" onClick={() => setCurrentAddingBox(boxTitle)}>
-          Add Item
-        </button>
-      </>
-    );
-  }
-
-  // Render file cabinet with combined table
+  // Render Tall Cabinet with combined table (even if empty, show all shelves)
   if (isFileCabinet && shelves) {
     return renderCombinedShelfTable();
   }
 
-  // Render regular single table for non-file cabinets
+  // Render regular single table for non-file cabinets (always show table, even if empty)
   return (
     <>
       <table className="inventory-table">
@@ -263,23 +252,29 @@ const InventoryTable = () => {
           </tr>
         </thead>
         <tbody>
-          {inventory.map((item, index) => (
-            <tr
-              key={index}
-              data-index={index}
-              draggable="true"
-              className={`${selectedIndices.has(index) ? 'selected' : ''}`}
-              onDragStart={(e) => handleDragStartRow(e, index)}
-              onDragEnd={handleDragEnd}
-              onDragOver={handleDragOver}
-              onDrop={handleDropRow}
-            >
-              <td className="name-cell" onClick={(e) => handleNameClick(e, index)}>
-                <span>{escapeHtml(item.name)}</span>
-              </td>
-              <td className="qty-cell readonly">{escapeHtml(String(item.qty))}</td>
+          {(!inventory || inventory.length === 0) ? (
+            <tr>
+              <td colSpan="2" className="inventory-empty-cell">Empty</td>
             </tr>
-          ))}
+          ) : (
+            inventory.map((item, index) => (
+              <tr
+                key={index}
+                data-index={index}
+                draggable="true"
+                className={`${selectedIndices.has(index) ? 'selected' : ''}`}
+                onDragStart={(e) => handleDragStartRow(e, index)}
+                onDragEnd={handleDragEnd}
+                onDragOver={handleDragOver}
+                onDrop={handleDropRow}
+              >
+                <td className="name-cell" onClick={(e) => handleNameClick(e, index)}>
+                  <span>{escapeHtml(item.name)}</span>
+                </td>
+                <td className="qty-cell readonly">{escapeHtml(String(item.qty))}</td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
       <div className="inventory-separator"></div>

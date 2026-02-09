@@ -311,6 +311,15 @@ body {
   background: rgba(var(--accent-rgb, 100, 149, 237), 0.15);
 }
 
+.inventory-empty-cell {
+  padding: 0.4rem 0.5rem !important;
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.8rem;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+
 .right-tab .inventory-list.empty {
   color: var(--muted);
   font-style: italic;
