@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
 const AddModal = () => {
-  const { currentAddingBox, currentAddingIndex, setCurrentAddingBox, setCurrentAddingIndex, inventoryData, updateInventory } = useInventory();
+  const { currentAddingBox, currentAddingIndex, setCurrentAddingBox, setCurrentAddingIndex, inventoryData, updateInventory, sotInventoryItems } = useInventory();
   
-  const [name, setName] = useState('');
+  const [selectedItemName, setSelectedItemName] = useState('');
   const [qty, setQty] = useState(1);
-  const [description, setDescription] = useState('');
   const [selectedShelf, setSelectedShelf] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const nameInputRef = useRef(null);
 
   // Check if this is a Tall Cabinet
@@ -23,11 +23,20 @@ const AddModal = () => {
     'Shelf 1 (Bottom)'
   ];
 
+  const filteredSOTItems = useMemo(() => {
+    const itemsArray = Array.from(sotInventoryItems.keys());
+    if (!searchQuery.trim()) {
+      return itemsArray;
+    }
+    const query = searchQuery.toLowerCase();
+    return itemsArray.filter(name => name.toLowerCase().includes(query));
+  }, [sotInventoryItems, searchQuery]);
+
   useEffect(() => {
     if (currentAddingBox) {
-      setName('');
+      setSelectedItemName('');
       setQty(1);
-      setDescription('');
+      setSearchQuery('');
       // Set default shelf to first one if Tall Cabinet
       if (isFileCabinet) {
         setSelectedShelf(0);
@@ -39,14 +48,12 @@ const AddModal = () => {
   }, [currentAddingBox, isFileCabinet]);
 
   const handleSave = () => {
-    if (currentAddingBox && name.trim()) {
+    if (currentAddingBox && selectedItemName.trim()) {
       const boxData = inventoryData.get(currentAddingBox);
       if (boxData) {
         const newItem = {
-          name: name.trim(),
-          qty: parseInt(qty) || 1,
-          description: description.trim(),
-          image: null
+          name: selectedItemName.trim(),
+          qty: parseInt(qty) || 1
         };
         
         // Tag item with shelf number if Tall Cabinet
@@ -122,30 +129,55 @@ const AddModal = () => {
             ))}
           </select>
         )}
-        <input
-          ref={nameInputRef}
-          type="text"
-          placeholder="Item name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
+        <div>
+          <input
+            ref={nameInputRef}
+            type="text"
+            placeholder="Search SOT items..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (e.target.value && filteredSOTItems.length > 0 && !selectedItemName) {
+                setSelectedItemName(filteredSOTItems[0]);
+              }
+            }}
+            list="sot-items-list"
+          />
+          <datalist id="sot-items-list">
+            {filteredSOTItems.map(itemName => (
+              <option key={itemName} value={itemName} />
+            ))}
+          </datalist>
+          {filteredSOTItems.length === 0 && searchQuery && (
+            <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
+              No items found. Create item in SOT table first.
+            </div>
+          )}
+        </div>
+        <select
+          value={selectedItemName}
+          onChange={(e) => setSelectedItemName(e.target.value)}
+          className="modal-select"
+        >
+          <option value="">Select SOT item...</option>
+          {filteredSOTItems.map(itemName => (
+            <option key={itemName} value={itemName}>
+              {itemName}
+            </option>
+          ))}
+        </select>
         <input
           type="number"
           placeholder="Quantity"
           value={qty}
-          min="0"
+          min="1"
           onChange={(e) => setQty(e.target.value)}
-        />
-        <textarea
-          placeholder="Description (optional)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
         />
         <div className="modal-actions">
           <button type="button" className="cancel" onClick={handleCancel}>
             Cancel
           </button>
-          <button type="button" className="save" onClick={handleSave}>
+          <button type="button" className="save" onClick={handleSave} disabled={!selectedItemName}>
             Add
           </button>
         </div>

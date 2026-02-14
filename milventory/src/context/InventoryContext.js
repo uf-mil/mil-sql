@@ -25,6 +25,35 @@ export const InventoryProvider = ({ children }) => {
   const [currentDragOverBox, setCurrentDragOverBox] = useState(null);
   const [tooltip, setTooltip] = useState({ visible: false, title: '', x: 0, y: 0 });
   const [rightTabWidth, setRightTabWidth] = useState(300);
+  const [rightPaneCollapsed, setRightPaneCollapsed] = useState(false);
+  
+  // SOT Inventory Table state
+  const [sotInventoryItems, setSotInventoryItems] = useState(new Map());
+  const [selectedSOTItem, setSelectedSOTItem] = useState(null);
+  const [leftPaneWidth, setLeftPaneWidth] = useState(300);
+  const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
+  
+  // Add Mode state
+  const [addModeItem, setAddModeItem] = useState(null);
+  const [addModeQtyPerClick, setAddModeQtyPerClick] = useState(1);
+  const [addModePending, setAddModePending] = useState(new Map()); // Map<boxTitle, qty>
+  const addModePreviewRef = useRef(null);
+  const addModeItemRef = useRef(null);
+  const addModePendingRef = useRef(new Map());
+  const addModeQtyPerClickRef = useRef(1);
+  
+  // Keep refs in sync with state
+  useEffect(() => {
+    addModeItemRef.current = addModeItem;
+  }, [addModeItem]);
+  
+  useEffect(() => {
+    addModePendingRef.current = addModePending;
+  }, [addModePending]);
+
+  useEffect(() => {
+    addModeQtyPerClickRef.current = addModeQtyPerClick;
+  }, [addModeQtyPerClick]);
   
   // Refs
   const wrapRef = useRef(null);
@@ -48,12 +77,10 @@ export const InventoryProvider = ({ children }) => {
         
         const newInventoryData = new Map();
         data.boxes.forEach(box => {
-          // Ensure inventory array exists and items have the correct structure
+          // Ensure inventory array exists - simplified structure: name + qty (+ optional shelf)
           const inventory = (box.inventory || []).map(item => ({
             name: item.name || '',
             qty: item.qty || 1,
-            description: item.description || '',
-            image: item.image || null,
             shelf: item.shelf !== undefined ? item.shelf : undefined
           }));
           
@@ -93,8 +120,56 @@ export const InventoryProvider = ({ children }) => {
 
   // Update CSS variables
   useEffect(() => {
-    document.body.style.setProperty('--right-tab-width', `${rightTabWidth}px`);
-  }, [rightTabWidth]);
+    document.body.style.setProperty('--left-pane-width', `${leftPaneWidth}px`);
+  }, [leftPaneWidth]);
+
+  // Load SOT inventory items from JSON
+  useEffect(() => {
+    const loadSOTItems = async () => {
+      try {
+        const response = await fetch('/sot-inventory-items.json');
+        if (!response.ok) {
+          throw new Error('Failed to load SOT inventory items');
+        }
+        const data = await response.json();
+        
+        const newSOTItems = new Map();
+        (data.items || []).forEach(item => {
+          newSOTItems.set(item.name, {
+            name: item.name,
+            description: item.description || '',
+            image: item.image || null,
+
+            locations: item.locations || []
+          });
+        });
+        
+        setSotInventoryItems(newSOTItems);
+      } catch (error) {
+        console.error('Error loading SOT inventory items:', error);
+        setSotInventoryItems(new Map());
+      }
+    };
+    
+    loadSOTItems();
+  }, []);
+
+  // Load pane state from localStorage
+  useEffect(() => {
+    const savedLeftWidth = localStorage.getItem('leftPaneWidth');
+    const savedLeftCollapsed = localStorage.getItem('leftPaneCollapsed');
+    const savedRightCollapsed = localStorage.getItem('rightPaneCollapsed');
+    if (savedLeftWidth) setLeftPaneWidth(parseInt(savedLeftWidth, 10));
+    if (savedLeftCollapsed === 'true') setLeftPaneCollapsed(true);
+    if (savedRightCollapsed === 'true') setRightPaneCollapsed(true);
+  }, []);
+
+  // Save pane state to localStorage
+  useEffect(() => {
+    localStorage.setItem('leftPaneWidth', leftPaneWidth.toString());
+    localStorage.setItem('leftPaneCollapsed', leftPaneCollapsed.toString());
+    localStorage.setItem('rightPaneCollapsed', rightPaneCollapsed.toString());
+  }, [leftPaneWidth, leftPaneCollapsed, rightPaneCollapsed]);
 
 
   // Handlers
@@ -127,6 +202,83 @@ export const InventoryProvider = ({ children }) => {
       }
       return next;
     });
+  }, []);
+
+  // Add Mode functions
+  const startAddMode = useCallback((itemName) => {
+    setAddModeItem(itemName);
+    setAddModeQtyPerClick(1);
+    setAddModePending(new Map());
+    setSelectedBox(null); // Clear box selection when entering add mode
+    setSelectedSOTItem(null); // Clear SOT preview when entering add mode
+  }, []);
+
+  const handleBoxClickAddMode = useCallback((boxTitle) => {
+    const qty = addModeQtyPerClickRef.current;
+    setAddModePending(prev => {
+      const next = new Map(prev);
+      const existing = next.get(boxTitle) || 0;
+      next.set(boxTitle, existing + qty);
+      return next;
+    });
+  }, []);
+
+  const finishAddMode = useCallback(() => {
+    const currentItem = addModeItemRef.current;
+    const pending = addModePendingRef.current;
+    
+    if (!currentItem) {
+      setAddModeItem(null);
+      setAddModeQtyPerClick(1);
+      setAddModePending(new Map());
+      return;
+    }
+
+    // Apply all pending additions
+    pending.forEach((qty, boxTitle) => {
+      const boxData = inventoryData.get(boxTitle);
+      if (boxData) {
+        const newInventory = [...boxData.inventory];
+        
+        // Check if item already exists in this box
+        const existingIndex = newInventory.findIndex(item => item.name === currentItem);
+        
+        if (existingIndex >= 0) {
+          // Update existing item
+          newInventory[existingIndex] = {
+            ...newInventory[existingIndex],
+            qty: newInventory[existingIndex].qty + qty
+          };
+        } else {
+          // Add new item
+          const newItem = {
+            name: currentItem,
+            qty: qty
+          };
+          
+          // If it's a Tall Cabinet, we need to determine shelf
+          if (boxTitle.startsWith('Tall Cabinet')) {
+            // For now, add to shelf 0 (top). Could be enhanced to let user choose
+            newItem.shelf = 0;
+          }
+          
+          newInventory.push(newItem);
+        }
+        
+        updateInventory(boxTitle, newInventory);
+      }
+    });
+
+    // Clear add mode
+    setAddModeItem(null);
+    setAddModeQtyPerClick(1);
+    setAddModePending(new Map());
+  }, [inventoryData, updateInventory]);
+
+  const cancelAddMode = useCallback(() => {
+    setAddModeItem(null);
+    setAddModeQtyPerClick(1);
+    setAddModePending(new Map());
   }, []);
 
   const handleDragStart = useCallback((boxTitle, index, isMultiple, selectedIndices) => {
@@ -185,6 +337,88 @@ export const InventoryProvider = ({ children }) => {
     setCurrentDragOverBox(null);
   }, [draggedItemData, inventoryData, updateInventory]);
 
+  // SOT Item helper functions
+  const resolveSOTItem = useCallback((itemName) => {
+    return sotInventoryItems.get(itemName) || null;
+  }, [sotInventoryItems]);
+
+  const computeSOTQuantities = useCallback(() => {
+    const quantities = new Map();
+    inventoryData.forEach((boxData, boxTitle) => {
+      boxData.inventory.forEach(item => {
+        const currentQty = quantities.get(item.name) || 0;
+        quantities.set(item.name, currentQty + (item.qty || 0));
+      });
+    });
+    return quantities;
+  }, [inventoryData]);
+
+  const getItemLocations = useCallback((itemName) => {
+    const locations = [];
+    inventoryData.forEach((boxData, boxTitle) => {
+      const hasItem = boxData.inventory.some(item => item.name === itemName);
+      if (hasItem) {
+        locations.push(boxTitle);
+      }
+    });
+    return locations;
+  }, [inventoryData]);
+
+  const addSOTItem = useCallback((item) => {
+    setSotInventoryItems(prev => {
+      const next = new Map(prev);
+      next.set(item.name, item);
+      return next;
+    });
+  }, []);
+
+  const updateSOTItem = useCallback((oldName, newItem) => {
+    setSotInventoryItems(prev => {
+      const next = new Map(prev);
+      if (oldName !== newItem.name) {
+        next.delete(oldName);
+        // Update all box references if name changed
+        setInventoryData(prevData => {
+          const newData = new Map(prevData);
+          newData.forEach((boxData, boxTitle) => {
+            const updatedInventory = boxData.inventory.map(item => 
+              item.name === oldName ? { ...item, name: newItem.name } : item
+            );
+            newData.set(boxTitle, { ...boxData, inventory: updatedInventory });
+          });
+          return newData;
+        });
+      }
+      next.set(newItem.name, newItem);
+      return next;
+    });
+  }, []);
+
+  const deleteSOTItem = useCallback((itemName) => {
+    setSotInventoryItems(prev => {
+      const next = new Map(prev);
+      next.delete(itemName);
+      return next;
+    });
+    // Remove from all boxes
+    setInventoryData(prev => {
+      const newData = new Map(prev);
+      newData.forEach((boxData, boxTitle) => {
+        const updatedInventory = boxData.inventory.filter(item => item.name !== itemName);
+        newData.set(boxTitle, { ...boxData, inventory: updatedInventory });
+      });
+      return newData;
+    });
+    // Close preview if this item was selected
+    if (selectedSOTItem === itemName) {
+      setSelectedSOTItem(null);
+    }
+  }, [selectedSOTItem]);
+
+  const clearSelectedSOTItem = useCallback(() => {
+    setSelectedSOTItem(null);
+  }, []);
+
   const value = {
     // State
     inventoryData,
@@ -199,6 +433,12 @@ export const InventoryProvider = ({ children }) => {
     currentDragOverBox,
     tooltip,
     rightTabWidth,
+    rightPaneCollapsed,
+    // SOT Inventory state
+    sotInventoryItems,
+    selectedSOTItem,
+    leftPaneWidth,
+    leftPaneCollapsed,
     // Setters
     setInventoryData,
     setSelectedBox,
@@ -211,6 +451,11 @@ export const InventoryProvider = ({ children }) => {
     setCurrentDragOverBox,
     setTooltip,
     setRightTabWidth,
+    setRightPaneCollapsed,
+    setSotInventoryItems,
+    setSelectedSOTItem,
+    setLeftPaneWidth,
+    setLeftPaneCollapsed,
     // Refs
     wrapRef,
     svgRef,
@@ -222,6 +467,24 @@ export const InventoryProvider = ({ children }) => {
     updateInventory,
     handleDragStart,
     handleDrop,
+    // SOT Item helpers
+    resolveSOTItem,
+    computeSOTQuantities,
+    getItemLocations,
+    addSOTItem,
+    updateSOTItem,
+    deleteSOTItem,
+    clearSelectedSOTItem,
+    // Add Mode
+    addModeItem,
+    addModeQtyPerClick,
+    setAddModeQtyPerClick,
+    addModePending,
+    addModePreviewRef,
+    startAddMode,
+    finishAddMode,
+    cancelAddMode,
+    handleBoxClickAddMode,
   };
 
   return (

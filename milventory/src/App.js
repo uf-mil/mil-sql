@@ -1,10 +1,11 @@
 import React from 'react';
 import { InventoryProvider, useInventory } from './context/InventoryContext';
 import MapComponent from './components/Map';
-import RightPanel from './components/RightPanel';
+import LeftPanel from './components/LeftPanel';
 import Tooltip from './components/Tooltip';
 import AddModal from './components/AddModal';
 import EditModal from './components/EditForm';
+import AddModePreview from './components/AddModePreview';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function AppContent() {
 
   return (
     <>
+      <LeftPanel />
       <div className="wrap" ref={wrapRef}>
         <div className="titlebar">
           Zoom: <span className="kbd">wheel</span> · Pan: <span className="kbd">drag</span> · Hover for name · Click for details
@@ -26,9 +28,9 @@ function AppContent() {
         <MapComponent ref={svgRef} />
         <Tooltip />
       </div>
-      <RightPanel />
       <AddModal />
       <EditModal />
+      <AddModePreview />
     </>
   );
 }
