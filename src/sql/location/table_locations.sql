@@ -1,10 +1,8 @@
--- Location has coordinates that will be used to position it in the svg in the frontend.
+-- Location metadata (layout coordinates are in inventory-locations.json, not stored in DB)
 CREATE TABLE locations (
-    name    VARCHAR(50) PRIMARY KEY,
-    x       INTEGER NOT NULL,
-    y       INTEGER NOT NULL,
-    width   INTEGER NOT NULL,
-    height  INTEGER NOT NULL,
-    type    VARCHAR(50) NOT NULL
+    name         VARCHAR(100) PRIMARY KEY,   -- e.g. "Drawer A", "Tall Cabinet 103"
+    type         VARCHAR(50)  NOT NULL,       -- "drawer", "cabinet", "table", "workbench", "tall_cabinet"
+    shelf_count  INT          NOT NULL DEFAULT 0,  -- 6 for Tall Cabinets, 0 for everything else
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

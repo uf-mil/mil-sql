@@ -1,33 +1,39 @@
 """
-Supply data model.
+Supply data model (catalog/reference table).
 """
 from dataclasses import dataclass
 from typing import Optional
-from datetime import date
+from datetime import date, datetime
 
 
 @dataclass
 class Supply:
-    """Supply inventory entry model."""
+    """Supply catalog/reference model."""
     id: Optional[int] = None
     name: str = ""
-    amount: int = 0
+    description: Optional[str] = None
+    image: Optional[str] = None  # Base64 data URI (LONGTEXT)
     last_order_date: Optional[date] = None
-    location: str = ""
+    last_modified: Optional[datetime] = None
+    last_modified_by: Optional[str] = None  # UF ID
+    created_at: Optional[datetime] = None
     
     @classmethod
     def from_db_row(cls, row):
         """Create Supply from database row tuple.
         
         Args:
-            row: Tuple from database query (id, name, amount, last_order_date, location)
+            row: Tuple from database query (id, name, description, image, last_order_date, last_modified, last_modified_by, created_at)
         """
         return cls(
             id=row[0],
             name=row[1],
-            amount=row[2],
-            last_order_date=row[3],
-            location=row[4]
+            description=row[2],
+            image=row[3],
+            last_order_date=row[4],
+            last_modified=row[5],
+            last_modified_by=row[6],
+            created_at=row[7]
         )
     
     @classmethod
@@ -40,9 +46,12 @@ class Supply:
         return cls(
             id=data.get('id'),
             name=data.get('name', ''),
-            amount=data.get('amount', 0),
+            description=data.get('description'),
+            image=data.get('image'),
             last_order_date=data.get('last_order_date'),
-            location=data.get('location', '')
+            last_modified=data.get('last_modified'),
+            last_modified_by=data.get('last_modified_by'),
+            created_at=data.get('created_at')
         )
     
     def to_dict(self):
@@ -50,10 +59,25 @@ class Supply:
         result = {
             'id': self.id,
             'name': self.name,
-            'amount': self.amount,
-            'location': self.location
+            'description': self.description,
+            'image': self.image,
         }
         if self.last_order_date:
-            result['last_order_date'] = self.last_order_date.isoformat() if hasattr(self.last_order_date, 'isoformat') else str(self.last_order_date)
+            if isinstance(self.last_order_date, date):
+                result['last_order_date'] = self.last_order_date.isoformat()
+            else:
+                result['last_order_date'] = str(self.last_order_date)
+        if self.last_modified:
+            if isinstance(self.last_modified, datetime):
+                result['lastModified'] = self.last_modified.isoformat()
+            else:
+                result['lastModified'] = str(self.last_modified)
+        if self.last_modified_by:
+            result['last_modified_by'] = self.last_modified_by
+        if self.created_at:
+            if isinstance(self.created_at, datetime):
+                result['created_at'] = self.created_at.isoformat()
+            else:
+                result['created_at'] = str(self.created_at)
         return result
 

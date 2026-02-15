@@ -16,10 +16,12 @@ import bcrypt
 from helpers import parse_database_url, get_sql_base_path, execute_sql_file, table_exists
 
 
-def load_default_locations():
-    """Load default locations from inventory_locations.json."""
+def load_locations_from_json():
+    """Load locations from milventory/public/inventory-locations.json."""
+    # Get project root (go up from src/scripts to project root)
     script_dir = Path(__file__).parent
-    json_path = script_dir / "inventory_locations.json"
+    project_root = script_dir.parent.parent
+    json_path = project_root / "milventory" / "public" / "inventory-locations.json"
     
     if not json_path.exists():
         print(f"⚠ Warning: {json_path} not found, using empty locations list")
@@ -27,8 +29,8 @@ def load_default_locations():
     
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
-            locations = json.load(f)
-        return locations
+            data = json.load(f)
+        return data.get('boxes', [])
     except json.JSONDecodeError as e:
         print(f"✗ Error parsing {json_path}: {e}")
         return []
@@ -37,8 +39,25 @@ def load_default_locations():
         return []
 
 
+def derive_location_type(title):
+    """Derive location type from box title."""
+    title_lower = title.lower()
+    if title_lower.startswith('drawer'):
+        return 'drawer'
+    elif title_lower.startswith('cabinet') and not title_lower.startswith('tall cabinet'):
+        return 'cabinet'
+    elif title_lower.startswith('tall cabinet'):
+        return 'tall_cabinet'
+    elif title_lower.startswith('table'):
+        return 'table'
+    elif 'workbench' in title_lower or title_lower == 'workbench':
+        return 'workbench'
+    else:
+        return 'unknown'
+
+
 def seed_locations():
-    """Seed default locations if none exist."""
+    """Sync locations from milventory/public/inventory-locations.json with database."""
     try:
         # Get database connection parameters
         database_url = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@db:3306/mydb")
@@ -76,12 +95,11 @@ def seed_locations():
                 root_conn.close()
                 print(f"✓ Database '{database_name}' created")
                 # Small delay to ensure privileges are propagated
-                import time
                 time.sleep(0.5)
             else:
                 raise
         
-        print("🌱 Checking for existing locations...")
+        print("🌱 Syncing locations from JSON...")
         
         # Connect to database
         conn = mysql.connector.connect(**db_params)
@@ -92,10 +110,7 @@ def seed_locations():
             print("⚠ Locations table does not exist. Creating it...")
             # Get SQL base path and find locations table file
             sql_base_path = get_sql_base_path(__file__)
-            # Try both possible filenames
             locations_file = sql_base_path / "location" / "table_locations.sql"
-            if not locations_file.exists():
-                locations_file = sql_base_path / "location" / "table_location.sql"
             
             if locations_file.exists():
                 if execute_sql_file(cur, locations_file, "locations table"):
@@ -134,42 +149,63 @@ def seed_locations():
                         conn.close()
                         sys.exit(1)
         
-        # Check if any locations exist
-        cur.execute("SELECT COUNT(*) FROM locations")
-        count = cur.fetchone()[0]
+        # Load locations from JSON
+        boxes = load_locations_from_json()
         
-        if count > 0:
-            print(f"✓ Found {count} existing location(s), skipping seed")
+        if not boxes:
+            print("⚠ No boxes found in JSON, skipping location sync")
             cur.close()
             conn.close()
             return
         
-        # Load default locations from JSON
-        DEFAULT_LOCATIONS = load_default_locations()
+        # Get existing locations from database
+        cur.execute("SELECT name FROM locations")
+        existing_names = {row[0] for row in cur.fetchall()}
         
-        if not DEFAULT_LOCATIONS:
-            print("⚠ No default locations to seed")
-            cur.close()
-            conn.close()
-            return
-        
-        # Insert default locations
-        print(f"📦 Seeding {len(DEFAULT_LOCATIONS)} default locations...")
-        
+        # Process boxes from JSON
+        json_names = set()
         insert_count = 0
-        for loc in DEFAULT_LOCATIONS:
-            try:
+        update_count = 0
+        
+        for box in boxes:
+            name = box.get('title', '')
+            if not name:
+                continue
+            
+            json_names.add(name)
+            location_type = derive_location_type(name)
+            shelf_count = 6 if location_type == 'tall_cabinet' else 0
+            
+            if name in existing_names:
+                # Update existing location (preserve if exists, but update type/shelf_count if changed)
                 cur.execute(
-                    "INSERT INTO locations (name, x, y, width, height, type) VALUES (%s, %s, %s, %s, %s, %s)",
-                    (loc['name'], loc['x'], loc['y'], loc['width'], loc['height'], loc['type'])
+                    "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
+                    (location_type, shelf_count, name)
                 )
-                insert_count += 1
-            except mysql.connector.IntegrityError:
-                # Skip if already exists (shouldn't happen, but be safe)
-                print(f"  ⚠ {loc['name']} already exists, skipping")
+                if cur.rowcount > 0:
+                    update_count += 1
+            else:
+                # Insert new location
+                try:
+                    cur.execute(
+                        "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
+                        (name, location_type, shelf_count)
+                    )
+                    insert_count += 1
+                except mysql.connector.IntegrityError:
+                    # Skip if already exists (race condition)
+                    pass
+        
+        # Delete locations that don't exist in JSON
+        to_delete = existing_names - json_names
+        delete_count = 0
+        if to_delete:
+            placeholders = ','.join(['%s'] * len(to_delete))
+            cur.execute(f"DELETE FROM locations WHERE name IN ({placeholders})", list(to_delete))
+            delete_count = cur.rowcount
         
         conn.commit()
-        print(f"✓ Successfully seeded {insert_count} location(s)")
+        print(f"✓ Location sync complete: {insert_count} inserted, {update_count} updated, {delete_count} deleted")
         
         cur.close()
         conn.close()

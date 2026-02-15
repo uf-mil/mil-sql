@@ -70,9 +70,180 @@ export const auth = {
   },
 };
 
-// API functions will be added in later steps
+// Helper to add auth headers to requests
+const authHeaders = () => ({
+  'Content-Type': 'application/json',
+});
+
+// API functions
 export const api = {
-  // Supplies endpoints will be added in Step 6
-  // Supplies Location endpoints will be added in Step 6
+  // Supplies (catalog/reference)
+  getSupplies: () => 
+    fetch(`${API_BASE}/supplies`, { 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  getSupply: (id) => 
+    fetch(`${API_BASE}/supplies/${id}`, { 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  createSupply: (item) => 
+    fetch(`${API_BASE}/supplies`, { 
+      method: 'POST', 
+      credentials: 'include', 
+      headers: authHeaders(), 
+      body: JSON.stringify(item) 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  updateSupply: (id, item) => 
+    fetch(`${API_BASE}/supplies/${id}`, { 
+      method: 'PUT', 
+      credentials: 'include', 
+      headers: authHeaders(), 
+      body: JSON.stringify(item) 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  deleteSupply: (id) => 
+    fetch(`${API_BASE}/supplies/${id}`, { 
+      method: 'DELETE', 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      if (r.status === 204) {
+        return null;
+      }
+      return r.json();
+    }),
+
+  // Supplies Location (frontend inventory)
+  getAllSupplyLocations: (location) => {
+    const url = location 
+      ? `${API_BASE}/supplies-location?location=${encodeURIComponent(location)}` 
+      : `${API_BASE}/supplies-location`;
+    return fetch(url, { 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    });
+  },
+  
+  getSupplyLocation: (id) => 
+    fetch(`${API_BASE}/supplies-location/${id}`, { 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  getLocationSupplies: (location) => 
+    fetch(`${API_BASE}/supplies-location/by-location/${encodeURIComponent(location)}`, { 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  addSupplyLocation: (entry) => 
+    fetch(`${API_BASE}/supplies-location`, { 
+      method: 'POST', 
+      credentials: 'include', 
+      headers: authHeaders(), 
+      body: JSON.stringify(entry) 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  updateSupplyLocation: (id, data) => 
+    fetch(`${API_BASE}/supplies-location/${id}`, { 
+      method: 'PUT', 
+      credentials: 'include', 
+      headers: authHeaders(), 
+      body: JSON.stringify(data) 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  deleteSupplyLocation: (id) => 
+    fetch(`${API_BASE}/supplies-location/${id}`, { 
+      method: 'DELETE', 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      if (r.status === 204) {
+        return null;
+      }
+      return r.json();
+    }),
+  
+  moveSupplyLocations: (data) => 
+    fetch(`${API_BASE}/supplies-location/move`, { 
+      method: 'POST', 
+      credentials: 'include', 
+      headers: authHeaders(), 
+      body: JSON.stringify(data) 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
+  
+  bulkAddSupplyLocations: (data) => 
+    fetch(`${API_BASE}/supplies-location/bulk-add`, { 
+      method: 'POST', 
+      credentials: 'include', 
+      headers: authHeaders(), 
+      body: JSON.stringify(data) 
+    }).then(r => {
+      if (r.status === 401) {
+        throw new Error('Authentication required');
+      }
+      return r.json();
+    }),
 };
 

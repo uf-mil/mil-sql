@@ -12,6 +12,7 @@ from flask import Flask
 from flask_cors import CORS
 from src.api.routes.locations import locations_bp
 from src.api.routes.supplies import supplies_bp
+from src.api.routes.supplies_location import supplies_location_bp
 from src.api.routes.auth import auth_bp
 
 # Import helpers for schema initialization
@@ -33,6 +34,7 @@ CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'http://l
 # Register blueprints
 app.register_blueprint(locations_bp, url_prefix='/api/locations')
 app.register_blueprint(supplies_bp, url_prefix='/api/supplies')
+app.register_blueprint(supplies_location_bp, url_prefix='/api/supplies-location')
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
 
 
@@ -45,9 +47,11 @@ def initialize_schema():
         
         # Get SQL base path
         SQL_BASE_PATH = get_sql_base_path(__file__)
+        print(f"📁 SQL base path: {SQL_BASE_PATH}")
         
         # Discover all table files
         table_files = discover_table_files(SQL_BASE_PATH)
+        print(f"📋 Discovered {len(table_files)} table file(s): {[name for name, _ in table_files]}")
         
         if not table_files:
             print("⚠ No table_*.sql files found, skipping initialization")
@@ -57,12 +61,17 @@ def initialize_schema():
         
         # Sort tables by dependency order
         sorted_tables = topological_sort_tables(table_files)
+        print(f"📊 Sorted tables in dependency order: {[name for name, _ in sorted_tables]}")
         
         # Check which tables are missing
         missing_tables = []
         for table_name, sql_file in sorted_tables:
-            if not table_exists(cur, table_name):
+            exists = table_exists(cur, table_name)
+            if not exists:
                 missing_tables.append((table_name, sql_file))
+                print(f"  ⚠ Missing: {table_name}")
+            else:
+                print(f"  ✓ Exists: {table_name}")
         
         if not missing_tables:
             print("✓ All tables exist, schema is up to date")
@@ -73,19 +82,29 @@ def initialize_schema():
         # Create missing tables
         print(f"📋 Creating {len(missing_tables)} missing table(s)...")
         success_count = 0
+        failed_tables = []
         for table_name, sql_file in missing_tables:
             description = f"{table_name} table"
+            print(f"  🔨 Creating {table_name} from {sql_file.name}...")
             if execute_sql_file(cur, sql_file, description):
                 success_count += 1
+            else:
+                failed_tables.append(table_name)
         
         conn.commit()
-        print(f"✓ Schema initialization complete ({success_count}/{len(missing_tables)} tables created)")
+        if failed_tables:
+            print(f"⚠ Schema initialization incomplete: {success_count}/{len(missing_tables)} tables created")
+            print(f"  Failed tables: {', '.join(failed_tables)}")
+        else:
+            print(f"✓ Schema initialization complete ({success_count}/{len(missing_tables)} tables created)")
         
         cur.close()
         conn.close()
         
     except Exception as e:
         print(f"⚠ Schema initialization warning: {e}")
+        import traceback
+        traceback.print_exc()
         print("  API will continue, but some endpoints may not work until tables are created")
 
 
@@ -96,10 +115,9 @@ initialize_schema()
 try:
     from src.scripts.seed_locations import seed_test_user, seed_locations
     seed_test_user()
-    # Note: seed_locations() will be called separately or can be called here
-    # For now, we'll let it be called manually or via make seed
+    seed_locations()  # Sync locations from JSON
 except Exception as e:
-    print(f"⚠ Warning: Could not seed test user: {e}")
+    print(f"⚠ Warning: Could not seed test user or locations: {e}")
 
 
 @app.route('/health', methods=['GET'])

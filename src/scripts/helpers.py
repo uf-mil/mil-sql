@@ -195,14 +195,35 @@ def execute_sql_file(cur, sql_file_path, description):
     """Execute a SQL file and handle errors gracefully."""
     try:
         sql_content = sql_file_path.read_text()
-        # Split by semicolons to handle multiple statements
-        statements = [s.strip() for s in sql_content.split(';') if s.strip()]
-        for statement in statements:
-            if statement:
-                cur.execute(statement)
+        # Remove SQL comments (-- style) that might interfere with parsing
+        # But preserve the structure - we'll execute the whole file as one statement
+        # since CREATE TABLE statements should be atomic
+        
+        # Remove single-line comments (-- style)
+        lines = sql_content.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Find comment start (-- not inside a string)
+            comment_pos = line.find('--')
+            if comment_pos >= 0:
+                # Check if it's not inside a string (simple check)
+                before_comment = line[:comment_pos]
+                if before_comment.count("'") % 2 == 0:  # Even number of quotes = not in string
+                    line = before_comment.rstrip()
+            cleaned_lines.append(line)
+        cleaned_sql = '\n'.join(cleaned_lines)
+        
+        # Remove empty lines and trim
+        cleaned_sql = '\n'.join(line for line in cleaned_sql.split('\n') if line.strip())
+        
+        # Execute the cleaned SQL (should be a single CREATE TABLE statement)
+        if cleaned_sql.strip():
+            cur.execute(cleaned_sql)
         print(f"✓ {description} succeeded")
         return True
     except Exception as e:
         print(f"✗ {description} failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 

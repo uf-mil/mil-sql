@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import * as d3 from 'd3';
+import { api } from '../api';
 
 const InventoryContext = createContext(null);
 
@@ -31,6 +32,13 @@ export const InventoryProvider = ({ children }) => {
   const [leftPaneWidth, setLeftPaneWidth] = useState(300);
   const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
   
+  // Loading and error states
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Supply name to ID mapping (for API calls)
+  const [supplyNameToId, setSupplyNameToId] = useState(new Map());
+  
   // Add Mode state
   const [addModeItem, setAddModeItem] = useState(null);
   const [addModeQtyPerClick, setAddModeQtyPerClick] = useState(1);
@@ -59,13 +67,17 @@ export const InventoryProvider = ({ children }) => {
   const worldRef = useRef(null);
   const isPanningRef = useRef(false);
 
-  // Initialize inventory data from JSON
+  // Initialize inventory data from JSON (layout only) and API (inventory data)
   useEffect(() => {
     const loadInventoryData = async () => {
+      setIsLoading(true);
+      setError(null);
+      
       try {
+        // 1. Load layout from JSON (no inventory arrays)
         const response = await fetch('/inventory-locations.json');
         if (!response.ok) {
-          throw new Error('Failed to load inventory data');
+          throw new Error('Failed to load inventory layout');
         }
         const data = await response.json();
         
@@ -74,24 +86,59 @@ export const InventoryProvider = ({ children }) => {
           setInventoryBounds(data['inventory-bounds']);
         }
         
+        // Initialize inventoryData with layout only (empty inventory arrays)
         const newInventoryData = new Map();
         data.boxes.forEach(box => {
-          // Ensure inventory array exists - simplified structure: name + qty (+ optional shelf)
-          const inventory = (box.inventory || []).map(item => ({
-            name: item.name || '',
-            qty: item.qty || 1,
-            shelf: item.shelf !== undefined ? item.shelf : undefined
-          }));
-          
           newInventoryData.set(box.title, {
             ...box,
-            inventory
+            inventory: [] // Will be populated from API
           });
         });
         
         setInventoryData(newInventoryData);
+        
+        // 2. Load supply locations from API and merge into inventoryData
+        try {
+          const supplyLocations = await api.getAllSupplyLocations();
+          
+          // Group by location_name and merge into inventoryData
+          const locationMap = new Map();
+          supplyLocations.forEach(sl => {
+            const key = sl.location;
+            if (!locationMap.has(key)) {
+              locationMap.set(key, []);
+            }
+            locationMap.get(key).push({
+              name: sl.supply_name || '', // From JOIN in API
+              qty: sl.qty, // API maps amount to qty
+              shelf: sl.shelf !== null ? sl.shelf : undefined
+            });
+          });
+          
+          // Merge into inventoryData
+          setInventoryData(prev => {
+            const next = new Map(prev);
+            locationMap.forEach((items, locationName) => {
+              const boxData = next.get(locationName);
+              if (boxData) {
+                next.set(locationName, {
+                  ...boxData,
+                  inventory: items
+                });
+              }
+            });
+            return next;
+          });
+        } catch (apiError) {
+          console.error('Error loading supply locations from API:', apiError);
+          // Continue with empty inventory arrays if API fails
+        }
+        
+        setIsLoading(false);
       } catch (error) {
         console.error('Error loading inventory data:', error);
+        setError(error.message || 'Failed to load inventory data');
+        setIsLoading(false);
         // Fallback to empty data if JSON fails to load
         setInventoryData(new Map());
       }
@@ -128,36 +175,54 @@ export const InventoryProvider = ({ children }) => {
     document.body.style.setProperty('--left-pane-width', `${leftPaneWidth}px`);
   }, [leftPaneWidth]);
 
-  // Load SOT inventory items from JSON
+  // Load SOT inventory items (supplies catalog) from API
   useEffect(() => {
     const loadSOTItems = async () => {
       try {
-        const response = await fetch('/sot-inventory-items.json');
-        if (!response.ok) {
-          throw new Error('Failed to load SOT inventory items');
-        }
-        const data = await response.json();
+        const supplies = await api.getSupplies();
         
         const newSOTItems = new Map();
-        (data.items || []).forEach(item => {
-          newSOTItems.set(item.name, {
-            name: item.name,
-            description: item.description || '',
-            image: item.image || null,
-            locations: item.locations || [],
-            lastModified: item.lastModified || null
+        const nameToIdMap = new Map();
+        
+        supplies.forEach(supply => {
+          // Build name to ID mapping
+          nameToIdMap.set(supply.name, supply.id);
+          
+          // Convert API response to SOT item format
+          // API returns locations[] with {location, shelf, qty}
+          const locations = (supply.locations || []).map(loc => {
+            if (loc.shelf !== null && loc.shelf !== undefined) {
+              return `${loc.location} (Shelf ${loc.shelf})`;
+            }
+            return loc.location;
+          });
+          
+          newSOTItems.set(supply.name, {
+            name: supply.name,
+            description: supply.description || '',
+            image: supply.image || null,
+            locations: locations,
+            lastModified: supply.lastModified || null,
+            id: supply.id // Store ID for API calls
           });
         });
         
         setSotInventoryItems(newSOTItems);
+        setSupplyNameToId(nameToIdMap);
       } catch (error) {
-        console.error('Error loading SOT inventory items:', error);
+        console.error('Error loading SOT inventory items from API:', error);
+        if (error.message === 'Authentication required') {
+          setError('Authentication required. Please login.');
+        }
         setSotInventoryItems(new Map());
+        setSupplyNameToId(new Map());
       }
     };
     
-    loadSOTItems();
-  }, []);
+    if (!isLoading) {
+      loadSOTItems();
+    }
+  }, [isLoading]);
 
   // Load pane state from localStorage
   useEffect(() => {
@@ -197,7 +262,8 @@ export const InventoryProvider = ({ children }) => {
     setTooltip({ visible: false, title: '', x: 0, y: 0 });
   }, []);
 
-  const updateInventory = useCallback((boxTitle, newInventory) => {
+  const updateInventory = useCallback(async (boxTitle, newInventory) => {
+    // Update local state immediately (optimistic update)
     setInventoryData(prev => {
       const next = new Map(prev);
       const boxData = next.get(boxTitle);
@@ -206,7 +272,72 @@ export const InventoryProvider = ({ children }) => {
       }
       return next;
     });
-  }, []);
+    
+    // Sync to API (fire and forget for now - could add error handling later)
+    try {
+      // Get current supply locations for this box
+      const currentLocations = await api.getLocationSupplies(boxTitle);
+      
+      // Build maps for comparison
+      const currentMap = new Map();
+      currentLocations.forEach(sl => {
+        const key = `${sl.supply_name}||${sl.shelf !== null ? sl.shelf : 'null'}`;
+        currentMap.set(key, { id: sl.id, qty: sl.qty });
+      });
+      
+      const newMap = new Map();
+      newInventory.forEach(item => {
+        const key = `${item.name}||${item.shelf !== undefined ? item.shelf : 'null'}`;
+        const supplyId = supplyNameToId.get(item.name);
+        if (supplyId) {
+          newMap.set(key, { supplyId, qty: item.qty, shelf: item.shelf });
+        }
+      });
+      
+      // Calculate differences and sync
+      const toAdd = [];
+      const toUpdate = [];
+      const toDelete = [];
+      
+      // Items to add or update
+      newMap.forEach((newItem, key) => {
+        const current = currentMap.get(key);
+        if (!current) {
+          // New item
+          toAdd.push({
+            supply_id: newItem.supplyId,
+            location_name: boxTitle,
+            shelf: newItem.shelf !== undefined ? newItem.shelf : null,
+            amount: newItem.qty
+          });
+        } else if (current.qty !== newItem.qty) {
+          // Update quantity
+          toUpdate.push({ id: current.id, amount: newItem.qty });
+        }
+      });
+      
+      // Items to delete
+      currentMap.forEach((current, key) => {
+        if (!newMap.has(key)) {
+          toDelete.push(current.id);
+        }
+      });
+      
+      // Execute API calls
+      for (const entry of toAdd) {
+        await api.addSupplyLocation(entry);
+      }
+      for (const update of toUpdate) {
+        await api.updateSupplyLocation(update.id, { amount: update.amount });
+      }
+      for (const id of toDelete) {
+        await api.deleteSupplyLocation(id);
+      }
+    } catch (error) {
+      console.error('Error syncing inventory to API:', error);
+      // Could show error toast here
+    }
+  }, [supplyNameToId]);
 
   // Add Mode functions
   const startAddMode = useCallback((itemName) => {
@@ -237,7 +368,7 @@ export const InventoryProvider = ({ children }) => {
     return false;
   }, [addModePending]);
 
-  const finishAddMode = useCallback(() => {
+  const finishAddMode = useCallback(async () => {
     const currentItem = addModeItemRef.current;
     const pending = addModePendingRef.current;
     
@@ -248,50 +379,95 @@ export const InventoryProvider = ({ children }) => {
       return;
     }
 
-    // Group pending entries by box title so we apply all changes per box in one pass
-    const byBox = new Map();
+    // Get supply_id for the item
+    const supplyId = supplyNameToId.get(currentItem);
+    if (!supplyId) {
+      console.error(`Supply ID not found for item: ${currentItem}`);
+      setError(`Supply ID not found for item: ${currentItem}`);
+      return;
+    }
+
+    // Convert pending map to API format
+    const additions = [];
     pending.forEach((qty, key) => {
       const parts = key.split('||');
       const boxTitle = parts[0];
-      const shelf = parts.length > 1 ? parseInt(parts[1], 10) : undefined;
-      if (!byBox.has(boxTitle)) byBox.set(boxTitle, []);
-      byBox.get(boxTitle).push({ shelf, qty });
+      const shelf = parts.length > 1 ? parseInt(parts[1], 10) : null;
+      additions.push({
+        location: boxTitle,
+        shelf: shelf,
+        amount: qty
+      });
     });
 
-    byBox.forEach((entries, boxTitle) => {
-      const boxData = inventoryData.get(boxTitle);
-      if (!boxData) return;
+    if (additions.length === 0) {
+      setAddModeItem(null);
+      setAddModeQtyPerClick(1);
+      setAddModePending(new Map());
+      return;
+    }
 
-      const newInventory = [...boxData.inventory];
-
-      entries.forEach(({ shelf, qty }) => {
-        // Find existing item matching name AND shelf
-        const existingIndex = newInventory.findIndex(item => {
-          if (item.name !== currentItem) return false;
-          if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
-          return true;
-        });
-
-        if (existingIndex >= 0) {
-          newInventory[existingIndex] = {
-            ...newInventory[existingIndex],
-            qty: newInventory[existingIndex].qty + qty
-          };
-        } else {
-          const newItem = { name: currentItem, qty };
-          if (shelf !== undefined) newItem.shelf = shelf;
-          newInventory.push(newItem);
-        }
+    try {
+      // Use bulk-add API endpoint
+      await api.bulkAddSupplyLocations({
+        supply_id: supplyId,
+        additions: additions
       });
 
-      updateInventory(boxTitle, newInventory);
-    });
+      // Update local state optimistically
+      const byBox = new Map();
+      pending.forEach((qty, key) => {
+        const parts = key.split('||');
+        const boxTitle = parts[0];
+        const shelf = parts.length > 1 ? parseInt(parts[1], 10) : undefined;
+        if (!byBox.has(boxTitle)) byBox.set(boxTitle, []);
+        byBox.get(boxTitle).push({ shelf, qty });
+      });
 
-    // Clear add mode
-    setAddModeItem(null);
-    setAddModeQtyPerClick(1);
-    setAddModePending(new Map());
-  }, [inventoryData, updateInventory]);
+      byBox.forEach((entries, boxTitle) => {
+        const boxData = inventoryData.get(boxTitle);
+        if (!boxData) return;
+
+        const newInventory = [...boxData.inventory];
+
+        entries.forEach(({ shelf, qty }) => {
+          const existingIndex = newInventory.findIndex(item => {
+            if (item.name !== currentItem) return false;
+            if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
+            return true;
+          });
+
+          if (existingIndex >= 0) {
+            newInventory[existingIndex] = {
+              ...newInventory[existingIndex],
+              qty: newInventory[existingIndex].qty + qty
+            };
+          } else {
+            const newItem = { name: currentItem, qty };
+            if (shelf !== undefined) newItem.shelf = shelf;
+            newInventory.push(newItem);
+          }
+        });
+
+        setInventoryData(prev => {
+          const next = new Map(prev);
+          const box = next.get(boxTitle);
+          if (box) {
+            next.set(boxTitle, { ...box, inventory: newInventory });
+          }
+          return next;
+        });
+      });
+
+      // Clear add mode
+      setAddModeItem(null);
+      setAddModeQtyPerClick(1);
+      setAddModePending(new Map());
+    } catch (error) {
+      console.error('Error finishing add mode:', error);
+      setError(error.message || 'Failed to add items');
+    }
+  }, [inventoryData, supplyNameToId]);
 
   const cancelAddMode = useCallback(() => {
     setAddModeItem(null);
@@ -382,56 +558,141 @@ export const InventoryProvider = ({ children }) => {
     return locations;
   }, [inventoryData]);
 
-  const addSOTItem = useCallback((item) => {
-    setSotInventoryItems(prev => {
-      const next = new Map(prev);
-      next.set(item.name, { ...item, lastModified: new Date().toISOString() });
-      return next;
-    });
+  const addSOTItem = useCallback(async (item) => {
+    try {
+      const created = await api.createSupply({
+        name: item.name,
+        description: item.description || '',
+        image: item.image || null
+      });
+      
+      // Update local state
+      setSotInventoryItems(prev => {
+        const next = new Map(prev);
+        next.set(created.name, {
+          name: created.name,
+          description: created.description || '',
+          image: created.image || null,
+          locations: [],
+          lastModified: created.lastModified || null,
+          id: created.id
+        });
+        return next;
+      });
+      
+      // Update name to ID mapping
+      setSupplyNameToId(prev => {
+        const next = new Map(prev);
+        next.set(created.name, created.id);
+        return next;
+      });
+    } catch (error) {
+      console.error('Error adding SOT item:', error);
+      setError(error.message || 'Failed to add item');
+      throw error;
+    }
   }, []);
 
-  const updateSOTItem = useCallback((oldName, newItem) => {
-    setSotInventoryItems(prev => {
-      const next = new Map(prev);
-      if (oldName !== newItem.name) {
-        next.delete(oldName);
-        // Update all box references if name changed
-        setInventoryData(prevData => {
-          const newData = new Map(prevData);
-          newData.forEach((boxData, boxTitle) => {
-            const updatedInventory = boxData.inventory.map(item => 
-              item.name === oldName ? { ...item, name: newItem.name } : item
-            );
-            newData.set(boxTitle, { ...boxData, inventory: updatedInventory });
+  const updateSOTItem = useCallback(async (oldName, newItem) => {
+    try {
+      const oldItem = sotInventoryItems.get(oldName);
+      if (!oldItem || !oldItem.id) {
+        throw new Error(`Item ${oldName} not found or missing ID`);
+      }
+      
+      const updated = await api.updateSupply(oldItem.id, {
+        name: newItem.name,
+        description: newItem.description || '',
+        image: newItem.image || null
+      });
+      
+      // Update local state
+      setSotInventoryItems(prev => {
+        const next = new Map(prev);
+        if (oldName !== newItem.name) {
+          next.delete(oldName);
+          // Update all box references if name changed
+          setInventoryData(prevData => {
+            const newData = new Map(prevData);
+            newData.forEach((boxData, boxTitle) => {
+              const updatedInventory = boxData.inventory.map(item => 
+                item.name === oldName ? { ...item, name: newItem.name } : item
+              );
+              newData.set(boxTitle, { ...boxData, inventory: updatedInventory });
+            });
+            return newData;
           });
-          return newData;
+        }
+        next.set(updated.name, {
+          name: updated.name,
+          description: updated.description || '',
+          image: updated.image || null,
+          locations: updated.locations || [],
+          lastModified: updated.lastModified || null,
+          id: updated.id
+        });
+        return next;
+      });
+      
+      // Update name to ID mapping if name changed
+      if (oldName !== newItem.name) {
+        setSupplyNameToId(prev => {
+          const next = new Map(prev);
+          next.delete(oldName);
+          next.set(updated.name, updated.id);
+          return next;
         });
       }
-      next.set(newItem.name, { ...newItem, lastModified: new Date().toISOString() });
-      return next;
-    });
-  }, []);
-
-  const deleteSOTItem = useCallback((itemName) => {
-    setSotInventoryItems(prev => {
-      const next = new Map(prev);
-      next.delete(itemName);
-      return next;
-    });
-    // Remove from all boxes
-    setInventoryData(prev => {
-      const newData = new Map(prev);
-      newData.forEach((boxData, boxTitle) => {
-        const updatedInventory = boxData.inventory.filter(item => item.name !== itemName);
-        newData.set(boxTitle, { ...boxData, inventory: updatedInventory });
-      });
-      return newData;
-    });
-    // Close preview if this item was selected
-    if (selectedSOTItem === itemName) {
-      setSelectedSOTItem(null);
+    } catch (error) {
+      console.error('Error updating SOT item:', error);
+      setError(error.message || 'Failed to update item');
+      throw error;
     }
-  }, [selectedSOTItem]);
+  }, [sotInventoryItems]);
+
+  const deleteSOTItem = useCallback(async (itemName) => {
+    try {
+      const item = sotInventoryItems.get(itemName);
+      if (!item || !item.id) {
+        throw new Error(`Item ${itemName} not found or missing ID`);
+      }
+      
+      await api.deleteSupply(item.id);
+      
+      // Update local state
+      setSotInventoryItems(prev => {
+        const next = new Map(prev);
+        next.delete(itemName);
+        return next;
+      });
+      
+      // Remove from name to ID mapping
+      setSupplyNameToId(prev => {
+        const next = new Map(prev);
+        next.delete(itemName);
+        return next;
+      });
+      
+      // Remove from all boxes (CASCADE in DB handles this, but update UI)
+      setInventoryData(prev => {
+        const newData = new Map(prev);
+        newData.forEach((boxData, boxTitle) => {
+          const updatedInventory = boxData.inventory.filter(item => item.name !== itemName);
+          newData.set(boxTitle, { ...boxData, inventory: updatedInventory });
+        });
+        return newData;
+      });
+      
+      // Close preview if this item was selected
+      if (selectedSOTItem === itemName) {
+        setSelectedSOTItem(null);
+      }
+    } catch (error) {
+      console.error('Error deleting SOT item:', error);
+      setError(error.message || 'Failed to delete item');
+      throw error;
+    }
+  }, [selectedSOTItem, sotInventoryItems]);
 
   const clearSelectedSOTItem = useCallback(() => {
     setSelectedSOTItem(null);
@@ -455,6 +716,10 @@ export const InventoryProvider = ({ children }) => {
     selectedSOTItem,
     leftPaneWidth,
     leftPaneCollapsed,
+    // Loading and error states
+    isLoading,
+    error,
+    setError,
     // Setters
     setInventoryData,
     setSelectedBox,
