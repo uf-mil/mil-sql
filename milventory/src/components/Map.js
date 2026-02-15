@@ -99,7 +99,6 @@ const MapComponent = forwardRef((props, ref) => {
                 }
               }}
               onMouseEnter={(e) => handleBoxMouseEnter(e, box.title)}
-              onMouseMove={(e) => handleBoxMouseEnter(e, box.title)}
               onMouseLeave={handleBoxHoverLeave}
               onDragEnter={(e) => handleDragEnter(e, box.title)}
               onDragOver={(e) => handleDragOver(e, box.title)}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import * as d3 from 'd3';
 
@@ -12,18 +12,25 @@ const ArrowConnections = () => {
   } = useInventory();
 
   const arrowsRef = useRef(null);
-  const [updateTrigger, setUpdateTrigger] = useState(0);
+  const rafRef = useRef(null);
 
-  const drawArrows = () => {
-    if (!selectedSOTItem || !svgRef.current || !worldRef.current || !arrowsRef.current) return;
+  const drawArrows = useCallback(() => {
+    if (!arrowsRef.current || !svgRef.current) return;
 
     const svg = svgRef.current;
     const arrowsGroup = arrowsRef.current;
-    const locations = getItemLocations(selectedSOTItem);
-    
+
     // Clear existing arrows
     arrowsGroup.innerHTML = '';
 
+    // Remove old highlights
+    svg.querySelectorAll('.box-highlighted').forEach(el => {
+      el.classList.remove('box-highlighted');
+    });
+
+    if (!selectedSOTItem) return;
+
+    const locations = getItemLocations(selectedSOTItem);
     if (locations.length === 0) return;
 
     // Find preview pane position in screen coordinates
@@ -33,13 +40,11 @@ const ArrowConnections = () => {
     const previewRect = previewPane.getBoundingClientRect();
     const svgRect = svg.getBoundingClientRect();
     const transform = d3.zoomTransform(svg);
-    
-    // Arrow should start from the right edge of the preview pane
-    const previewScreenX = previewRect.right; // Right edge of preview pane
-    const previewScreenY = previewRect.top + 50; // Top of preview pane + some offset
-    
-    // Convert screen coordinates to SVG coordinates
-    // Formula: svgX = (screenX - svgRect.left - transform.x) / transform.k
+
+    // Arrow starts from right edge of preview pane
+    const previewScreenX = previewRect.right;
+    const previewScreenY = previewRect.top + 50;
+
     const previewX = (previewScreenX - svgRect.left - transform.x) / transform.k;
     const previewY = (previewScreenY - svgRect.top - transform.y) / transform.k;
 
@@ -48,18 +53,13 @@ const ArrowConnections = () => {
       const boxData = inventoryData.get(boxTitle);
       if (!boxData) return;
 
-      // Box center coordinates (already in SVG space)
       const boxX = boxData.x + boxData.width / 2;
       const boxY = boxData.y + boxData.height / 2;
 
-      // Create arrow path
       const path = d3.path();
-      
-      // Calculate control points for curved arrow
       const dx = boxX - previewX;
       const dy = boxY - previewY;
-      
-      // Use a curved path
+
       const cp1x = previewX + dx * 0.3;
       const cp1y = previewY;
       const cp2x = boxX - dx * 0.3;
@@ -68,11 +68,10 @@ const ArrowConnections = () => {
       path.moveTo(previewX, previewY);
       path.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, boxX, boxY);
 
-      // Create arrowhead
+      // Arrowhead
       const angle = Math.atan2(dy, dx);
       const arrowLength = 12;
       const arrowAngle = Math.PI / 6;
-
       const arrowX = boxX - Math.cos(angle) * 20;
       const arrowY = boxY - Math.sin(angle) * 20;
 
@@ -87,7 +86,6 @@ const ArrowConnections = () => {
         arrowY - arrowLength * Math.sin(angle + arrowAngle)
       );
 
-      // Create path element
       const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathElement.setAttribute('d', path.toString());
       pathElement.setAttribute('class', 'sot-arrow-path');
@@ -101,56 +99,43 @@ const ArrowConnections = () => {
         boxElement.classList.add('box-highlighted');
       }
     });
-  };
+  }, [selectedSOTItem, getItemLocations, inventoryData, svgRef]);
 
+  // Draw arrows when selectedSOTItem changes
   useEffect(() => {
     drawArrows();
 
-    // Cleanup function
     return () => {
       if (arrowsRef.current) {
         arrowsRef.current.innerHTML = '';
       }
-      if (selectedSOTItem && svgRef.current) {
-        const locations = getItemLocations(selectedSOTItem);
-        locations.forEach((boxTitle) => {
-          const boxElement = svgRef.current.querySelector(`rect[data-title="${boxTitle}"]`);
-          if (boxElement) {
-            boxElement.classList.remove('box-highlighted');
-          }
+      if (svgRef.current) {
+        svgRef.current.querySelectorAll('.box-highlighted').forEach(el => {
+          el.classList.remove('box-highlighted');
         });
       }
     };
-  }, [selectedSOTItem, getItemLocations, inventoryData, svgRef, worldRef, updateTrigger]);
+  }, [drawArrows]);
 
-  // Update arrows on zoom/pan
+  // Update arrows on zoom/pan via MutationObserver — direct DOM, no React state
   useEffect(() => {
-    if (!selectedSOTItem || !svgRef.current || !worldRef.current) return;
+    if (!selectedSOTItem || !worldRef.current) return;
 
-    const svg = svgRef.current;
     const world = worldRef.current;
-    const updateArrows = () => {
-      setUpdateTrigger(prev => prev + 1);
+
+    const scheduleRedraw = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(drawArrows);
     };
 
-    // Listen for zoom events (includes both zoom and pan in d3)
-    svg.addEventListener('zoom', updateArrows);
-    
-    // Also observe the world transform attribute directly to catch any transform changes
-    const observer = new MutationObserver(() => {
-      updateArrows();
-    });
-    
-    observer.observe(world, {
-      attributes: true,
-      attributeFilter: ['transform']
-    });
+    const observer = new MutationObserver(scheduleRedraw);
+    observer.observe(world, { attributes: true, attributeFilter: ['transform'] });
 
     return () => {
-      svg.removeEventListener('zoom', updateArrows);
       observer.disconnect();
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [selectedSOTItem, svgRef, worldRef]);
+  }, [selectedSOTItem, worldRef, drawArrows]);
 
   if (!selectedSOTItem) return null;
 
@@ -158,4 +143,3 @@ const ArrowConnections = () => {
 };
 
 export default ArrowConnections;
-
