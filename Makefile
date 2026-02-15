@@ -39,15 +39,6 @@ logs: check-docker
 mysql: check-docker
 	$(COMPOSE) exec db mysql -u mysqluser -pmysqlpassword mydb
 
-## test:       Open GUI test runner (starts services if not running, including test API on port 5001)
-.PHONY: test
-test: check-docker
-	@echo "Ensuring services are running..."
-	@$(COMPOSE) up -d
-	@echo "Waiting for services to be ready..."
-	@timeout /t 5 /nobreak >nul 2>&1 || sleep 5 2>/dev/null || true
-	@python src/scripts/test_gui.py
-
 ## build:       Build or rebuild services
 .PHONY: build
 build: check-docker
