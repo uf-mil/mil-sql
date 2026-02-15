@@ -23,11 +23,6 @@ const ArrowConnections = () => {
     // Clear existing arrows
     arrowsGroup.innerHTML = '';
 
-    // Remove old highlights
-    svg.querySelectorAll('.box-highlighted').forEach(el => {
-      el.classList.remove('box-highlighted');
-    });
-
     if (!selectedSOTItem) return;
 
     const locations = getItemLocations(selectedSOTItem);
@@ -91,14 +86,6 @@ const ArrowConnections = () => {
       pathElement.setAttribute('class', 'sot-arrow-path');
       arrowsGroup.appendChild(pathElement);
     });
-
-    // Highlight boxes
-    locations.forEach((boxTitle) => {
-      const boxElement = svg.querySelector(`rect[data-title="${boxTitle}"]`);
-      if (boxElement) {
-        boxElement.classList.add('box-highlighted');
-      }
-    });
   }, [selectedSOTItem, getItemLocations, inventoryData, svgRef]);
 
   // Draw arrows when selectedSOTItem changes
@@ -108,11 +95,6 @@ const ArrowConnections = () => {
     return () => {
       if (arrowsRef.current) {
         arrowsRef.current.innerHTML = '';
-      }
-      if (svgRef.current) {
-        svgRef.current.querySelectorAll('.box-highlighted').forEach(el => {
-          el.classList.remove('box-highlighted');
-        });
       }
     };
   }, [drawArrows]);

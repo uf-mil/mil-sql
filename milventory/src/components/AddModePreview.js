@@ -36,8 +36,27 @@ const AddModePreview = () => {
 
   if (!addModeItem || !item) return null;
 
+  const SHELF_NAMES = [
+    'Shelf 6 (Top)',
+    'Shelf 5',
+    'Shelf 4',
+    'Shelf 3',
+    'Shelf 2',
+    'Shelf 1 (Bottom)'
+  ];
+
   const pendingCount = Array.from(addModePending.values()).reduce((sum, qty) => sum + qty, 0);
-  const pendingBoxes = Array.from(addModePending.entries());
+  const pendingEntries = Array.from(addModePending.entries());
+
+  // Format a pending key for display
+  const formatPendingKey = (key) => {
+    const parts = key.split('||');
+    if (parts.length > 1) {
+      const shelfIdx = parseInt(parts[1], 10);
+      return `${parts[0]} → ${SHELF_NAMES[shelfIdx] || `Shelf ${shelfIdx}`}`;
+    }
+    return parts[0];
+  };
 
   return (
     <div
@@ -92,13 +111,13 @@ const AddModePreview = () => {
           </div>
         </div>
 
-        {pendingBoxes.length > 0 && (
+        {pendingEntries.length > 0 && (
           <div className="add-mode-pending">
             <strong>Pending additions:</strong>
             <ul>
-              {pendingBoxes.map(([boxTitle, qty]) => (
-                <li key={boxTitle}>
-                  {boxTitle}: +{qty}
+              {pendingEntries.map(([key, qty]) => (
+                <li key={key}>
+                  {formatPendingKey(key)}: +{qty}
                 </li>
               ))}
             </ul>

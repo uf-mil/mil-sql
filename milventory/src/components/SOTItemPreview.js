@@ -7,6 +7,7 @@ const SOTItemPreview = () => {
     selectedSOTItem,
     resolveSOTItem,
     getItemLocations,
+    inventoryData,
     clearSelectedSOTItem,
     deleteSOTItem,
     startAddMode,
@@ -14,11 +15,36 @@ const SOTItemPreview = () => {
     leftPaneCollapsed
   } = useInventory();
 
+  const SHELF_NAMES = [
+    'Shelf 6 (Top)', 'Shelf 5', 'Shelf 4',
+    'Shelf 3', 'Shelf 2', 'Shelf 1 (Bottom)'
+  ];
+
   const previewRef = useRef(null);
   const [editingItem, setEditingItem] = useState(null);
 
   const item = selectedSOTItem ? resolveSOTItem(selectedSOTItem) : null;
   const locations = selectedSOTItem ? getItemLocations(selectedSOTItem) : [];
+
+  // Build detailed location entries with qty (breaking Tall Cabinets down by shelf)
+  const locationDetails = [];
+  if (selectedSOTItem) {
+    locations.forEach(boxTitle => {
+      const boxData = inventoryData.get(boxTitle);
+      if (!boxData) return;
+      const matchingItems = boxData.inventory.filter(i => i.name === selectedSOTItem);
+      if (boxTitle.startsWith('Tall Cabinet')) {
+        matchingItems.forEach(i => {
+          const shelfIdx = i.shelf ?? 0;
+          const shelfName = SHELF_NAMES[shelfIdx] || `Shelf ${shelfIdx}`;
+          locationDetails.push({ label: `${boxTitle} → ${shelfName}`, qty: i.qty });
+        });
+      } else {
+        const totalQty = matchingItems.reduce((sum, i) => sum + (i.qty || 0), 0);
+        locationDetails.push({ label: boxTitle, qty: totalQty });
+      }
+    });
+  }
 
   // Calculate position to the right of left pane
   const leftPaneActualWidth = leftPaneCollapsed ? 40 : leftPaneWidth;
@@ -76,12 +102,12 @@ const SOTItemPreview = () => {
           )}
           <div className="sot-preview-locations">
             <strong>Locations:</strong>
-            {locations.length === 0 ? (
+            {locationDetails.length === 0 ? (
               <div className="sot-preview-location-item">No locations</div>
             ) : (
-              locations.map((location, idx) => (
+              locationDetails.map((loc, idx) => (
                 <div key={idx} className="sot-preview-location-item">
-                  {location}
+                  {loc.label} <span className="sot-preview-location-qty">(Qty: {loc.qty})</span>
                 </div>
               ))
             )}

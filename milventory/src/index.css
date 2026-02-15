@@ -1032,6 +1032,11 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   color: var(--text);
 }
 
+.sot-preview-location-qty {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
 .sot-preview-image {
   margin-top: 0.75rem;
 }
@@ -1085,11 +1090,13 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 }
 
 .sot-action-button.add-button {
-  background: rgba(74, 222, 128, 0.15);
+  background: rgba(74, 222, 128, 0.35);
+  color: #fff;
+  font-weight: 400;
 }
 
 .sot-action-button.add-button:hover {
-  background: rgba(74, 222, 128, 0.3);
+  background: rgba(74, 222, 128, 0.5);
 }
 
 /* Arrow Connections */
@@ -1116,6 +1123,49 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   stroke: #4ade80 !important;
   stroke-width: 3 !important;
   filter: drop-shadow(0 0 8px rgba(74, 222, 128, 0.6));
+}
+
+/* Add Mode Shelf Overlay */
+.add-mode-shelf {
+  fill: rgba(0, 0, 0, 0.15);
+  stroke: rgba(255, 255, 255, 0.25);
+  stroke-width: 1;
+  cursor: pointer;
+  pointer-events: all;
+  transition: fill 0.15s;
+}
+
+.add-mode-shelf:hover {
+  fill: rgba(74, 222, 128, 0.15);
+  stroke: rgba(74, 222, 128, 0.5);
+  stroke-width: 2;
+}
+
+.add-mode-shelf-affected {
+  fill: rgba(74, 222, 128, 0.1) !important;
+  stroke: #4ade80 !important;
+  stroke-width: 2 !important;
+  filter: drop-shadow(0 0 4px rgba(74, 222, 128, 0.4));
+}
+
+.add-mode-shelf-affected:hover {
+  fill: rgba(74, 222, 128, 0.2) !important;
+}
+
+.add-mode-shelf-label {
+  fill: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  font-weight: 500;
+  pointer-events: none;
+  user-select: none;
+}
+
+.add-mode-shelf-qty {
+  fill: #4ade80;
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Box Inventory Overlay on Canvas */
@@ -1252,6 +1302,13 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   font-size: 1rem;
   text-align: center;
   width: 80px;
+  -moz-appearance: textfield;
+}
+
+.number-input::-webkit-inner-spin-button,
+.number-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .number-input:focus {

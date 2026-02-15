@@ -59,6 +59,7 @@ export const InventoryProvider = ({ children }) => {
   const wrapRef = useRef(null);
   const svgRef = useRef(null);
   const worldRef = useRef(null);
+  const isPanningRef = useRef(false);
 
   // Initialize inventory data from JSON
   useEffect(() => {
@@ -107,10 +108,16 @@ export const InventoryProvider = ({ children }) => {
 
     const zoom = d3.zoom()
       .scaleExtent([0.6, 6])
+      .on('start', () => {
+        isPanningRef.current = true;
+      })
       .on('zoom', (e) => {
         if (worldRef.current) {
           worldRef.current.setAttribute('transform', e.transform);
         }
+      })
+      .on('end', () => {
+        isPanningRef.current = false;
       });
     
     const svg = d3.select(svgRef.current);
@@ -183,6 +190,7 @@ export const InventoryProvider = ({ children }) => {
   }, []);
 
   const handleBoxHover = useCallback((boxTitle, x, y) => {
+    if (isPanningRef.current) return; // Skip during pan/zoom to avoid re-render storm
     const boxData = inventoryData.get(boxTitle);
     if (boxData) {
       setTooltip({ visible: true, title: boxTitle, x, y });
@@ -190,6 +198,7 @@ export const InventoryProvider = ({ children }) => {
   }, [inventoryData]);
 
   const handleBoxHoverLeave = useCallback(() => {
+    if (isPanningRef.current) return; // Skip during pan/zoom
     setTooltip({ visible: false, title: '', x: 0, y: 0 });
   }, []);
 
@@ -213,15 +222,25 @@ export const InventoryProvider = ({ children }) => {
     setSelectedSOTItem(null); // Clear SOT preview when entering add mode
   }, []);
 
-  const handleBoxClickAddMode = useCallback((boxTitle) => {
+  // shelf is optional — undefined for non-shelf boxes, number for Tall Cabinet shelves
+  const handleBoxClickAddMode = useCallback((boxTitle, shelf) => {
     const qty = addModeQtyPerClickRef.current;
+    const key = shelf !== undefined ? `${boxTitle}||${shelf}` : boxTitle;
     setAddModePending(prev => {
       const next = new Map(prev);
-      const existing = next.get(boxTitle) || 0;
-      next.set(boxTitle, existing + qty);
+      const existing = next.get(key) || 0;
+      next.set(key, existing + qty);
       return next;
     });
   }, []);
+
+  // Check if any pending entry belongs to a given box (handles compound keys)
+  const boxHasAnyPending = useCallback((boxTitle) => {
+    for (const key of addModePending.keys()) {
+      if (key === boxTitle || key.startsWith(boxTitle + '||')) return true;
+    }
+    return false;
+  }, [addModePending]);
 
   const finishAddMode = useCallback(() => {
     const currentItem = addModeItemRef.current;
@@ -234,39 +253,43 @@ export const InventoryProvider = ({ children }) => {
       return;
     }
 
-    // Apply all pending additions
-    pending.forEach((qty, boxTitle) => {
+    // Group pending entries by box title so we apply all changes per box in one pass
+    const byBox = new Map();
+    pending.forEach((qty, key) => {
+      const parts = key.split('||');
+      const boxTitle = parts[0];
+      const shelf = parts.length > 1 ? parseInt(parts[1], 10) : undefined;
+      if (!byBox.has(boxTitle)) byBox.set(boxTitle, []);
+      byBox.get(boxTitle).push({ shelf, qty });
+    });
+
+    byBox.forEach((entries, boxTitle) => {
       const boxData = inventoryData.get(boxTitle);
-      if (boxData) {
-        const newInventory = [...boxData.inventory];
-        
-        // Check if item already exists in this box
-        const existingIndex = newInventory.findIndex(item => item.name === currentItem);
-        
+      if (!boxData) return;
+
+      const newInventory = [...boxData.inventory];
+
+      entries.forEach(({ shelf, qty }) => {
+        // Find existing item matching name AND shelf
+        const existingIndex = newInventory.findIndex(item => {
+          if (item.name !== currentItem) return false;
+          if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
+          return true;
+        });
+
         if (existingIndex >= 0) {
-          // Update existing item
           newInventory[existingIndex] = {
             ...newInventory[existingIndex],
             qty: newInventory[existingIndex].qty + qty
           };
         } else {
-          // Add new item
-          const newItem = {
-            name: currentItem,
-            qty: qty
-          };
-          
-          // If it's a Tall Cabinet, we need to determine shelf
-          if (boxTitle.startsWith('Tall Cabinet')) {
-            // For now, add to shelf 0 (top). Could be enhanced to let user choose
-            newItem.shelf = 0;
-          }
-          
+          const newItem = { name: currentItem, qty };
+          if (shelf !== undefined) newItem.shelf = shelf;
           newInventory.push(newItem);
         }
-        
-        updateInventory(boxTitle, newInventory);
-      }
+      });
+
+      updateInventory(boxTitle, newInventory);
     });
 
     // Clear add mode
@@ -485,6 +508,7 @@ export const InventoryProvider = ({ children }) => {
     finishAddMode,
     cancelAddMode,
     handleBoxClickAddMode,
+    boxHasAnyPending,
   };
 
   return (

@@ -93,8 +93,8 @@ const EditModal = () => {
               <div className="edit-form-image-container" style={{ marginTop: '0.5rem' }}>
                 <img src={sotItem.image} alt={sotItem.name} />
               </div>
-            )}
-          </div>
+          )}
+        </div>
         )}
         <input
           type="number"
