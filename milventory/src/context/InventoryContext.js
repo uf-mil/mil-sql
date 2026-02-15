@@ -24,8 +24,6 @@ export const InventoryProvider = ({ children }) => {
   const [draggedItemData, setDraggedItemData] = useState(null);
   const [currentDragOverBox, setCurrentDragOverBox] = useState(null);
   const [tooltip, setTooltip] = useState({ visible: false, title: '', x: 0, y: 0 });
-  const [rightTabWidth, setRightTabWidth] = useState(300);
-  const [rightPaneCollapsed, setRightPaneCollapsed] = useState(false);
   
   // SOT Inventory Table state
   const [sotInventoryItems, setSotInventoryItems] = useState(new Map());
@@ -165,18 +163,15 @@ export const InventoryProvider = ({ children }) => {
   useEffect(() => {
     const savedLeftWidth = localStorage.getItem('leftPaneWidth');
     const savedLeftCollapsed = localStorage.getItem('leftPaneCollapsed');
-    const savedRightCollapsed = localStorage.getItem('rightPaneCollapsed');
     if (savedLeftWidth) setLeftPaneWidth(parseInt(savedLeftWidth, 10));
     if (savedLeftCollapsed === 'true') setLeftPaneCollapsed(true);
-    if (savedRightCollapsed === 'true') setRightPaneCollapsed(true);
   }, []);
 
   // Save pane state to localStorage
   useEffect(() => {
     localStorage.setItem('leftPaneWidth', leftPaneWidth.toString());
     localStorage.setItem('leftPaneCollapsed', leftPaneCollapsed.toString());
-    localStorage.setItem('rightPaneCollapsed', rightPaneCollapsed.toString());
-  }, [leftPaneWidth, leftPaneCollapsed, rightPaneCollapsed]);
+  }, [leftPaneWidth, leftPaneCollapsed]);
 
 
   // Handlers
@@ -455,8 +450,6 @@ export const InventoryProvider = ({ children }) => {
     draggedItemData,
     currentDragOverBox,
     tooltip,
-    rightTabWidth,
-    rightPaneCollapsed,
     // SOT Inventory state
     sotInventoryItems,
     selectedSOTItem,
@@ -473,8 +466,6 @@ export const InventoryProvider = ({ children }) => {
     setDraggedItemData,
     setCurrentDragOverBox,
     setTooltip,
-    setRightTabWidth,
-    setRightPaneCollapsed,
     setSotInventoryItems,
     setSelectedSOTItem,
     setLeftPaneWidth,
