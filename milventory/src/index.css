@@ -910,28 +910,20 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   text-align: center;
 }
 
-.sot-table .actions-cell {
-  width: 120px;
+.sot-table .location-cell {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
-.sot-table .actions-cell button {
-  background: rgba(255,255,255,.1);
-  border: none;
-  color: var(--text);
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  cursor: pointer;
+.sot-table .modified-cell {
+  white-space: nowrap;
+  color: var(--muted);
   font-size: 0.75rem;
-  margin-right: 0.25rem;
-  transition: opacity 0.2s;
-}
-
-.sot-table .actions-cell button:hover {
-  opacity: 0.8;
-}
-
-.sot-table .actions-cell .delete-button {
-  background: rgba(183, 42, 42, 0.3);
+  text-align: right;
 }
 
 .sot-table-empty {
@@ -1047,6 +1039,57 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 .sot-preview-image img {
   max-width: 100%;
   border-radius: 4px;
+}
+
+.sot-preview-actions {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+
+.sot-preview-actions strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sot-preview-actions-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sot-action-button {
+  background: rgba(255,255,255,.1);
+  border: none;
+  color: var(--text);
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.sot-action-button:hover {
+  background: rgba(255,255,255,.2);
+}
+
+.sot-action-button.delete-button {
+  background: rgba(183, 42, 42, 0.3);
+}
+
+.sot-action-button.delete-button:hover {
+  background: rgba(183, 42, 42, 0.5);
+}
+
+.sot-action-button.add-button {
+  background: rgba(74, 222, 128, 0.15);
+}
+
+.sot-action-button.add-button:hover {
+  background: rgba(74, 222, 128, 0.3);
 }
 
 /* Arrow Connections */

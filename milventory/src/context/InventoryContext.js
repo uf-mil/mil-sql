@@ -139,8 +139,8 @@ export const InventoryProvider = ({ children }) => {
             name: item.name,
             description: item.description || '',
             image: item.image || null,
-
-            locations: item.locations || []
+            locations: item.locations || [],
+            lastModified: item.lastModified || null
           });
         });
         
@@ -367,7 +367,7 @@ export const InventoryProvider = ({ children }) => {
   const addSOTItem = useCallback((item) => {
     setSotInventoryItems(prev => {
       const next = new Map(prev);
-      next.set(item.name, item);
+      next.set(item.name, { ...item, lastModified: new Date().toISOString() });
       return next;
     });
   }, []);
@@ -389,7 +389,7 @@ export const InventoryProvider = ({ children }) => {
           return newData;
         });
       }
-      next.set(newItem.name, newItem);
+      next.set(newItem.name, { ...newItem, lastModified: new Date().toISOString() });
       return next;
     });
   }, []);

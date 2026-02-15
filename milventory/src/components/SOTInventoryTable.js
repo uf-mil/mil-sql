@@ -2,19 +2,17 @@ import React, { useState, useMemo } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import SOTTableRow from './SOTTableRow';
 import SOTAddModal from './SOTAddModal';
-import SOTEditModal from './SOTEditModal';
 
 const SOTInventoryTable = () => {
   const {
     sotInventoryItems,
     computeSOTQuantities,
+    getItemLocations,
     setSelectedSOTItem,
-    selectedSOTItem,
-    startAddMode
+    selectedSOTItem
   } = useInventory();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [editingItem, setEditingItem] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
   const quantities = computeSOTQuantities();
@@ -38,10 +36,6 @@ const SOTInventoryTable = () => {
 
   const handleAddItem = () => {
     setShowAddModal(true);
-  };
-
-  const handleAddToBoxes = (itemName) => {
-    startAddMode(itemName);
   };
 
   return (
@@ -70,7 +64,8 @@ const SOTInventoryTable = () => {
                 <tr>
                   <th>Name</th>
                   <th className="qty-cell">Qty</th>
-                  <th className="actions-cell">Actions</th>
+                  <th className="location-cell">Location</th>
+                  <th className="modified-cell">Last Modified</th>
                 </tr>
               </thead>
               <tbody>
@@ -80,10 +75,9 @@ const SOTInventoryTable = () => {
                     itemName={itemName}
                     itemData={itemData}
                     quantity={quantities.get(itemName) || 0}
+                    locations={getItemLocations(itemName)}
                     isSelected={selectedSOTItem === itemName}
                     onClick={() => handleRowClick(itemName)}
-                    onEdit={() => setEditingItem(itemName)}
-                    onAdd={() => handleAddToBoxes(itemName)}
                   />
                 ))}
               </tbody>
@@ -97,7 +91,6 @@ const SOTInventoryTable = () => {
         </div>
       </div>
       <SOTAddModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
-      <SOTEditModal isOpen={editingItem !== null} onClose={() => setEditingItem(null)} itemName={editingItem} />
     </>
   );
 };
