@@ -12,6 +12,7 @@ from flask import Flask
 from flask_cors import CORS
 from src.api.routes.locations import locations_bp
 from src.api.routes.supplies import supplies_bp
+from src.api.routes.auth import auth_bp
 
 # Import helpers for schema initialization
 from src.scripts.helpers import (
@@ -24,11 +25,15 @@ from src.scripts.helpers import (
 from src.api.db import get_db
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for milventory frontend
+# Set secret key for sessions
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+# Configure CORS to allow credentials (cookies)
+CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'http://localhost:5000'])
 
 # Register blueprints
 app.register_blueprint(locations_bp, url_prefix='/api/locations')
 app.register_blueprint(supplies_bp, url_prefix='/api/supplies')
+app.register_blueprint(auth_bp, url_prefix='/api/auth')
 
 
 def initialize_schema():
@@ -86,6 +91,15 @@ def initialize_schema():
 
 # Initialize schema on startup
 initialize_schema()
+
+# Seed test user and locations
+try:
+    from src.scripts.seed_locations import seed_test_user, seed_locations
+    seed_test_user()
+    # Note: seed_locations() will be called separately or can be called here
+    # For now, we'll let it be called manually or via make seed
+except Exception as e:
+    print(f"⚠ Warning: Could not seed test user: {e}")
 
 
 @app.route('/health', methods=['GET'])

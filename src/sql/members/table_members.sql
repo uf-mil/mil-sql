@@ -9,5 +9,6 @@ CREATE TABLE members (
     github          VARCHAR(150) NOT NULL UNIQUE,
     grad_date       DATE,
     join_date       DATE,
-    is_leader       BOOLEAN DEFAULT FALSE
+    is_leader       BOOLEAN DEFAULT FALSE,
+    password_hash   VARCHAR(255) DEFAULT NULL
 );  

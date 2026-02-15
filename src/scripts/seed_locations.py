@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import mysql.connector
 import time
 import json
+import bcrypt
 from helpers import parse_database_url, get_sql_base_path, execute_sql_file, table_exists
 
 
@@ -183,6 +184,64 @@ def seed_locations():
         sys.exit(1)
 
 
+def seed_test_user():
+    """Seed test user if it doesn't exist."""
+    try:
+        # Get database connection parameters
+        database_url = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@db:3306/mydb")
+        db_params = parse_database_url(database_url)
+        
+        print("👤 Checking for test user...")
+        
+        # Connect to database
+        conn = mysql.connector.connect(**db_params)
+        cur = conn.cursor(dictionary=True)
+        
+        # Check if test user exists
+        cur.execute("SELECT uf_id FROM members WHERE uf_email = %s", ("test@ufl.edu",))
+        existing_user = cur.fetchone()
+        
+        if existing_user:
+            print("✓ Test user already exists")
+            cur.close()
+            conn.close()
+            return
+        
+        # Hash password
+        password = "test"
+        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        # Insert test user
+        cur.execute(
+            """INSERT INTO members 
+               (uf_id, uf_email, first_name, last_name, password_hash, is_leader, discord, github) 
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                "12345678",
+                "test@ufl.edu",
+                "Test",
+                "User",
+                password_hash,
+                True,
+                "testuser#0000",
+                "testuser"
+            )
+        )
+        
+        conn.commit()
+        print("✓ Test user created (email: test@ufl.edu, password: test)")
+        
+        cur.close()
+        conn.close()
+        
+    except mysql.connector.IntegrityError:
+        # User might have been created between check and insert
+        print("✓ Test user already exists (race condition)")
+    except Exception as e:
+        print(f"⚠ Warning: Could not seed test user: {e}")
+
+
 if __name__ == "__main__":
+    seed_test_user()
     seed_locations()
 
