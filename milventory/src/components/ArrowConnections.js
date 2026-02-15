@@ -14,10 +14,24 @@ const ArrowConnections = () => {
   const arrowsRef = useRef(null);
   const rafRef = useRef(null);
 
+  // Convert screen coords to world-group coords (accounts for viewBox + D3 zoom)
+  const screenToWorld = useCallback((screenX, screenY) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const world = svg.querySelector('#world');
+    if (!world) return { x: 0, y: 0 };
+    const ctm = world.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = screenX;
+    pt.y = screenY;
+    const worldPt = pt.matrixTransform(ctm.inverse());
+    return { x: worldPt.x, y: worldPt.y };
+  }, [svgRef]);
+
   const drawArrows = useCallback(() => {
     if (!arrowsRef.current || !svgRef.current) return;
 
-    const svg = svgRef.current;
     const arrowsGroup = arrowsRef.current;
 
     // Clear existing arrows
@@ -33,15 +47,11 @@ const ArrowConnections = () => {
     if (!previewPane) return;
 
     const previewRect = previewPane.getBoundingClientRect();
-    const svgRect = svg.getBoundingClientRect();
-    const transform = d3.zoomTransform(svg);
 
-    // Arrow starts from right edge of preview pane
-    const previewScreenX = previewRect.right;
-    const previewScreenY = previewRect.top + 50;
-
-    const previewX = (previewScreenX - svgRect.left - transform.x) / transform.k;
-    const previewY = (previewScreenY - svgRect.top - transform.y) / transform.k;
+    // Arrow starts from right edge of preview pane — convert to world coords
+    const preview = screenToWorld(previewRect.right, previewRect.top + 50);
+    const previewX = preview.x;
+    const previewY = preview.y;
 
     // Draw arrows to each location box
     locations.forEach((boxTitle) => {
@@ -86,7 +96,7 @@ const ArrowConnections = () => {
       pathElement.setAttribute('class', 'sot-arrow-path');
       arrowsGroup.appendChild(pathElement);
     });
-  }, [selectedSOTItem, getItemLocations, inventoryData, svgRef]);
+  }, [selectedSOTItem, getItemLocations, inventoryData, svgRef, screenToWorld]);
 
   // Draw arrows when selectedSOTItem changes
   useEffect(() => {

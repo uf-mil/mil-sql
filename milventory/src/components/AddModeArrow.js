@@ -8,21 +8,31 @@ const AddModeArrow = () => {
   const mousePosRef = useRef({ x: 0, y: 0 });
   const rafRef = useRef(null);
 
+  // Convert screen coords to world-group coords (accounts for viewBox + D3 zoom)
+  const screenToWorld = useCallback((screenX, screenY) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const world = svg.querySelector('#world');
+    if (!world) return { x: 0, y: 0 };
+    const ctm = world.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = screenX;
+    pt.y = screenY;
+    const worldPt = pt.matrixTransform(ctm.inverse());
+    return { x: worldPt.x, y: worldPt.y };
+  }, [svgRef]);
+
   const updateArrowPath = useCallback(() => {
     if (!arrowRef.current || !svgRef.current || !addModePreviewRef.current) return;
 
-    const svg = svgRef.current;
     const previewPane = addModePreviewRef.current;
-    const svgRect = svg.getBoundingClientRect();
     const previewRect = previewPane.getBoundingClientRect();
-    const transform = d3.zoomTransform(svg);
 
-    // Get preview pane right edge in SVG coordinates
-    const previewScreenX = previewRect.right;
-    const previewScreenY = previewRect.top + 50;
-
-    const previewX = (previewScreenX - svgRect.left - transform.x) / transform.k;
-    const previewY = (previewScreenY - svgRect.top - transform.y) / transform.k;
+    // Get preview pane right edge in world coordinates
+    const preview = screenToWorld(previewRect.right, previewRect.top + 50);
+    const previewX = preview.x;
+    const previewY = preview.y;
 
     const mx = mousePosRef.current.x;
     const my = mousePosRef.current.y;
@@ -60,7 +70,7 @@ const AddModeArrow = () => {
     );
 
     arrowRef.current.setAttribute('d', path.toString());
-  }, [svgRef, addModePreviewRef]);
+  }, [svgRef, addModePreviewRef, screenToWorld]);
 
   useEffect(() => {
     if (!addModeItem || !svgRef.current) return;
@@ -73,15 +83,8 @@ const AddModeArrow = () => {
     };
 
     const handleMouseMove = (e) => {
-      const svgRect = svg.getBoundingClientRect();
-      const transform = d3.zoomTransform(svg);
-
-      // Convert screen coordinates to SVG coordinates — store in ref, no re-render
-      mousePosRef.current = {
-        x: (e.clientX - svgRect.left - transform.x) / transform.k,
-        y: (e.clientY - svgRect.top - transform.y) / transform.k
-      };
-
+      // Convert screen coordinates to world-group coordinates — store in ref, no re-render
+      mousePosRef.current = screenToWorld(e.clientX, e.clientY);
       scheduleUpdate();
     };
 
@@ -103,7 +106,7 @@ const AddModeArrow = () => {
       if (observer) observer.disconnect();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [addModeItem, svgRef, updateArrowPath]);
+  }, [addModeItem, svgRef, updateArrowPath, screenToWorld]);
 
   if (!addModeItem) return null;
 

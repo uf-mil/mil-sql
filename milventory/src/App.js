@@ -7,6 +7,7 @@ import AddModal from './components/AddModal';
 import EditModal from './components/EditForm';
 import AddModePreview from './components/AddModePreview';
 import Login from './components/Login';
+import ErrorToast from './components/ErrorToast';
 import { auth } from './api';
 
 function App() {
@@ -60,7 +61,31 @@ function App() {
 }
 
 function AppContent({ user, onLogout }) {
-  const { wrapRef, svgRef } = useInventory();
+  const { wrapRef, svgRef, isLoading, error, setError } = useInventory();
+
+  // Handle 401 errors by logging out
+  useEffect(() => {
+    if (error && error.includes('Session expired')) {
+      const timer = setTimeout(() => {
+        onLogout();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, onLogout]);
+
+  if (isLoading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        color: 'var(--text)',
+      }}>
+        <div>Loading inventory data...</div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -91,6 +116,7 @@ function AppContent({ user, onLogout }) {
       <AddModal />
       <EditModal />
       <AddModePreview />
+      <ErrorToast error={error} onClose={() => setError(null)} />
     </>
   );
 }

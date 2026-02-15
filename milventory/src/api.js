@@ -84,7 +84,16 @@ export const api = {
       headers: authHeaders() 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -95,7 +104,16 @@ export const api = {
       headers: authHeaders() 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -108,7 +126,16 @@ export const api = {
       body: JSON.stringify(item) 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -121,7 +148,16 @@ export const api = {
       body: JSON.stringify(item) 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -151,7 +187,16 @@ export const api = {
       headers: authHeaders() 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     });
@@ -163,7 +208,16 @@ export const api = {
       headers: authHeaders() 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -174,7 +228,16 @@ export const api = {
       headers: authHeaders() 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -187,7 +250,16 @@ export const api = {
       body: JSON.stringify(entry) 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -200,7 +272,16 @@ export const api = {
       body: JSON.stringify(data) 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -228,7 +309,16 @@ export const api = {
       body: JSON.stringify(data) 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),
@@ -241,7 +331,16 @@ export const api = {
       body: JSON.stringify(data) 
     }).then(r => {
       if (r.status === 401) {
-        throw new Error('Authentication required');
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),

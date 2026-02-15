@@ -72,11 +72,24 @@ def get_supplies(current_user_id=None):
                 'description': row['description'],
                 'image': row['image'],
                 'lastModified': row['last_modified'].isoformat() if row['last_modified'] else None,
+                'last_modified_by': row['last_modified_by'],
                 'totalQty': int(row['totalQty']),
                 'locations': locations
             }
             if row['last_order_date']:
                 supply_dict['last_order_date'] = row['last_order_date'].isoformat() if hasattr(row['last_order_date'], 'isoformat') else str(row['last_order_date'])
+            
+            # Get member name for last_modified_by if available
+            if row['last_modified_by']:
+                cur.execute("""
+                    SELECT first_name, last_name, uf_email
+                    FROM members
+                    WHERE uf_id = %s
+                """, (row['last_modified_by'],))
+                member = cur.fetchone()
+                if member:
+                    supply_dict['last_modified_by_name'] = f"{member['first_name']} {member['last_name']}"
+                    supply_dict['last_modified_by_email'] = member['uf_email']
             
             supplies.append(supply_dict)
         
@@ -149,11 +162,24 @@ def get_supply(supply_id, current_user_id=None):
             'description': row['description'],
             'image': row['image'],
             'lastModified': row['last_modified'].isoformat() if row['last_modified'] else None,
+            'last_modified_by': row['last_modified_by'],
             'totalQty': int(row['totalQty']),
             'locations': locations
         }
         if row['last_order_date']:
             supply_dict['last_order_date'] = row['last_order_date'].isoformat() if hasattr(row['last_order_date'], 'isoformat') else str(row['last_order_date'])
+        
+        # Get member name for last_modified_by if available
+        if row['last_modified_by']:
+            cur.execute("""
+                SELECT first_name, last_name, uf_email
+                FROM members
+                WHERE uf_id = %s
+            """, (row['last_modified_by'],))
+            member = cur.fetchone()
+            if member:
+                supply_dict['last_modified_by_name'] = f"{member['first_name']} {member['last_name']}"
+                supply_dict['last_modified_by_email'] = member['uf_email']
         
         cur.close()
         conn.close()
@@ -358,6 +384,18 @@ def update_supply(supply_id, current_user_id=None):
         
         supply['totalQty'] = int(total_qty)
         supply['locations'] = locations
+        
+        # Get member name for last_modified_by if available
+        if row[6]:  # last_modified_by is at index 6
+            cur.execute("""
+                SELECT first_name, last_name, uf_email
+                FROM members
+                WHERE uf_id = %s
+            """, (row[6],))
+            member = cur.fetchone()
+            if member:
+                supply['last_modified_by_name'] = f"{member[0]} {member[1]}"
+                supply['last_modified_by_email'] = member[2]
         
         cur.close()
         conn.close()

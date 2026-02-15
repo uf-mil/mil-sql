@@ -117,6 +117,16 @@ const SOTItemPreview = () => {
               <img src={item.image} alt={item.name} />
             </div>
           )}
+          {item.last_modified_by_name && (
+            <div className="sot-preview-last-modified" style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              <strong>Last modified by:</strong> {item.last_modified_by_name}
+              {item.lastModified && (
+                <span style={{ marginLeft: '0.5rem' }}>
+                  ({new Date(item.lastModified).toLocaleString()})
+                </span>
+              )}
+            </div>
+          )}
           <div className="sot-preview-actions">
             <strong>Actions:</strong>
             <div className="sot-preview-actions-buttons">

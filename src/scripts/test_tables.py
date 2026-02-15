@@ -101,6 +101,70 @@ def drop_all_tables(cur, database_name):
     print(f"  ✓ Dropped {dropped_count}/{len(table_names)} table(s)")
 
 
+def verify_specific_table_schemas(cur, database_name):
+    """Verify specific table schemas match expected structure."""
+    print("\n🔍 Verifying specific table schemas...")
+    
+    all_valid = True
+    
+    # Verify supplies table schema (catalog/reference table)
+    if table_exists(cur, 'supplies', database_name):
+        columns = get_table_columns(cur, 'supplies', database_name)
+        column_names = [col[0] for col in columns]
+        
+        # Required columns for new schema
+        required_columns = ['id', 'name', 'description', 'image', 'last_modified', 'last_modified_by', 'created_at']
+        # Optional but should exist
+        optional_columns = ['last_order_date']
+        # Old columns that should NOT exist
+        removed_columns = ['amount', 'location']
+        
+        missing_required = [col for col in required_columns if col not in column_names]
+        found_removed = [col for col in removed_columns if col in column_names]
+        
+        if missing_required:
+            print(f"✗ supplies: Missing required columns: {missing_required}")
+            all_valid = False
+        elif found_removed:
+            print(f"✗ supplies: Found removed columns (should not exist): {found_removed}")
+            all_valid = False
+        else:
+            # Check that image is LONGTEXT (col[1] is DATA_TYPE)
+            image_col = next((col for col in columns if col[0] == 'image'), None)
+            if image_col and 'longtext' not in str(image_col[1]).lower():
+                print(f"⚠ supplies: image column should be LONGTEXT, found: {image_col[1]}")
+            # Check that name is UNIQUE (col[3] is COLUMN_KEY, should be 'UNI' or 'PRI')
+            name_col = next((col for col in columns if col[0] == 'name'), None)
+            if name_col and 'uni' not in str(name_col[3]).lower() and 'pri' not in str(name_col[3]).lower():
+                print(f"⚠ supplies: name column should be UNIQUE")
+            print(f"✓ supplies: Schema validated ({len(columns)} columns)")
+    else:
+        print(f"✗ supplies: Table not found")
+        all_valid = False
+    
+    # Verify supplies_location table schema (inventory entries)
+    if table_exists(cur, 'supplies_location', database_name):
+        columns = get_table_columns(cur, 'supplies_location', database_name)
+        column_names = [col[0] for col in columns]
+        
+        # Required columns
+        required_columns = ['id', 'supply_id', 'location_name', 'shelf', 'amount', 'last_modified', 'last_modified_by', 'created_at']
+        
+        missing_required = [col for col in required_columns if col not in column_names]
+        
+        if missing_required:
+            print(f"✗ supplies_location: Missing required columns: {missing_required}")
+            all_valid = False
+        else:
+            # Verify foreign keys exist (basic check - just that columns exist)
+            print(f"✓ supplies_location: Schema validated ({len(columns)} columns)")
+    else:
+        print(f"✗ supplies_location: Table not found")
+        all_valid = False
+    
+    return all_valid
+
+
 def verify_tables(cur, database_name):
     """Verify that all expected tables exist and have valid structure."""
     print("\n🔍 Verifying table structure...")
@@ -125,7 +189,10 @@ def verify_tables(cur, database_name):
             print(f"✗ {table_name}: NOT FOUND")
             all_valid = False
     
-    return all_valid
+    # Also verify specific schema changes
+    schema_valid = verify_specific_table_schemas(cur, database_name)
+    
+    return all_valid and schema_valid
 
 
 def main():

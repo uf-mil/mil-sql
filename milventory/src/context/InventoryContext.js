@@ -147,9 +147,9 @@ export const InventoryProvider = ({ children }) => {
     loadInventoryData();
   }, []);
 
-  // Setup D3 zoom
+  // Setup D3 zoom — re-run when isLoading changes because SVG doesn't exist during loading
   useEffect(() => {
-    if (!svgRef.current || !worldRef.current) return;
+    if (isLoading || !svgRef.current || !worldRef.current) return;
 
     const zoom = d3.zoom()
       .scaleExtent([0.6, 6])
@@ -168,7 +168,7 @@ export const InventoryProvider = ({ children }) => {
     const svg = d3.select(svgRef.current);
     svg.call(zoom).on('dblclick.zoom', null);
     svg.call(zoom.transform, d3.zoomIdentity.scale(1.03));
-  }, []);
+  }, [isLoading]);
 
   // Update CSS variables
   useEffect(() => {
@@ -203,6 +203,8 @@ export const InventoryProvider = ({ children }) => {
             image: supply.image || null,
             locations: locations,
             lastModified: supply.lastModified || null,
+            last_modified_by: supply.last_modified_by || null,
+            last_modified_by_name: supply.last_modified_by_name || null,
             id: supply.id // Store ID for API calls
           });
         });
@@ -335,7 +337,10 @@ export const InventoryProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Error syncing inventory to API:', error);
-      // Could show error toast here
+      // Only set error if not panning (to avoid breaking pan)
+      if (!isPanningRef.current) {
+        setError(error.message || 'Failed to sync inventory changes');
+      }
     }
   }, [supplyNameToId]);
 
@@ -465,7 +470,10 @@ export const InventoryProvider = ({ children }) => {
       setAddModePending(new Map());
     } catch (error) {
       console.error('Error finishing add mode:', error);
-      setError(error.message || 'Failed to add items');
+      // Only set error if not panning (to avoid breaking pan)
+      if (!isPanningRef.current) {
+        setError(error.message || 'Failed to add items');
+      }
     }
   }, [inventoryData, supplyNameToId]);
 
@@ -497,39 +505,90 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [inventoryData]);
 
-  const handleDrop = useCallback((targetBoxTitle) => {
+  const handleDrop = useCallback(async (targetBoxTitle) => {
     if (!draggedItemData || draggedItemData.sourceBox === targetBoxTitle) return;
 
     const sourceBoxData = inventoryData.get(draggedItemData.sourceBox);
     const targetBoxData = inventoryData.get(targetBoxTitle);
     if (!sourceBoxData || !targetBoxData) return;
 
-    let newSourceInventory = [...sourceBoxData.inventory];
-    let newTargetInventory = [...targetBoxData.inventory];
+    try {
+      // Use move API for each item
+      if (draggedItemData.isMultiple) {
+        for (const item of draggedItemData.items) {
+          const supplyId = supplyNameToId.get(item.name);
+          if (!supplyId) {
+            console.error(`Supply ID not found for item: ${item.name}`);
+            continue;
+          }
+          await api.moveSupplyLocations({
+            from_location: draggedItemData.sourceBox,
+            to_location: targetBoxTitle,
+            supply_id: supplyId,
+            shelf_from: item.shelf !== undefined ? item.shelf : null,
+            shelf_to: item.shelf !== undefined ? item.shelf : null,
+            amount: item.qty
+          });
+        }
+      } else {
+        const supplyId = supplyNameToId.get(draggedItemData.item.name);
+        if (!supplyId) {
+          throw new Error(`Supply ID not found for item: ${draggedItemData.item.name}`);
+        }
+        await api.moveSupplyLocations({
+          from_location: draggedItemData.sourceBox,
+          to_location: targetBoxTitle,
+          supply_id: supplyId,
+          shelf_from: draggedItemData.item.shelf !== undefined ? draggedItemData.item.shelf : null,
+          shelf_to: draggedItemData.item.shelf !== undefined ? draggedItemData.item.shelf : null,
+          amount: draggedItemData.item.qty
+        });
+      }
 
-    if (draggedItemData.isMultiple) {
-      const sortedIndices = [...draggedItemData.sourceIndices].sort((a, b) => b - a);
-      sortedIndices.forEach(idx => {
-        newSourceInventory.splice(idx, 1);
+      // Update local state optimistically
+      let newSourceInventory = [...sourceBoxData.inventory];
+      let newTargetInventory = [...targetBoxData.inventory];
+
+      if (draggedItemData.isMultiple) {
+        const sortedIndices = [...draggedItemData.sourceIndices].sort((a, b) => b - a);
+        sortedIndices.forEach(idx => {
+          newSourceInventory.splice(idx, 1);
+        });
+        newTargetInventory.push(...draggedItemData.items);
+      } else {
+        newSourceInventory.splice(draggedItemData.sourceIndex, 1);
+        newTargetInventory.push(draggedItemData.item);
+      }
+
+      setInventoryData(prev => {
+        const next = new Map(prev);
+        const sourceBox = next.get(draggedItemData.sourceBox);
+        const targetBox = next.get(targetBoxTitle);
+        if (sourceBox) {
+          next.set(draggedItemData.sourceBox, { ...sourceBox, inventory: newSourceInventory });
+        }
+        if (targetBox) {
+          next.set(targetBoxTitle, { ...targetBox, inventory: newTargetInventory });
+        }
+        return next;
       });
-      newTargetInventory.push(...draggedItemData.items);
-    } else {
-      newSourceInventory.splice(draggedItemData.sourceIndex, 1);
-      newTargetInventory.push(draggedItemData.item);
+
+      // Auto-select the target box after successful drop
+      setSelectedBox(targetBoxTitle);
+      setCurrentEditingBox(null);
+      setCurrentEditingIndex(null);
+      setLastSelectedIndex(null);
+
+      setDraggedItemData(null);
+      setCurrentDragOverBox(null);
+    } catch (error) {
+      console.error('Error moving items:', error);
+      // Only set error if not panning (to avoid breaking pan)
+      if (!isPanningRef.current) {
+        setError(error.message || 'Failed to move items');
+      }
     }
-
-    updateInventory(draggedItemData.sourceBox, newSourceInventory);
-    updateInventory(targetBoxTitle, newTargetInventory);
-
-    // Auto-select the target box after successful drop
-    setSelectedBox(targetBoxTitle);
-    setCurrentEditingBox(null);
-    setCurrentEditingIndex(null);
-    setLastSelectedIndex(null);
-
-    setDraggedItemData(null);
-    setCurrentDragOverBox(null);
-  }, [draggedItemData, inventoryData, updateInventory]);
+  }, [draggedItemData, inventoryData, supplyNameToId]);
 
   // SOT Item helper functions
   const resolveSOTItem = useCallback((itemName) => {
@@ -575,6 +634,8 @@ export const InventoryProvider = ({ children }) => {
           image: created.image || null,
           locations: [],
           lastModified: created.lastModified || null,
+          last_modified_by: created.last_modified_by || null,
+          last_modified_by_name: created.last_modified_by_name || null,
           id: created.id
         });
         return next;
@@ -588,7 +649,10 @@ export const InventoryProvider = ({ children }) => {
       });
     } catch (error) {
       console.error('Error adding SOT item:', error);
-      setError(error.message || 'Failed to add item');
+      // Only set error if not panning (to avoid breaking pan)
+      if (!isPanningRef.current) {
+        setError(error.message || 'Failed to add item');
+      }
       throw error;
     }
   }, []);
@@ -629,6 +693,8 @@ export const InventoryProvider = ({ children }) => {
           image: updated.image || null,
           locations: updated.locations || [],
           lastModified: updated.lastModified || null,
+          last_modified_by: updated.last_modified_by || null,
+          last_modified_by_name: updated.last_modified_by_name || null,
           id: updated.id
         });
         return next;
@@ -645,7 +711,10 @@ export const InventoryProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Error updating SOT item:', error);
-      setError(error.message || 'Failed to update item');
+      // Only set error if not panning (to avoid breaking pan)
+      if (!isPanningRef.current) {
+        setError(error.message || 'Failed to update item');
+      }
       throw error;
     }
   }, [sotInventoryItems]);
@@ -689,7 +758,10 @@ export const InventoryProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Error deleting SOT item:', error);
-      setError(error.message || 'Failed to delete item');
+      // Only set error if not panning (to avoid breaking pan)
+      if (!isPanningRef.current) {
+        setError(error.message || 'Failed to delete item');
+      }
       throw error;
     }
   }, [selectedSOTItem, sotInventoryItems]);
