@@ -346,3 +346,28 @@ export const api = {
     }),
 };
 
+// Categories and Teams
+export const getCategories = async () => {
+  const response = await fetch(`${API_BASE}/categories`, {
+    credentials: 'include',
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch categories');
+  }
+  const data = await response.json();
+  return data.categories || [];
+};
+
+export const getTeams = async () => {
+  const response = await fetch(`${API_BASE}/teams`, {
+    credentials: 'include',
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch teams');
+  }
+  const data = await response.json();
+  return data.teams || [];
+};
+

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
+import { getCategories, getTeams } from '../api';
 
 // Levenshtein distance for fuzzy search
 const levenshteinDistance = (str1, str2) => {
@@ -165,110 +166,34 @@ const MasterAddModal = ({ isOpen, onClose }) => {
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
+  const [teamSearchQuery, setTeamSearchQuery] = useState('');
+  const [availableCategories, setAvailableCategories] = useState([]);
+  const [availableTeams, setAvailableTeams] = useState([]);
   const nameInputRef = useRef(null);
 
-  const AVAILABLE_TEAMS = ['electrical', 'mechanical', 'software'];
-  const AVAILABLE_CATEGORIES = [
-    'Capacitors',
-    'Crystals and Oscillators',
-    'Ferrite Beads',
-    'Fuses',
-    'ICs',
-    'Inductors',
-    'LEDs',
-    'MCUs',
-    'Misc Components',
-    'Resistors',
-    'Switches',
-    'Voltage Regulators',
-    'Transistors_TEMP',
-    'Diodes_TEMP',
-    'Relays_TEMP',
-    'Connectors_TEMP',
-    'Cables_TEMP',
-    'Batteries_TEMP',
-    'Power Supplies_TEMP',
-    'Transformers_TEMP',
-    'Oscillators_TEMP',
-    'Filters_TEMP',
-    'Amplifiers_TEMP',
-    'Sensors_TEMP',
-    'Actuators_TEMP',
-    'Motors_TEMP',
-    'Displays_TEMP',
-    'Keyboards_TEMP',
-    'Memory_TEMP',
-    'Processors_TEMP',
-    'Controllers_TEMP',
-    'Converters_TEMP',
-    'Regulators_TEMP',
-    'Protection Circuits_TEMP',
-    'RF Components_TEMP',
-    'Antennas_TEMP',
-    'Modulators_TEMP',
-    'Demodulators_TEMP',
-    'Mixers_TEMP',
-    'Attenuators_TEMP',
-    'Couplers_TEMP',
-    'Isolators_TEMP',
-    'Circulators_TEMP',
-    'Switches_TEMP',
-    'Multiplexers_TEMP',
-    'Demultiplexers_TEMP',
-    'Encoders_TEMP',
-    'Decoders_TEMP',
-    'Counters_TEMP',
-    'Timers_TEMP',
-    'Clocks_TEMP',
-    'Generators_TEMP',
-    'Detectors_TEMP',
-    'Comparators_TEMP',
-    'Op Amps_TEMP',
-    'Voltage References_TEMP',
-    'Current Sources_TEMP',
-    'Voltage Dividers_TEMP',
-    'Current Shunts_TEMP',
-    'Thermistors_TEMP',
-    'Varistors_TEMP',
-    'Photodiodes_TEMP',
-    'Phototransistors_TEMP',
-    'Optocouplers_TEMP',
-    'LED Drivers_TEMP',
-    'Display Drivers_TEMP',
-    'Motor Drivers_TEMP',
-    'Stepper Drivers_TEMP',
-    'Servo Controllers_TEMP',
-    'PWM Controllers_TEMP',
-    'Buck Converters_TEMP',
-    'Boost Converters_TEMP',
-    'Buck-Boost Converters_TEMP',
-    'Flyback Converters_TEMP',
-    'Forward Converters_TEMP',
-    'Push-Pull Converters_TEMP',
-    'Half-Bridge Converters_TEMP',
-    'Full-Bridge Converters_TEMP',
-    'Inverters_TEMP',
-    'Rectifiers_TEMP',
-    'Chargers_TEMP',
-    'Battery Management_TEMP',
-    'Power Management_TEMP',
-    'Voltage Monitors_TEMP',
-    'Current Monitors_TEMP',
-    'Temperature Sensors_TEMP',
-    'Pressure Sensors_TEMP',
-    'Humidity Sensors_TEMP',
-    'Motion Sensors_TEMP',
-    'Light Sensors_TEMP',
-    'Sound Sensors_TEMP',
-    'Gas Sensors_TEMP',
-    'Proximity Sensors_TEMP',
-    'Touch Sensors_TEMP',
-    'Force Sensors_TEMP',
-    'Accelerometers_TEMP',
-    'Gyroscopes_TEMP',
-    'Magnetometers_TEMP',
-    'Barometers_TEMP'
-  ];
+  // Fetch categories and teams on mount and when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      getCategories()
+        .then(setAvailableCategories)
+        .catch(err => {
+          console.error('Failed to fetch categories:', err);
+          setAvailableCategories([]);
+        });
+      getTeams()
+        .then(teams => {
+          console.log('Fetched teams from API:', teams);
+          // Normalize to lowercase for frontend consistency
+          const normalized = teams.map(t => t.toLowerCase());
+          console.log('Normalized teams:', normalized);
+          setAvailableTeams(normalized);
+        })
+        .catch(err => {
+          console.error('Failed to fetch teams:', err);
+          setAvailableTeams([]);
+        });
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -369,9 +294,9 @@ const MasterAddModal = ({ isOpen, onClose }) => {
     >
       <div className="modal">
         <h3>Add Master Item</h3>
-        {categorySearchQuery.trim() && (() => {
-          const query = categorySearchQuery.toLowerCase();
-          const unselected = AVAILABLE_CATEGORIES.filter(c => !selectedCategories.includes(c));
+        {teamSearchQuery.trim() && (() => {
+          const query = teamSearchQuery.toLowerCase();
+          const unselected = availableTeams.filter(t => !selectedTeams.includes(t));
           const scored = unselected.map(item => {
             const itemLower = item.toLowerCase();
             const distance = levenshteinDistance(query, itemLower);
@@ -379,22 +304,39 @@ const MasterAddModal = ({ isOpen, onClose }) => {
             return { item, score: isSubstring ? distance - 10 : distance, distance };
           });
           scored.sort((a, b) => a.score !== b.score ? a.score - b.score : a.distance - b.distance);
-          const top5 = scored.slice(0, 5);
+          const matches = scored.slice(0, 5);
+          
           return (
             <div style={{
               padding: '0.75rem', background: 'rgba(0,0,0,.3)',
               border: '1px solid rgba(255,255,255,.1)', borderRadius: '4px',
-              fontSize: '0.85rem', color: 'var(--muted)'
+              fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '1rem'
             }}>
               <div style={{ fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text)' }}>
-                Top 5 Closest Matches (Debug):
+                Team Search Debug:
               </div>
-              {top5.map(({ item, distance }, index) => (
-                <div key={item} style={{ marginBottom: '0.25rem' }}>
-                  {index + 1}. {item} (distance: {distance})
+              <div style={{ marginBottom: '0.5rem' }}>
+                <strong>Query:</strong> "{teamSearchQuery}"
+              </div>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <strong>Selected:</strong> {selectedTeams.length > 0 ? selectedTeams.join(', ') : 'None'}
+              </div>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <strong>Available:</strong> {unselected.length} team{unselected.length !== 1 ? 's' : ''} remaining
+              </div>
+              {matches.length > 0 && (
+                <div>
+                  <strong>Top Matches:</strong>
+                  {matches.map(({ item, distance }, index) => (
+                    <div key={item} style={{ marginLeft: '1rem', marginTop: '0.25rem' }}>
+                      {index + 1}. {item} (distance: {distance})
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {top5.length === 0 && <div>No matches found.</div>}
+              )}
+              {matches.length === 0 && unselected.length > 0 && (
+                <div style={{ color: 'var(--muted)' }}>No fuzzy matches found.</div>
+              )}
             </div>
           );
         })()}
@@ -415,16 +357,17 @@ const MasterAddModal = ({ isOpen, onClose }) => {
         <TagDropdown
           placeholder="Team Tags (Optional)"
           selectedItems={selectedTeams}
-          availableItems={AVAILABLE_TEAMS}
+          availableItems={availableTeams}
           onSelect={(team) => setSelectedTeams(prev => [...prev, team])}
           onRemove={(team) => setSelectedTeams(prev => prev.filter(t => t !== team))}
           capitalize
+          onSearchChange={setTeamSearchQuery}
         />
 
         <TagDropdown
           placeholder="Category Tags (Optional)"
           selectedItems={selectedCategories}
-          availableItems={AVAILABLE_CATEGORIES}
+          availableItems={availableCategories}
           onSelect={(cat) => setSelectedCategories(prev => [...prev, cat])}
           onRemove={(cat) => setSelectedCategories(prev => prev.filter(c => c !== cat))}
           maxResults={5}

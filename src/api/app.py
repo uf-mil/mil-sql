@@ -14,6 +14,8 @@ from src.api.routes.locations import locations_bp
 from src.api.routes.supplies import supplies_bp
 from src.api.routes.supplies_location import supplies_location_bp
 from src.api.routes.auth import auth_bp
+from src.api.routes.categories import categories_bp
+from src.api.routes.teams import teams_bp
 
 # Import helpers for schema initialization
 from src.scripts.helpers import (
@@ -36,6 +38,8 @@ app.register_blueprint(locations_bp, url_prefix='/api/locations')
 app.register_blueprint(supplies_bp, url_prefix='/api/supplies')
 app.register_blueprint(supplies_location_bp, url_prefix='/api/supplies-location')
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
+app.register_blueprint(categories_bp, url_prefix='/api')
+app.register_blueprint(teams_bp, url_prefix='/api')
 
 
 def initialize_schema():
@@ -111,13 +115,15 @@ def initialize_schema():
 # Initialize schema on startup
 initialize_schema()
 
-# Seed test user and locations
+# Seed test user, teams, categories, and locations
 try:
-    from src.scripts.seed_locations import seed_test_user, seed_locations
+    from src.scripts.seed_data import seed_test_user, seed_teams, seed_categories, seed_locations
     seed_test_user()
+    seed_teams()  # Ensure teams are seeded
+    seed_categories()  # Seed categories from JSON
     seed_locations()  # Sync locations from JSON
 except Exception as e:
-    print(f"⚠ Warning: Could not seed test user or locations: {e}")
+    print(f"⚠ Warning: Could not seed data: {e}")
 
 
 @app.route('/health', methods=['GET'])

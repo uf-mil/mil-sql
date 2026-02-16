@@ -1,8 +1,8 @@
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
     name    VARCHAR(50) CHECK (name IN ('Software', 'Electrical', 'Mechanical')) PRIMARY KEY
 );
 
-INSERT INTO teams (name)
+INSERT IGNORE INTO teams (name)
 VALUES 
 ('Software'), 
 ('Electrical'), 
