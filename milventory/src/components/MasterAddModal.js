@@ -79,7 +79,7 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
         borderRadius: '4px', background: 'rgba(0,0,0,.2)', alignItems: 'center'
       }}>
         {selectedItems.length === 0 && (
-          <span style={{ color: 'var(--muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>
+          <span style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: '0.85rem' }}>
             {placeholder}
           </span>
         )}
@@ -208,9 +208,6 @@ const MasterAddModal = ({ isOpen, onClose }) => {
     'Modulators_TEMP',
     'Demodulators_TEMP',
     'Mixers_TEMP',
-    'Oscillators_TEMP',
-    'Filters_TEMP',
-    'Amplifiers_TEMP',
     'Attenuators_TEMP',
     'Couplers_TEMP',
     'Isolators_TEMP',
