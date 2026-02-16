@@ -1,14 +1,277 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
+// Levenshtein distance for fuzzy search
+const levenshteinDistance = (str1, str2) => {
+  const m = str1.length;
+  const n = str2.length;
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + 1
+        );
+      }
+    }
+  }
+
+  return dp[m][n];
+};
+
+// Reusable tag dropdown with fuzzy search
+const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onRemove, maxResults = 5, capitalize = false, onSearchChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const unselected = availableItems.filter(item => !selectedItems.includes(item));
+
+  // Compute display items: fuzzy top-N when searching, all when idle
+  let displayItems;
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase();
+    const scored = unselected.map(item => {
+      const itemLower = item.toLowerCase();
+      const distance = levenshteinDistance(query, itemLower);
+      const isSubstring = itemLower.includes(query);
+      return { item, score: isSubstring ? distance - 10 : distance, distance };
+    });
+    scored.sort((a, b) => a.score !== b.score ? a.score - b.score : a.distance - b.distance);
+    displayItems = scored.slice(0, maxResults).map(s => s.item);
+  } else {
+    displayItems = unselected;
+  }
+
+  const handleItemSelect = (item) => {
+    onSelect(item);
+    setSearchQuery('');
+    onSearchChange?.('');
+    setIsOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      {/* Selected tags */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: '0.5rem', minHeight: '2rem',
+        padding: '0.5rem', border: '1px solid rgba(255,255,255,.1)',
+        borderRadius: '4px', background: 'rgba(0,0,0,.2)', alignItems: 'center'
+      }}>
+        {selectedItems.length === 0 && (
+          <span style={{ color: 'var(--muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>
+            {placeholder}
+          </span>
+        )}
+        {selectedItems.map(item => (
+          <span key={item} style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+            padding: '0.25rem 0.5rem', background: 'var(--accent)', color: 'white',
+            borderRadius: '4px', fontSize: '0.85rem',
+            ...(capitalize ? { textTransform: 'capitalize' } : {})
+          }}>
+            {item}
+            <button type="button" onClick={() => onRemove(item)} style={{
+              background: 'transparent', border: 'none', color: 'white', cursor: 'pointer',
+              padding: '0', marginLeft: '0.25rem', fontSize: '1rem', lineHeight: '1',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }} title={`Remove ${item}`}>×</button>
+          </span>
+        ))}
+      </div>
+
+      {/* Search input / dropdown trigger */}
+      <div
+        onClick={() => { setIsOpen(true); inputRef.current?.focus(); }}
+        style={{
+          width: '100%', padding: '0.5rem', background: 'rgba(0,0,0,.3)',
+          border: '1px solid rgba(255,255,255,.1)', borderRadius: '4px',
+          color: 'var(--text)', fontSize: '0.9rem', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', boxSizing: 'border-box'
+        }}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder={unselected.length > 0 ? 'Search...' : 'All selected'}
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setIsOpen(true); onSearchChange?.(e.target.value); }}
+          onFocus={() => setIsOpen(true)}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: 'transparent', border: 'none', color: 'var(--text)',
+            fontSize: '0.9rem', outline: 'none', width: '100%', cursor: 'pointer'
+          }}
+        />
+        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--muted)', flexShrink: 0 }}>▼</span>
+      </div>
+
+      {/* Dropdown list */}
+      {isOpen && displayItems.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+          background: 'var(--bg, #1e1e2e)', border: '1px solid rgba(255,255,255,.15)',
+          borderRadius: '4px', maxHeight: '200px', overflowY: 'auto', marginTop: '2px',
+          boxShadow: '0 4px 12px rgba(0,0,0,.4)'
+        }}>
+          {displayItems.map(item => (
+            <div
+              key={item}
+              onClick={() => handleItemSelect(item)}
+              style={{
+                padding: '0.5rem 0.75rem', cursor: 'pointer', fontSize: '0.9rem',
+                color: 'var(--text)', transition: 'background 0.1s',
+                ...(capitalize ? { textTransform: 'capitalize' } : {})
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,.1)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const MasterAddModal = ({ isOpen, onClose }) => {
   const { addMasterItem, masterInventoryItems } = useInventory();
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [image, setImage] = useState(null); // base64 data URI or null
+  const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [selectedTeams, setSelectedTeams] = useState([]);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const nameInputRef = useRef(null);
+
+  const AVAILABLE_TEAMS = ['electrical', 'mechanical', 'software'];
+  const AVAILABLE_CATEGORIES = [
+    'Capacitors',
+    'Crystals and Oscillators',
+    'Ferrite Beads',
+    'Fuses',
+    'ICs',
+    'Inductors',
+    'LEDs',
+    'MCUs',
+    'Misc Components',
+    'Resistors',
+    'Switches',
+    'Voltage Regulators',
+    'Transistors_TEMP',
+    'Diodes_TEMP',
+    'Relays_TEMP',
+    'Connectors_TEMP',
+    'Cables_TEMP',
+    'Batteries_TEMP',
+    'Power Supplies_TEMP',
+    'Transformers_TEMP',
+    'Oscillators_TEMP',
+    'Filters_TEMP',
+    'Amplifiers_TEMP',
+    'Sensors_TEMP',
+    'Actuators_TEMP',
+    'Motors_TEMP',
+    'Displays_TEMP',
+    'Keyboards_TEMP',
+    'Memory_TEMP',
+    'Processors_TEMP',
+    'Controllers_TEMP',
+    'Converters_TEMP',
+    'Regulators_TEMP',
+    'Protection Circuits_TEMP',
+    'RF Components_TEMP',
+    'Antennas_TEMP',
+    'Modulators_TEMP',
+    'Demodulators_TEMP',
+    'Mixers_TEMP',
+    'Oscillators_TEMP',
+    'Filters_TEMP',
+    'Amplifiers_TEMP',
+    'Attenuators_TEMP',
+    'Couplers_TEMP',
+    'Isolators_TEMP',
+    'Circulators_TEMP',
+    'Switches_TEMP',
+    'Multiplexers_TEMP',
+    'Demultiplexers_TEMP',
+    'Encoders_TEMP',
+    'Decoders_TEMP',
+    'Counters_TEMP',
+    'Timers_TEMP',
+    'Clocks_TEMP',
+    'Generators_TEMP',
+    'Detectors_TEMP',
+    'Comparators_TEMP',
+    'Op Amps_TEMP',
+    'Voltage References_TEMP',
+    'Current Sources_TEMP',
+    'Voltage Dividers_TEMP',
+    'Current Shunts_TEMP',
+    'Thermistors_TEMP',
+    'Varistors_TEMP',
+    'Photodiodes_TEMP',
+    'Phototransistors_TEMP',
+    'Optocouplers_TEMP',
+    'LED Drivers_TEMP',
+    'Display Drivers_TEMP',
+    'Motor Drivers_TEMP',
+    'Stepper Drivers_TEMP',
+    'Servo Controllers_TEMP',
+    'PWM Controllers_TEMP',
+    'Buck Converters_TEMP',
+    'Boost Converters_TEMP',
+    'Buck-Boost Converters_TEMP',
+    'Flyback Converters_TEMP',
+    'Forward Converters_TEMP',
+    'Push-Pull Converters_TEMP',
+    'Half-Bridge Converters_TEMP',
+    'Full-Bridge Converters_TEMP',
+    'Inverters_TEMP',
+    'Rectifiers_TEMP',
+    'Chargers_TEMP',
+    'Battery Management_TEMP',
+    'Power Management_TEMP',
+    'Voltage Monitors_TEMP',
+    'Current Monitors_TEMP',
+    'Temperature Sensors_TEMP',
+    'Pressure Sensors_TEMP',
+    'Humidity Sensors_TEMP',
+    'Motion Sensors_TEMP',
+    'Light Sensors_TEMP',
+    'Sound Sensors_TEMP',
+    'Gas Sensors_TEMP',
+    'Proximity Sensors_TEMP',
+    'Touch Sensors_TEMP',
+    'Force Sensors_TEMP',
+    'Accelerometers_TEMP',
+    'Gyroscopes_TEMP',
+    'Magnetometers_TEMP',
+    'Barometers_TEMP'
+  ];
 
   useEffect(() => {
     if (isOpen) {
@@ -16,6 +279,9 @@ const MasterAddModal = ({ isOpen, onClose }) => {
       setDescription('');
       setImage(null);
       setImagePreview(null);
+      setSelectedTeams([]);
+      setSelectedCategories([]);
+      setCategorySearchQuery('');
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
   }, [isOpen]);
@@ -28,24 +294,21 @@ const MasterAddModal = ({ isOpen, onClose }) => {
       return;
     }
 
-    // Validate file size (10MB max)
     if (file.size > 10 * 1024 * 1024) {
       alert('Image file size must be less than 10MB');
       e.target.value = '';
       return;
     }
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       alert('Please select an image file');
       e.target.value = '';
       return;
     }
 
-    // Convert to base64
     const reader = new FileReader();
     reader.onload = (event) => {
-      const base64Data = event.target.result; // Full data URI
+      const base64Data = event.target.result;
       setImage(base64Data);
       setImagePreview(base64Data);
     };
@@ -63,7 +326,6 @@ const MasterAddModal = ({ isOpen, onClose }) => {
 
   const handleSave = () => {
     if (name.trim()) {
-      // Check if name already exists
       if (masterInventoryItems.has(name.trim())) {
         alert('An item with this name already exists. Please use a different name.');
         return;
@@ -72,8 +334,8 @@ const MasterAddModal = ({ isOpen, onClose }) => {
       const newItem = {
         name: name.trim(),
         description: description.trim() || null,
-        image: image || null, // base64 data URI or null
-        locations: [] // Optional metadata, will be computed dynamically
+        image: image || null,
+        locations: []
       };
       
       addMasterItem(newItem);
@@ -110,6 +372,35 @@ const MasterAddModal = ({ isOpen, onClose }) => {
     >
       <div className="modal">
         <h3>Add Master Item</h3>
+        {categorySearchQuery.trim() && (() => {
+          const query = categorySearchQuery.toLowerCase();
+          const unselected = AVAILABLE_CATEGORIES.filter(c => !selectedCategories.includes(c));
+          const scored = unselected.map(item => {
+            const itemLower = item.toLowerCase();
+            const distance = levenshteinDistance(query, itemLower);
+            const isSubstring = itemLower.includes(query);
+            return { item, score: isSubstring ? distance - 10 : distance, distance };
+          });
+          scored.sort((a, b) => a.score !== b.score ? a.score - b.score : a.distance - b.distance);
+          const top5 = scored.slice(0, 5);
+          return (
+            <div style={{
+              padding: '0.75rem', background: 'rgba(0,0,0,.3)',
+              border: '1px solid rgba(255,255,255,.1)', borderRadius: '4px',
+              fontSize: '0.85rem', color: 'var(--muted)'
+            }}>
+              <div style={{ fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text)' }}>
+                Top 5 Closest Matches (Debug):
+              </div>
+              {top5.map(({ item, distance }, index) => (
+                <div key={item} style={{ marginBottom: '0.25rem' }}>
+                  {index + 1}. {item} (distance: {distance})
+                </div>
+              ))}
+              {top5.length === 0 && <div>No matches found.</div>}
+            </div>
+          );
+        })()}
         <input
           ref={nameInputRef}
           type="text"
@@ -123,6 +414,26 @@ const MasterAddModal = ({ isOpen, onClose }) => {
           onChange={(e) => setDescription(e.target.value)}
           rows="3"
         />
+
+        <TagDropdown
+          placeholder="Team Tags (Optional)"
+          selectedItems={selectedTeams}
+          availableItems={AVAILABLE_TEAMS}
+          onSelect={(team) => setSelectedTeams(prev => [...prev, team])}
+          onRemove={(team) => setSelectedTeams(prev => prev.filter(t => t !== team))}
+          capitalize
+        />
+
+        <TagDropdown
+          placeholder="Category Tags (Optional)"
+          selectedItems={selectedCategories}
+          availableItems={AVAILABLE_CATEGORIES}
+          onSelect={(cat) => setSelectedCategories(prev => [...prev, cat])}
+          onRemove={(cat) => setSelectedCategories(prev => prev.filter(c => c !== cat))}
+          maxResults={5}
+          onSearchChange={setCategorySearchQuery}
+        />
+
         <div>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
             Image (optional, max 10MB)
@@ -184,4 +495,3 @@ const MasterAddModal = ({ isOpen, onClose }) => {
 };
 
 export default MasterAddModal;
-
