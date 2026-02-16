@@ -26,9 +26,9 @@ export const InventoryProvider = ({ children }) => {
   const [currentDragOverBox, setCurrentDragOverBox] = useState(null);
   const [tooltip, setTooltip] = useState({ visible: false, title: '', x: 0, y: 0 });
   
-  // SOT Inventory Table state
-  const [sotInventoryItems, setSotInventoryItems] = useState(new Map());
-  const [selectedSOTItem, setSelectedSOTItem] = useState(null);
+  // Master Inventory Table state
+  const [masterInventoryItems, setMasterInventoryItems] = useState(new Map());
+  const [selectedMasterItem, setSelectedMasterItem] = useState(null);
   const [leftPaneWidth, setLeftPaneWidth] = useState(300);
   const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
   
@@ -175,20 +175,20 @@ export const InventoryProvider = ({ children }) => {
     document.body.style.setProperty('--left-pane-width', `${leftPaneWidth}px`);
   }, [leftPaneWidth]);
 
-  // Load SOT inventory items (supplies catalog) from API
+  // Load Master inventory items (supplies catalog) from API
   useEffect(() => {
-    const loadSOTItems = async () => {
+    const loadMasterItems = async () => {
       try {
         const supplies = await api.getSupplies();
         
-        const newSOTItems = new Map();
+        const newMasterItems = new Map();
         const nameToIdMap = new Map();
         
         supplies.forEach(supply => {
           // Build name to ID mapping
           nameToIdMap.set(supply.name, supply.id);
           
-          // Convert API response to SOT item format
+          // Convert API response to Master item format
           // API returns locations[] with {location, shelf, qty}
           const locations = (supply.locations || []).map(loc => {
             if (loc.shelf !== null && loc.shelf !== undefined) {
@@ -197,7 +197,7 @@ export const InventoryProvider = ({ children }) => {
             return loc.location;
           });
           
-          newSOTItems.set(supply.name, {
+          newMasterItems.set(supply.name, {
             name: supply.name,
             description: supply.description || '',
             image: supply.image || null,
@@ -209,20 +209,20 @@ export const InventoryProvider = ({ children }) => {
           });
         });
         
-        setSotInventoryItems(newSOTItems);
+        setMasterInventoryItems(newMasterItems);
         setSupplyNameToId(nameToIdMap);
       } catch (error) {
-        console.error('Error loading SOT inventory items from API:', error);
+        console.error('Error loading Master inventory items from API:', error);
         if (error.message === 'Authentication required') {
           setError('Authentication required. Please login.');
         }
-        setSotInventoryItems(new Map());
+        setMasterInventoryItems(new Map());
         setSupplyNameToId(new Map());
       }
     };
     
     if (!isLoading) {
-      loadSOTItems();
+      loadMasterItems();
     }
   }, [isLoading]);
 
@@ -350,7 +350,7 @@ export const InventoryProvider = ({ children }) => {
     setAddModeQtyPerClick(1);
     setAddModePending(new Map());
     setSelectedBox(null); // Clear box selection when entering add mode
-    setSelectedSOTItem(null); // Clear SOT preview when entering add mode
+    setSelectedMasterItem(null); // Clear Master preview when entering add mode
   }, []);
 
   // shelf is optional — undefined for non-shelf boxes, number for Tall Cabinet shelves
@@ -590,12 +590,12 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [draggedItemData, inventoryData, supplyNameToId]);
 
-  // SOT Item helper functions
-  const resolveSOTItem = useCallback((itemName) => {
-    return sotInventoryItems.get(itemName) || null;
-  }, [sotInventoryItems]);
+  // Master Item helper functions
+  const resolveMasterItem = useCallback((itemName) => {
+    return masterInventoryItems.get(itemName) || null;
+  }, [masterInventoryItems]);
 
-  const computeSOTQuantities = useCallback(() => {
+  const computeMasterQuantities = useCallback(() => {
     const quantities = new Map();
     inventoryData.forEach((boxData, boxTitle) => {
       boxData.inventory.forEach(item => {
@@ -617,7 +617,7 @@ export const InventoryProvider = ({ children }) => {
     return locations;
   }, [inventoryData]);
 
-  const addSOTItem = useCallback(async (item) => {
+  const addMasterItem = useCallback(async (item) => {
     try {
       const created = await api.createSupply({
         name: item.name,
@@ -626,7 +626,7 @@ export const InventoryProvider = ({ children }) => {
       });
       
       // Update local state
-      setSotInventoryItems(prev => {
+      setMasterInventoryItems(prev => {
         const next = new Map(prev);
         next.set(created.name, {
           name: created.name,
@@ -648,7 +648,7 @@ export const InventoryProvider = ({ children }) => {
         return next;
       });
     } catch (error) {
-      console.error('Error adding SOT item:', error);
+      console.error('Error adding Master item:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
         setError(error.message || 'Failed to add item');
@@ -657,9 +657,9 @@ export const InventoryProvider = ({ children }) => {
     }
   }, []);
 
-  const updateSOTItem = useCallback(async (oldName, newItem) => {
+  const updateMasterItem = useCallback(async (oldName, newItem) => {
     try {
-      const oldItem = sotInventoryItems.get(oldName);
+      const oldItem = masterInventoryItems.get(oldName);
       if (!oldItem || !oldItem.id) {
         throw new Error(`Item ${oldName} not found or missing ID`);
       }
@@ -671,7 +671,7 @@ export const InventoryProvider = ({ children }) => {
       });
       
       // Update local state
-      setSotInventoryItems(prev => {
+      setMasterInventoryItems(prev => {
         const next = new Map(prev);
         if (oldName !== newItem.name) {
           next.delete(oldName);
@@ -710,18 +710,18 @@ export const InventoryProvider = ({ children }) => {
         });
       }
     } catch (error) {
-      console.error('Error updating SOT item:', error);
+      console.error('Error updating Master item:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
         setError(error.message || 'Failed to update item');
       }
       throw error;
     }
-  }, [sotInventoryItems]);
+  }, [masterInventoryItems]);
 
-  const deleteSOTItem = useCallback(async (itemName) => {
+  const deleteMasterItem = useCallback(async (itemName) => {
     try {
-      const item = sotInventoryItems.get(itemName);
+      const item = masterInventoryItems.get(itemName);
       if (!item || !item.id) {
         throw new Error(`Item ${itemName} not found or missing ID`);
       }
@@ -729,7 +729,7 @@ export const InventoryProvider = ({ children }) => {
       await api.deleteSupply(item.id);
       
       // Update local state
-      setSotInventoryItems(prev => {
+      setMasterInventoryItems(prev => {
         const next = new Map(prev);
         next.delete(itemName);
         return next;
@@ -753,21 +753,21 @@ export const InventoryProvider = ({ children }) => {
       });
       
       // Close preview if this item was selected
-      if (selectedSOTItem === itemName) {
-        setSelectedSOTItem(null);
+      if (selectedMasterItem === itemName) {
+        setSelectedMasterItem(null);
       }
     } catch (error) {
-      console.error('Error deleting SOT item:', error);
+      console.error('Error deleting Master item:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
         setError(error.message || 'Failed to delete item');
       }
       throw error;
     }
-  }, [selectedSOTItem, sotInventoryItems]);
+  }, [selectedMasterItem, masterInventoryItems]);
 
-  const clearSelectedSOTItem = useCallback(() => {
-    setSelectedSOTItem(null);
+  const clearSelectedMasterItem = useCallback(() => {
+    setSelectedMasterItem(null);
   }, []);
 
   const value = {
@@ -783,9 +783,9 @@ export const InventoryProvider = ({ children }) => {
     draggedItemData,
     currentDragOverBox,
     tooltip,
-    // SOT Inventory state
-    sotInventoryItems,
-    selectedSOTItem,
+    // Master Inventory state
+    masterInventoryItems,
+    selectedMasterItem,
     leftPaneWidth,
     leftPaneCollapsed,
     // Loading and error states
@@ -803,8 +803,8 @@ export const InventoryProvider = ({ children }) => {
     setDraggedItemData,
     setCurrentDragOverBox,
     setTooltip,
-    setSotInventoryItems,
-    setSelectedSOTItem,
+    setMasterInventoryItems,
+    setSelectedMasterItem,
     setLeftPaneWidth,
     setLeftPaneCollapsed,
     // Refs
@@ -818,14 +818,14 @@ export const InventoryProvider = ({ children }) => {
     updateInventory,
     handleDragStart,
     handleDrop,
-    // SOT Item helpers
-    resolveSOTItem,
-    computeSOTQuantities,
+    // Master Item helpers
+    resolveMasterItem,
+    computeMasterQuantities,
     getItemLocations,
-    addSOTItem,
-    updateSOTItem,
-    deleteSOTItem,
-    clearSelectedSOTItem,
+    addMasterItem,
+    updateMasterItem,
+    deleteMasterItem,
+    clearSelectedMasterItem,
     // Add Mode
     addModeItem,
     addModeQtyPerClick,

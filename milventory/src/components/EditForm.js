@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
 const EditModal = () => {
-  const { currentEditingBox, currentEditingIndex, inventoryData, setCurrentEditingBox, setCurrentEditingIndex, setLastSelectedIndex, updateInventory, sotInventoryItems, resolveSOTItem } = useInventory();
+  const { currentEditingBox, currentEditingIndex, inventoryData, setCurrentEditingBox, setCurrentEditingIndex, setLastSelectedIndex, updateInventory, masterInventoryItems, resolveMasterItem } = useInventory();
   
   const boxData = currentEditingBox ? inventoryData.get(currentEditingBox) : null;
   const item = boxData && currentEditingIndex !== null ? boxData.inventory[currentEditingIndex] : null;
-  const sotItem = item ? resolveSOTItem(item.name) : null;
+  const masterItem = item ? resolveMasterItem(item.name) : null;
   
   const [selectedItemName, setSelectedItemName] = useState('');
   const [qty, setQty] = useState(1);
@@ -79,19 +79,19 @@ const EditModal = () => {
           onChange={(e) => setSelectedItemName(e.target.value)}
           className="modal-select"
         >
-          <option value="">Select SOT item...</option>
-          {Array.from(sotInventoryItems.keys()).map(itemName => (
+          <option value="">Select Master item...</option>
+          {Array.from(masterInventoryItems.keys()).map(itemName => (
             <option key={itemName} value={itemName}>
               {itemName}
             </option>
           ))}
         </select>
-        {sotItem && (
+        {masterItem && (
           <div style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: '-0.5rem', marginBottom: '0.5rem' }}>
-            {sotItem.description && <div>{sotItem.description}</div>}
-            {sotItem.image && (
+            {masterItem.description && <div>{masterItem.description}</div>}
+            {masterItem.image && (
               <div className="edit-form-image-container" style={{ marginTop: '0.5rem' }}>
-                <img src={sotItem.image} alt={sotItem.name} />
+                <img src={masterItem.image} alt={masterItem.name} />
               </div>
           )}
         </div>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
-const SOTEditModal = ({ isOpen, onClose, itemName }) => {
-  const { updateSOTItem, resolveSOTItem, sotInventoryItems } = useInventory();
+const MasterAddModal = ({ isOpen, onClose }) => {
+  const { addMasterItem, masterInventoryItems } = useInventory();
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -10,22 +10,21 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
   const [imagePreview, setImagePreview] = useState(null);
   const nameInputRef = useRef(null);
 
-  const originalItem = itemName ? resolveSOTItem(itemName) : null;
-
   useEffect(() => {
-    if (isOpen && originalItem) {
-      setName(originalItem.name || '');
-      setDescription(originalItem.description || '');
-      setImage(originalItem.image || null);
-      setImagePreview(originalItem.image || null);
+    if (isOpen) {
+      setName('');
+      setDescription('');
+      setImage(null);
+      setImagePreview(null);
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
-  }, [isOpen, originalItem]);
+  }, [isOpen]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) {
-      // Keep existing image if no new file selected
+      setImage(null);
+      setImagePreview(null);
       return;
     }
 
@@ -46,7 +45,7 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
     // Convert to base64
     const reader = new FileReader();
     reader.onload = (event) => {
-      const base64Data = event.target.result;
+      const base64Data = event.target.result; // Full data URI
       setImage(base64Data);
       setImagePreview(base64Data);
     };
@@ -63,21 +62,21 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
   };
 
   const handleSave = () => {
-    if (name.trim() && itemName) {
-      // Check if name changed and new name already exists
-      if (name.trim() !== itemName && sotInventoryItems.has(name.trim())) {
+    if (name.trim()) {
+      // Check if name already exists
+      if (masterInventoryItems.has(name.trim())) {
         alert('An item with this name already exists. Please use a different name.');
         return;
       }
 
-      const updatedItem = {
+      const newItem = {
         name: name.trim(),
         description: description.trim() || null,
         image: image || null, // base64 data URI or null
-        locations: originalItem?.locations || [] // Preserve locations
+        locations: [] // Optional metadata, will be computed dynamically
       };
       
-      updateSOTItem(itemName, updatedItem);
+      addMasterItem(newItem);
       onClose();
     }
   };
@@ -101,7 +100,7 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
     }
   };
 
-  if (!isOpen || !originalItem) return null;
+  if (!isOpen) return null;
 
   return (
     <div
@@ -110,7 +109,7 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
       onKeyDown={handleKeyDown}
     >
       <div className="modal">
-        <h3>Edit SOT Item</h3>
+        <h3>Add Master Item</h3>
         <input
           ref={nameInputRef}
           type="text"
@@ -128,21 +127,6 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
             Image (optional, max 10MB)
           </label>
-          {imagePreview && (
-            <div style={{ marginBottom: '0.5rem' }}>
-              <img
-                src={imagePreview}
-                alt="Current"
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '200px',
-                  borderRadius: '4px',
-                  border: '1px solid var(--stroke)',
-                  marginBottom: '0.5rem',
-                }}
-              />
-            </div>
-          )}
           <input
             type="file"
             accept="image/*"
@@ -150,21 +134,40 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
             style={{ marginBottom: '0.5rem' }}
           />
           {imagePreview && (
-            <button
-              type="button"
-              onClick={handleRemoveImage}
-              style={{
-                background: 'var(--files)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '0.25rem 0.5rem',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-              }}
-            >
-              Remove Image
-            </button>
+            <div style={{ marginTop: '0.5rem', position: 'relative', display: 'inline-block' }}>
+              <img
+                src={imagePreview}
+                alt="Preview"
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '200px',
+                  borderRadius: '4px',
+                  border: '1px solid var(--stroke)',
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleRemoveImage}
+                style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '4px',
+                  background: 'var(--files)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '24px',
+                  height: '24px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                ×
+              </button>
+            </div>
           )}
         </div>
         <div className="modal-actions">
@@ -172,7 +175,7 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
             Cancel
           </button>
           <button type="button" className="save" onClick={handleSave} disabled={!name.trim()}>
-            Save
+            Add
           </button>
         </div>
       </div>
@@ -180,5 +183,5 @@ const SOTEditModal = ({ isOpen, onClose, itemName }) => {
   );
 };
 
-export default SOTEditModal;
+export default MasterAddModal;
 

@@ -4,7 +4,7 @@ import * as d3 from 'd3';
 
 const ArrowConnections = () => {
   const {
-    selectedSOTItem,
+    selectedMasterItem,
     getItemLocations,
     inventoryData,
     svgRef,
@@ -37,13 +37,13 @@ const ArrowConnections = () => {
     // Clear existing arrows
     arrowsGroup.innerHTML = '';
 
-    if (!selectedSOTItem) return;
+    if (!selectedMasterItem) return;
 
-    const locations = getItemLocations(selectedSOTItem);
+    const locations = getItemLocations(selectedMasterItem);
     if (locations.length === 0) return;
 
     // Find preview pane position in screen coordinates
-    const previewPane = document.querySelector('.sot-preview-pane-overlay');
+    const previewPane = document.querySelector('.master-preview-pane-overlay');
     if (!previewPane) return;
 
     const previewRect = previewPane.getBoundingClientRect();
@@ -93,12 +93,12 @@ const ArrowConnections = () => {
 
       const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathElement.setAttribute('d', path.toString());
-      pathElement.setAttribute('class', 'sot-arrow-path');
+      pathElement.setAttribute('class', 'master-arrow-path');
       arrowsGroup.appendChild(pathElement);
     });
-  }, [selectedSOTItem, getItemLocations, inventoryData, svgRef, screenToWorld]);
+  }, [selectedMasterItem, getItemLocations, inventoryData, svgRef, screenToWorld]);
 
-  // Draw arrows when selectedSOTItem changes
+  // Draw arrows when selectedMasterItem changes
   useEffect(() => {
     drawArrows();
 
@@ -111,7 +111,7 @@ const ArrowConnections = () => {
 
   // Update arrows on zoom/pan via MutationObserver — direct DOM, no React state
   useEffect(() => {
-    if (!selectedSOTItem || !worldRef.current) return;
+    if (!selectedMasterItem || !worldRef.current) return;
 
     const world = worldRef.current;
 
@@ -127,9 +127,9 @@ const ArrowConnections = () => {
       observer.disconnect();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [selectedSOTItem, worldRef, drawArrows]);
+  }, [selectedMasterItem, worldRef, drawArrows]);
 
-  if (!selectedSOTItem) return null;
+  if (!selectedMasterItem) return null;
 
   return <g ref={arrowsRef} className="arrow-connections" />;
 };

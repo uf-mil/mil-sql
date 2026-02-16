@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
 const AddModal = () => {
-  const { currentAddingBox, currentAddingIndex, setCurrentAddingBox, setCurrentAddingIndex, inventoryData, updateInventory, sotInventoryItems } = useInventory();
+  const { currentAddingBox, currentAddingIndex, setCurrentAddingBox, setCurrentAddingIndex, inventoryData, updateInventory, masterInventoryItems } = useInventory();
   
   const [selectedItemName, setSelectedItemName] = useState('');
   const [qty, setQty] = useState(1);
@@ -23,14 +23,14 @@ const AddModal = () => {
     'Shelf 1 (Bottom)'
   ];
 
-  const filteredSOTItems = useMemo(() => {
-    const itemsArray = Array.from(sotInventoryItems.keys());
+  const filteredMasterItems = useMemo(() => {
+    const itemsArray = Array.from(masterInventoryItems.keys());
     if (!searchQuery.trim()) {
       return itemsArray;
     }
     const query = searchQuery.toLowerCase();
     return itemsArray.filter(name => name.toLowerCase().includes(query));
-  }, [sotInventoryItems, searchQuery]);
+  }, [masterInventoryItems, searchQuery]);
 
   useEffect(() => {
     if (currentAddingBox) {
@@ -133,24 +133,24 @@ const AddModal = () => {
           <input
             ref={nameInputRef}
             type="text"
-            placeholder="Search SOT items..."
+            placeholder="Search Master items..."
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              if (e.target.value && filteredSOTItems.length > 0 && !selectedItemName) {
-                setSelectedItemName(filteredSOTItems[0]);
+              if (e.target.value && filteredMasterItems.length > 0 && !selectedItemName) {
+                setSelectedItemName(filteredMasterItems[0]);
               }
             }}
-            list="sot-items-list"
+            list="master-items-list"
           />
-          <datalist id="sot-items-list">
-            {filteredSOTItems.map(itemName => (
+          <datalist id="master-items-list">
+            {filteredMasterItems.map(itemName => (
               <option key={itemName} value={itemName} />
             ))}
           </datalist>
-          {filteredSOTItems.length === 0 && searchQuery && (
+          {filteredMasterItems.length === 0 && searchQuery && (
             <div style={{ fontSize: '0.8rem', color: 'var(--muted)', marginTop: '0.25rem' }}>
-              No items found. Create item in SOT table first.
+              No items found. Create item in Master table first.
             </div>
           )}
         </div>
@@ -159,8 +159,8 @@ const AddModal = () => {
           onChange={(e) => setSelectedItemName(e.target.value)}
           className="modal-select"
         >
-          <option value="">Select SOT item...</option>
-          {filteredSOTItems.map(itemName => (
+          <option value="">Select Master item...</option>
+          {filteredMasterItems.map(itemName => (
             <option key={itemName} value={itemName}>
               {itemName}
             </option>

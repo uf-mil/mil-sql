@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import SOTItemPreview from './SOTItemPreview';
+import MasterItemPreview from './MasterItemPreview';
 import ArrowConnections from './ArrowConnections';
 import BoxInventoryOverlay from './BoxInventoryOverlay';
 import AddModeArrow from './AddModeArrow';
@@ -15,10 +15,10 @@ const SHELF_NAMES = [
 ];
 
 const MapComponent = forwardRef((props, ref) => {
-  const { worldRef, inventoryData, inventoryBounds, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox, addModeItem, addModePending, handleBoxClickAddMode, boxHasAnyPending, selectedSOTItem, getItemLocations } = useInventory();
+  const { worldRef, inventoryData, inventoryBounds, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox, addModeItem, addModePending, handleBoxClickAddMode, boxHasAnyPending, selectedMasterItem, getItemLocations } = useInventory();
 
-  // Compute highlighted box set from selected SOT item (for React-managed className)
-  const highlightedBoxes = selectedSOTItem ? new Set(getItemLocations(selectedSOTItem)) : null;
+  // Compute highlighted box set from selected Master item (for React-managed className)
+  const highlightedBoxes = selectedMasterItem ? new Set(getItemLocations(selectedMasterItem)) : null;
 
   const handleBoxMouseEnter = (e, boxTitle) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -183,7 +183,7 @@ const MapComponent = forwardRef((props, ref) => {
           <AddModeArrow />
         </g>
       </svg>
-      <SOTItemPreview />
+      <MasterItemPreview />
     </>
   );
 });

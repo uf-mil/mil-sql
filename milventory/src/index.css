@@ -619,7 +619,7 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   width: 40px;
 }
 
-.left-pane.collapsed .sot-table-content {
+.left-pane.collapsed .master-table-content {
   display: none;
 }
 
@@ -712,8 +712,8 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   background: rgba(0,0,0,.5);
 }
 
-/* SOT Inventory Table Styles */
-.sot-inventory-table {
+/* Master Inventory Table Styles */
+.master-inventory-table {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -721,24 +721,24 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   overflow: hidden;
 }
 
-.sot-table-header {
+.master-table-header {
   flex-shrink: 0;
   margin-bottom: 1rem;
 }
 
-.sot-table-header h2 {
+.master-table-header h2 {
   margin: 0;
   font-size: 1.2rem;
   color: var(--text);
   font-weight: 600;
 }
 
-.sot-table-search {
+.master-table-search {
   flex-shrink: 0;
   margin-bottom: 1rem;
 }
 
-.sot-search-input {
+.master-search-input {
   width: 100%;
   background: rgba(0,0,0,.3);
   border: 1px solid rgba(255,255,255,.1);
@@ -750,25 +750,25 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   box-sizing: border-box;
 }
 
-.sot-search-input:focus {
+.master-search-input:focus {
   border-color: var(--accent);
   background: rgba(0,0,0,.4);
 }
 
-.sot-table-content {
+.master-table-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
 }
 
-.sot-table {
+.master-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
 
-.sot-table th {
+.master-table th {
   background: rgba(0,0,0,.3);
   color: var(--muted);
   text-align: left;
@@ -780,31 +780,31 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   border-bottom: 1px solid rgba(255,255,255,.1);
 }
 
-.sot-table td {
+.master-table td {
   padding: 0.5rem;
   border-bottom: 1px solid rgba(255,255,255,.05);
   color: var(--text);
 }
 
-.sot-table-row {
+.master-table-row {
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
-.sot-table-row:hover {
+.master-table-row:hover {
   background: rgba(255,255,255,.05);
 }
 
-.sot-table-row.selected {
+.master-table-row.selected {
   background: rgba(155, 183, 255, 0.1);
 }
 
-.sot-table .qty-cell {
+.master-table .qty-cell {
   width: 60px;
   text-align: center;
 }
 
-.sot-table .location-cell {
+.master-table .location-cell {
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -813,21 +813,21 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   font-size: 0.8rem;
 }
 
-.sot-table .modified-cell {
+.master-table .modified-cell {
   white-space: nowrap;
   color: var(--muted);
   font-size: 0.75rem;
   text-align: right;
 }
 
-.sot-table-empty {
+.master-table-empty {
   color: var(--muted);
   font-style: italic;
   text-align: center;
   padding: 2rem 1rem;
 }
 
-.sot-table-actions {
+.master-table-actions {
   flex-shrink: 0;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
@@ -835,18 +835,18 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 }
 
 /* Preview Pane Styles */
-.sot-preview-pane-overlay {
+.master-preview-pane-overlay {
   pointer-events: auto;
   user-select: none;
 }
 
-.sot-preview-pane-overlay .sot-preview-pane {
+.master-preview-pane-overlay .master-preview-pane {
   width: 400px;
   max-height: 300px;
   overflow-y: auto;
 }
 
-.sot-preview-pane {
+.master-preview-pane {
   background: var(--panel);
   border: 1px solid rgba(255,255,255,.15);
   border-radius: 8px;
@@ -858,7 +858,7 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   font-size: 0.9rem;
 }
 
-.sot-preview-pane-header {
+.master-preview-pane-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -867,13 +867,13 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   border-bottom: 1px solid rgba(255,255,255,.1);
 }
 
-.sot-preview-pane-header h3 {
+.master-preview-pane-header h3 {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
 }
 
-.sot-preview-pane-close {
+.master-preview-pane-close {
   cursor: pointer;
   padding: 0.25rem;
   opacity: 0.7;
@@ -884,15 +884,15 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   line-height: 1;
 }
 
-.sot-preview-pane-close:hover {
+.master-preview-pane-close:hover {
   opacity: 1;
 }
 
-.sot-preview-description {
+.master-preview-description {
   margin-bottom: 0.75rem;
 }
 
-.sot-preview-description strong {
+.master-preview-description strong {
   display: block;
   margin-bottom: 0.25rem;
   color: var(--muted);
@@ -901,17 +901,17 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   letter-spacing: 0.5px;
 }
 
-.sot-preview-description p {
+.master-preview-description p {
   margin: 0;
   color: var(--text);
   line-height: 1.5;
 }
 
-.sot-preview-locations {
+.master-preview-locations {
   margin-top: 0.75rem;
 }
 
-.sot-preview-locations strong {
+.master-preview-locations strong {
   display: block;
   margin-bottom: 0.25rem;
   color: var(--muted);
@@ -920,33 +920,33 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   letter-spacing: 0.5px;
 }
 
-.sot-preview-location-item {
+.master-preview-location-item {
   padding: 0.25rem 0;
   font-size: 0.9em;
   color: var(--text);
 }
 
-.sot-preview-location-qty {
+.master-preview-location-qty {
   color: var(--muted);
   font-size: 0.85em;
 }
 
-.sot-preview-image {
+.master-preview-image {
   margin-top: 0.75rem;
 }
 
-.sot-preview-image img {
+.master-preview-image img {
   max-width: 100%;
   border-radius: 4px;
 }
 
-.sot-preview-actions {
+.master-preview-actions {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid rgba(255,255,255,.1);
 }
 
-.sot-preview-actions strong {
+.master-preview-actions strong {
   display: block;
   margin-bottom: 0.5rem;
   color: var(--muted);
@@ -955,12 +955,12 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   letter-spacing: 0.5px;
 }
 
-.sot-preview-actions-buttons {
+.master-preview-actions-buttons {
   display: flex;
   gap: 0.5rem;
 }
 
-.sot-action-button {
+.master-action-button {
   background: rgba(255,255,255,.1);
   border: none;
   color: var(--text);
@@ -971,30 +971,30 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   transition: background 0.2s, opacity 0.2s;
 }
 
-.sot-action-button:hover {
+.master-action-button:hover {
   background: rgba(255,255,255,.2);
 }
 
-.sot-action-button.delete-button {
+.master-action-button.delete-button {
   background: rgba(183, 42, 42, 0.3);
 }
 
-.sot-action-button.delete-button:hover {
+.master-action-button.delete-button:hover {
   background: rgba(183, 42, 42, 0.5);
 }
 
-.sot-action-button.add-button {
+.master-action-button.add-button {
   background: rgba(74, 222, 128, 0.35);
   color: #fff;
   font-weight: 400;
 }
 
-.sot-action-button.add-button:hover {
+.master-action-button.add-button:hover {
   background: rgba(74, 222, 128, 0.5);
 }
 
 /* Arrow Connections */
-.sot-arrow-path {
+.master-arrow-path {
   stroke: var(--accent);
   stroke-width: 4;
   fill: none;
@@ -1002,7 +1002,7 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   pointer-events: none;
 }
 
-.sot-arrow-path:hover {
+.master-arrow-path:hover {
   opacity: 1;
   stroke-width: 5;
 }

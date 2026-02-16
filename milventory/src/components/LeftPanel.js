@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import SOTInventoryTable from './SOTInventoryTable';
+import MasterInventoryTable from './MasterInventoryTable';
 
 const LeftPanel = () => {
   const { leftPaneWidth, setLeftPaneWidth, leftPaneCollapsed, setLeftPaneCollapsed } = useInventory();
@@ -48,7 +48,7 @@ const LeftPanel = () => {
         <button
           className="collapse-button collapse-button-right"
           onClick={handleToggleCollapse}
-          title="SOT Inventory Table"
+          title="Master Inventory Table"
           style={{ left: `${buttonLeft}px` }}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -67,12 +67,12 @@ const LeftPanel = () => {
           className={`left-pane-resize ${isResizing ? 'dragging' : ''}`}
           onMouseDown={handleResizeStart}
         />
-        <SOTInventoryTable />
+        <MasterInventoryTable />
       </div>
       <button
         className="collapse-button collapse-button-right"
         onClick={handleToggleCollapse}
-        title="Collapse SOT Inventory Table"
+          title="Collapse Master Inventory Table"
         style={{ left: `${buttonLeft}px` }}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

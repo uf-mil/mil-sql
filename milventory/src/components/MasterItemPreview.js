@@ -1,15 +1,15 @@
 import React, { useRef, useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import SOTEditModal from './SOTEditModal';
+import MasterEditModal from './MasterEditModal';
 
-const SOTItemPreview = () => {
+const MasterItemPreview = () => {
   const {
-    selectedSOTItem,
-    resolveSOTItem,
+    selectedMasterItem,
+    resolveMasterItem,
     getItemLocations,
     inventoryData,
-    clearSelectedSOTItem,
-    deleteSOTItem,
+    clearSelectedMasterItem,
+    deleteMasterItem,
     startAddMode,
     leftPaneWidth,
     leftPaneCollapsed
@@ -23,16 +23,16 @@ const SOTItemPreview = () => {
   const previewRef = useRef(null);
   const [editingItem, setEditingItem] = useState(null);
 
-  const item = selectedSOTItem ? resolveSOTItem(selectedSOTItem) : null;
-  const locations = selectedSOTItem ? getItemLocations(selectedSOTItem) : [];
+  const item = selectedMasterItem ? resolveMasterItem(selectedMasterItem) : null;
+  const locations = selectedMasterItem ? getItemLocations(selectedMasterItem) : [];
 
   // Build detailed location entries with qty (breaking Tall Cabinets down by shelf)
   const locationDetails = [];
-  if (selectedSOTItem) {
+  if (selectedMasterItem) {
     locations.forEach(boxTitle => {
       const boxData = inventoryData.get(boxTitle);
       if (!boxData) return;
-      const matchingItems = boxData.inventory.filter(i => i.name === selectedSOTItem);
+      const matchingItems = boxData.inventory.filter(i => i.name === selectedMasterItem);
       if (boxTitle.startsWith('Tall Cabinet')) {
         matchingItems.forEach(i => {
           const shelfIdx = i.shelf ?? 0;
@@ -58,24 +58,24 @@ const SOTItemPreview = () => {
       );
       if (!confirmed) return;
     }
-    deleteSOTItem(selectedSOTItem);
+    deleteMasterItem(selectedMasterItem);
   };
 
   const handleAddToBoxes = () => {
-    startAddMode(selectedSOTItem);
+    startAddMode(selectedMasterItem);
   };
 
   const handleEdit = () => {
-    setEditingItem(selectedSOTItem);
+    setEditingItem(selectedMasterItem);
   };
 
-  if (!selectedSOTItem || !item) return null;
+  if (!selectedMasterItem || !item) return null;
 
   return (
     <>
       <div
         ref={previewRef}
-        className="sot-preview-pane-overlay"
+        className="master-preview-pane-overlay"
         style={{
           position: 'fixed',
           left: `${positionX}px`,
@@ -83,42 +83,42 @@ const SOTItemPreview = () => {
           zIndex: 1000
         }}
       >
-        <div className="sot-preview-pane">
-          <div className="sot-preview-pane-header">
+        <div className="master-preview-pane">
+          <div className="master-preview-pane-header">
             <h3>{item.name}</h3>
             <button
-              className="sot-preview-pane-close"
-              onClick={clearSelectedSOTItem}
+              className="master-preview-pane-close"
+              onClick={clearSelectedMasterItem}
               title="Close preview"
             >
               ×
             </button>
           </div>
           {item.description && (
-            <div className="sot-preview-description">
+            <div className="master-preview-description">
               <strong>Description:</strong>
               <p>{item.description}</p>
             </div>
           )}
-          <div className="sot-preview-locations">
+          <div className="master-preview-locations">
             <strong>Locations:</strong>
             {locationDetails.length === 0 ? (
-              <div className="sot-preview-location-item">No locations</div>
+              <div className="master-preview-location-item">No locations</div>
             ) : (
               locationDetails.map((loc, idx) => (
-                <div key={idx} className="sot-preview-location-item">
-                  {loc.label} <span className="sot-preview-location-qty">(Qty: {loc.qty})</span>
+                <div key={idx} className="master-preview-location-item">
+                  {loc.label} <span className="master-preview-location-qty">(Qty: {loc.qty})</span>
                 </div>
               ))
             )}
           </div>
           {item.image && (
-            <div className="sot-preview-image">
+            <div className="master-preview-image">
               <img src={item.image} alt={item.name} />
             </div>
           )}
           {item.last_modified_by_name && (
-            <div className="sot-preview-last-modified" style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+            <div className="master-preview-last-modified" style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
               <strong>Last modified by:</strong> {item.last_modified_by_name}
               {item.lastModified && (
                 <span style={{ marginLeft: '0.5rem' }}>
@@ -127,25 +127,25 @@ const SOTItemPreview = () => {
               )}
             </div>
           )}
-          <div className="sot-preview-actions">
+          <div className="master-preview-actions">
             <strong>Actions:</strong>
-            <div className="sot-preview-actions-buttons">
-              <button className="sot-action-button add-button" onClick={handleAddToBoxes} title="Add to boxes on map">
+            <div className="master-preview-actions-buttons">
+              <button className="master-action-button add-button" onClick={handleAddToBoxes} title="Add to boxes on map">
                 Add to Boxes
               </button>
-              <button className="sot-action-button edit-button" onClick={handleEdit} title="Edit item">
+              <button className="master-action-button edit-button" onClick={handleEdit} title="Edit item">
                 Edit
               </button>
-              <button className="sot-action-button delete-button" onClick={handleDelete} title="Delete item">
+              <button className="master-action-button delete-button" onClick={handleDelete} title="Delete item">
                 Delete
               </button>
             </div>
           </div>
         </div>
       </div>
-      <SOTEditModal isOpen={editingItem !== null} onClose={() => setEditingItem(null)} itemName={editingItem} />
+      <MasterEditModal isOpen={editingItem !== null} onClose={() => setEditingItem(null)} itemName={editingItem} />
     </>
   );
 };
 
-export default SOTItemPreview;
+export default MasterItemPreview;

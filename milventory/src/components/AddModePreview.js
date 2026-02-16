@@ -11,11 +11,11 @@ const AddModePreview = () => {
     cancelAddMode,
     leftPaneWidth,
     leftPaneCollapsed,
-    resolveSOTItem,
+    resolveMasterItem,
     addModePreviewRef
   } = useInventory();
 
-  const item = addModeItem ? resolveSOTItem(addModeItem) : null;
+  const item = addModeItem ? resolveMasterItem(addModeItem) : null;
 
   // Calculate position to the right of left pane
   const leftPaneActualWidth = leftPaneCollapsed ? 40 : leftPaneWidth;
@@ -61,7 +61,7 @@ const AddModePreview = () => {
   return (
     <div
       ref={addModePreviewRef}
-      className="sot-preview-pane-overlay"
+      className="master-preview-pane-overlay"
       style={{
         position: 'fixed',
         left: `${positionX}px`,
@@ -69,11 +69,11 @@ const AddModePreview = () => {
         zIndex: 1000
       }}
     >
-      <div className="sot-preview-pane add-mode-pane">
-        <div className="sot-preview-pane-header">
+      <div className="master-preview-pane add-mode-pane">
+        <div className="master-preview-pane-header">
           <h3>Add: {item.name}</h3>
           <button
-            className="sot-preview-pane-close"
+            className="master-preview-pane-close"
             onClick={handleCancel}
             title="Cancel"
           >

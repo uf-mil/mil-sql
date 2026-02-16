@@ -1,37 +1,37 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import SOTTableRow from './SOTTableRow';
-import SOTAddModal from './SOTAddModal';
+import MasterTableRow from './MasterTableRow';
+import MasterAddModal from './MasterAddModal';
 
-const SOTInventoryTable = () => {
+const MasterInventoryTable = () => {
   const {
-    sotInventoryItems,
-    computeSOTQuantities,
+    masterInventoryItems,
+    computeMasterQuantities,
     getItemLocations,
-    setSelectedSOTItem,
-    selectedSOTItem
+    setSelectedMasterItem,
+    selectedMasterItem
   } = useInventory();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
 
-  const quantities = computeSOTQuantities();
+  const quantities = computeMasterQuantities();
 
   const filteredItems = useMemo(() => {
-    const itemsArray = Array.from(sotInventoryItems.entries());
+    const itemsArray = Array.from(masterInventoryItems.entries());
     if (!searchQuery.trim()) {
       return itemsArray;
     }
     const query = searchQuery.toLowerCase();
     return itemsArray.filter(([name]) => name.toLowerCase().includes(query));
-  }, [sotInventoryItems, searchQuery]);
+  }, [masterInventoryItems, searchQuery]);
 
   const sortedItems = useMemo(() => {
     return [...filteredItems].sort(([nameA], [nameB]) => nameA.localeCompare(nameB));
   }, [filteredItems]);
 
   const handleRowClick = (itemName) => {
-    setSelectedSOTItem(itemName);
+    setSelectedMasterItem(itemName);
   };
 
   const handleAddItem = () => {
@@ -40,26 +40,26 @@ const SOTInventoryTable = () => {
 
   return (
     <>
-      <div className="sot-inventory-table">
-        <div className="sot-table-header">
-          <h2>SOT Inventory</h2>
+      <div className="master-inventory-table">
+        <div className="master-table-header">
+          <h2>Master Inventory</h2>
         </div>
-        <div className="sot-table-search">
+        <div className="master-table-search">
           <input
             type="text"
             placeholder="Search items..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="sot-search-input"
+            className="master-search-input"
           />
         </div>
-        <div className="sot-table-content">
+        <div className="master-table-content">
           {sortedItems.length === 0 ? (
-            <div className="sot-table-empty">
-              {searchQuery ? 'No items found' : 'No SOT items. Click "+ Add Item" to create one.'}
+            <div className="master-table-empty">
+              {searchQuery ? 'No items found' : 'No Master items. Click "+ Add Item" to create one.'}
             </div>
           ) : (
-            <table className="sot-table">
+            <table className="master-table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -70,13 +70,13 @@ const SOTInventoryTable = () => {
               </thead>
               <tbody>
                 {sortedItems.map(([itemName, itemData]) => (
-                  <SOTTableRow
+                  <MasterTableRow
                     key={itemName}
                     itemName={itemName}
                     itemData={itemData}
                     quantity={quantities.get(itemName) || 0}
                     locations={getItemLocations(itemName)}
-                    isSelected={selectedSOTItem === itemName}
+                    isSelected={selectedMasterItem === itemName}
                     onClick={() => handleRowClick(itemName)}
                   />
                 ))}
@@ -84,18 +84,18 @@ const SOTInventoryTable = () => {
             </table>
           )}
         </div>
-        <div className="sot-table-actions">
+        <div className="master-table-actions">
           <button className="add-item-button" onClick={handleAddItem}>
             + Add Item
           </button>
         </div>
       </div>
-      <SOTAddModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
+      <MasterAddModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
     </>
   );
 };
 
-export default SOTInventoryTable;
+export default MasterInventoryTable;
 
 
 

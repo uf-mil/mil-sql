@@ -16,7 +16,7 @@ const formatDate = (isoString) => {
   return `${dateStr}, ${timeStr}`;
 };
 
-const SOTTableRow = ({ itemName, itemData, quantity, locations, isSelected, onClick }) => {
+const MasterTableRow = ({ itemName, itemData, quantity, locations, isSelected, onClick }) => {
   // Build a truncated location string that fits the cell
   const locationText = locations.length === 0
     ? '—'
@@ -26,7 +26,7 @@ const SOTTableRow = ({ itemName, itemData, quantity, locations, isSelected, onCl
 
   return (
     <tr
-      className={`sot-table-row ${isSelected ? 'selected' : ''}`}
+      className={`master-table-row ${isSelected ? 'selected' : ''}`}
       onClick={onClick}
     >
       <td className="name-cell">{itemName}</td>
@@ -41,4 +41,4 @@ const SOTTableRow = ({ itemName, itemData, quantity, locations, isSelected, onCl
   );
 };
 
-export default SOTTableRow;
+export default MasterTableRow;

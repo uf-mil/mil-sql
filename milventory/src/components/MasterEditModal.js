@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../context/InventoryContext';
 
-const SOTAddModal = ({ isOpen, onClose }) => {
-  const { addSOTItem, sotInventoryItems } = useInventory();
+const MasterEditModal = ({ isOpen, onClose, itemName }) => {
+  const { updateMasterItem, resolveMasterItem, masterInventoryItems } = useInventory();
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -10,21 +10,22 @@ const SOTAddModal = ({ isOpen, onClose }) => {
   const [imagePreview, setImagePreview] = useState(null);
   const nameInputRef = useRef(null);
 
+  const originalItem = itemName ? resolveMasterItem(itemName) : null;
+
   useEffect(() => {
-    if (isOpen) {
-      setName('');
-      setDescription('');
-      setImage(null);
-      setImagePreview(null);
+    if (isOpen && originalItem) {
+      setName(originalItem.name || '');
+      setDescription(originalItem.description || '');
+      setImage(originalItem.image || null);
+      setImagePreview(originalItem.image || null);
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
-  }, [isOpen]);
+  }, [isOpen, originalItem]);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) {
-      setImage(null);
-      setImagePreview(null);
+      // Keep existing image if no new file selected
       return;
     }
 
@@ -45,7 +46,7 @@ const SOTAddModal = ({ isOpen, onClose }) => {
     // Convert to base64
     const reader = new FileReader();
     reader.onload = (event) => {
-      const base64Data = event.target.result; // Full data URI
+      const base64Data = event.target.result;
       setImage(base64Data);
       setImagePreview(base64Data);
     };
@@ -62,21 +63,21 @@ const SOTAddModal = ({ isOpen, onClose }) => {
   };
 
   const handleSave = () => {
-    if (name.trim()) {
-      // Check if name already exists
-      if (sotInventoryItems.has(name.trim())) {
+    if (name.trim() && itemName) {
+      // Check if name changed and new name already exists
+      if (name.trim() !== itemName && masterInventoryItems.has(name.trim())) {
         alert('An item with this name already exists. Please use a different name.');
         return;
       }
 
-      const newItem = {
+      const updatedItem = {
         name: name.trim(),
         description: description.trim() || null,
         image: image || null, // base64 data URI or null
-        locations: [] // Optional metadata, will be computed dynamically
+        locations: originalItem?.locations || [] // Preserve locations
       };
       
-      addSOTItem(newItem);
+      updateMasterItem(itemName, updatedItem);
       onClose();
     }
   };
@@ -100,7 +101,7 @@ const SOTAddModal = ({ isOpen, onClose }) => {
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !originalItem) return null;
 
   return (
     <div
@@ -109,7 +110,7 @@ const SOTAddModal = ({ isOpen, onClose }) => {
       onKeyDown={handleKeyDown}
     >
       <div className="modal">
-        <h3>Add SOT Item</h3>
+        <h3>Edit Master Item</h3>
         <input
           ref={nameInputRef}
           type="text"
@@ -127,6 +128,21 @@ const SOTAddModal = ({ isOpen, onClose }) => {
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
             Image (optional, max 10MB)
           </label>
+          {imagePreview && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <img
+                src={imagePreview}
+                alt="Current"
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '200px',
+                  borderRadius: '4px',
+                  border: '1px solid var(--stroke)',
+                  marginBottom: '0.5rem',
+                }}
+              />
+            </div>
+          )}
           <input
             type="file"
             accept="image/*"
@@ -134,40 +150,21 @@ const SOTAddModal = ({ isOpen, onClose }) => {
             style={{ marginBottom: '0.5rem' }}
           />
           {imagePreview && (
-            <div style={{ marginTop: '0.5rem', position: 'relative', display: 'inline-block' }}>
-              <img
-                src={imagePreview}
-                alt="Preview"
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '200px',
-                  borderRadius: '4px',
-                  border: '1px solid var(--stroke)',
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleRemoveImage}
-                style={{
-                  position: 'absolute',
-                  top: '4px',
-                  right: '4px',
-                  background: 'var(--files)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '24px',
-                  height: '24px',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                ×
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleRemoveImage}
+              style={{
+                background: 'var(--files)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '0.25rem 0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+              }}
+            >
+              Remove Image
+            </button>
           )}
         </div>
         <div className="modal-actions">
@@ -175,7 +172,7 @@ const SOTAddModal = ({ isOpen, onClose }) => {
             Cancel
           </button>
           <button type="button" className="save" onClick={handleSave} disabled={!name.trim()}>
-            Add
+            Save
           </button>
         </div>
       </div>
@@ -183,5 +180,5 @@ const SOTAddModal = ({ isOpen, onClose }) => {
   );
 };
 
-export default SOTAddModal;
+export default MasterEditModal;
 
