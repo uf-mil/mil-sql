@@ -169,16 +169,31 @@ const MasterAddModal = ({ isOpen, onClose }) => {
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
   const [availableCategories, setAvailableCategories] = useState([]);
   const [availableTeams, setAvailableTeams] = useState([]);
+  const [categoryNameToId, setCategoryNameToId] = useState(new Map());
   const nameInputRef = useRef(null);
 
   // Fetch categories and teams on mount and when modal opens
   useEffect(() => {
     if (isOpen) {
       getCategories()
-        .then(setAvailableCategories)
+        .then(categories => {
+          // Categories now come as objects with {id, name}
+          const categoryList = categories.map(c => typeof c === 'string' ? c : c.name);
+          setAvailableCategories(categoryList);
+          
+          // Build name-to-ID mapping
+          const mapping = new Map();
+          categories.forEach(cat => {
+            if (typeof cat === 'object' && cat.id && cat.name) {
+              mapping.set(cat.name, cat.id);
+            }
+          });
+          setCategoryNameToId(mapping);
+        })
         .catch(err => {
           console.error('Failed to fetch categories:', err);
           setAvailableCategories([]);
+          setCategoryNameToId(new Map());
         });
       getTeams()
         .then(teams => {
@@ -253,10 +268,17 @@ const MasterAddModal = ({ isOpen, onClose }) => {
         return;
       }
 
+      // Convert category names to IDs
+      const categoryIds = selectedCategories
+        .map(catName => categoryNameToId.get(catName))
+        .filter(id => id !== undefined);
+      
       const newItem = {
         name: name.trim(),
         description: description.trim() || null,
         image: image || null,
+        teams: selectedTeams.length > 0 ? selectedTeams : undefined,
+        categories: categoryIds.length > 0 ? categoryIds : undefined,
         locations: []
       };
       

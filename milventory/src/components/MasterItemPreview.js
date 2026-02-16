@@ -1,6 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import MasterEditModal from './MasterEditModal';
+import { getCategories } from '../api';
 
 const MasterItemPreview = () => {
   const {
@@ -22,9 +23,30 @@ const MasterItemPreview = () => {
 
   const previewRef = useRef(null);
   const [editingItem, setEditingItem] = useState(null);
+  const [categoryIdToName, setCategoryIdToName] = useState(new Map());
+
+  // Fetch category mapping for display
+  useEffect(() => {
+    getCategories()
+      .then(categories => {
+        const mapping = new Map();
+        categories.forEach(cat => {
+          if (typeof cat === 'object' && cat.id && cat.name) {
+            mapping.set(cat.id, cat.name);
+          }
+        });
+        setCategoryIdToName(mapping);
+      })
+      .catch(console.error);
+  }, []);
 
   const item = selectedMasterItem ? resolveMasterItem(selectedMasterItem) : null;
   const locations = selectedMasterItem ? getItemLocations(selectedMasterItem) : [];
+  
+  // Convert category IDs to names for display
+  const categoryNames = item?.categories 
+    ? item.categories.map(catId => categoryIdToName.get(catId)).filter(name => name !== undefined)
+    : [];
 
   // Build detailed location entries with qty (breaking Tall Cabinets down by shelf)
   const locationDetails = [];
@@ -98,6 +120,54 @@ const MasterItemPreview = () => {
             <div className="master-preview-description">
               <strong>Description:</strong>
               <p>{item.description}</p>
+            </div>
+          )}
+          {(item.teams && item.teams.length > 0) && (
+            <div className="master-preview-teams" style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+              <strong>Teams:</strong>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.25rem' }}>
+                {item.teams.map((team, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '0.25rem 0.5rem',
+                      background: 'var(--accent)',
+                      color: 'white',
+                      borderRadius: '4px',
+                      fontSize: '0.85rem',
+                      textTransform: 'capitalize'
+                    }}
+                  >
+                    {team}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {categoryNames.length > 0 && (
+            <div className="master-preview-categories" style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+              <strong>Categories:</strong>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.25rem' }}>
+                {categoryNames.map((category, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '0.25rem 0.5rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      color: 'var(--text)',
+                      borderRadius: '4px',
+                      fontSize: '0.85rem',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}
+                  >
+                    {category}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
           <div className="master-preview-locations">

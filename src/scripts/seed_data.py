@@ -13,7 +13,10 @@ import mysql.connector
 import time
 import json
 import bcrypt
-from helpers import parse_database_url, get_sql_base_path, execute_sql_file, table_exists
+from helpers import (
+    parse_database_url, get_sql_base_path, execute_sql_file, table_exists,
+    discover_table_files, topological_sort_tables
+)
 
 
 def get_seed_data_path(filename):
@@ -80,6 +83,39 @@ def derive_location_type(title):
         return 'unknown'
 
 
+def ensure_all_tables_exist(conn, cur):
+    """Ensure all tables exist by creating missing ones."""
+    try:
+        sql_base_path = get_sql_base_path(__file__)
+        table_files = discover_table_files(sql_base_path)
+        
+        if not table_files:
+            print("⚠ No table_*.sql files found")
+            return
+        
+        sorted_tables = topological_sort_tables(table_files)
+        missing_tables = []
+        
+        for table_name, sql_file in sorted_tables:
+            if not table_exists(cur, table_name):
+                missing_tables.append((table_name, sql_file))
+        
+        if missing_tables:
+            print(f"📋 Creating {len(missing_tables)} missing table(s)...")
+            for table_name, sql_file in missing_tables:
+                description = f"{table_name} table"
+                print(f"  🔨 Creating {table_name} from {sql_file.name}...")
+                if execute_sql_file(cur, sql_file, description):
+                    print(f"  ✓ {table_name} created")
+                else:
+                    print(f"  ✗ Failed to create {table_name}")
+            conn.commit()
+    except Exception as e:
+        print(f"⚠ Warning while ensuring tables exist: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def get_db_connection():
     """Get database connection with automatic database creation."""
     database_url = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@db:3306/mydb")
@@ -131,41 +167,15 @@ def seed_categories():
         conn, db_params = get_db_connection()
         cur = conn.cursor()
         
-        # Check if categories table exists, create it if needed
+        # Ensure all tables exist (including categories)
+        ensure_all_tables_exist(conn, cur)
+        
+        # Verify categories table exists
         if not table_exists(cur, 'categories'):
-            print("⚠ Categories table does not exist. Creating it...")
-            sql_base_path = get_sql_base_path(__file__)
-            categories_file = sql_base_path / "categories" / "table_categories.sql"
-            
-            if categories_file.exists():
-                if execute_sql_file(cur, categories_file, "categories table"):
-                    conn.commit()
-                    print("✓ Categories table created")
-                else:
-                    print("✗ Failed to create categories table")
-                    cur.close()
-                    conn.close()
-                    return
-            else:
-                print(f"⚠ Categories table SQL file not found at {categories_file}")
-                print("  Waiting for API to create it...")
-                cur.close()
-                conn.close()
-                for attempt in range(5):
-                    time.sleep(2)
-                    try:
-                        conn = mysql.connector.connect(**db_params)
-                        cur = conn.cursor()
-                        if table_exists(cur, 'categories'):
-                            print("✓ Categories table now exists (created by API)")
-                            break
-                        cur.close()
-                        conn.close()
-                    except:
-                        pass
-                else:
-                    print("⚠ Categories table still does not exist after waiting.")
-                    return
+            print("✗ Categories table still does not exist after creation attempt")
+            cur.close()
+            conn.close()
+            return
         
         # Load categories from JSON
         categories = load_categories_from_json()
@@ -216,41 +226,15 @@ def seed_locations():
         conn, db_params = get_db_connection()
         cur = conn.cursor()
         
-        # Check if locations table exists, create it if needed
+        # Ensure all tables exist (including locations)
+        ensure_all_tables_exist(conn, cur)
+        
+        # Verify locations table exists
         if not table_exists(cur, 'locations'):
-            print("⚠ Locations table does not exist. Creating it...")
-            sql_base_path = get_sql_base_path(__file__)
-            locations_file = sql_base_path / "location" / "table_locations.sql"
-            
-            if locations_file.exists():
-                if execute_sql_file(cur, locations_file, "locations table"):
-                    conn.commit()
-                    print("✓ Locations table created")
-                else:
-                    print("✗ Failed to create locations table")
-                    cur.close()
-                    conn.close()
-                    return
-            else:
-                print(f"⚠ Locations table SQL file not found at {locations_file}")
-                print("  Waiting for API to create it...")
-                cur.close()
-                conn.close()
-                for attempt in range(5):
-                    time.sleep(2)
-                    try:
-                        conn = mysql.connector.connect(**db_params)
-                        cur = conn.cursor()
-                        if table_exists(cur, 'locations'):
-                            print("✓ Locations table now exists (created by API)")
-                            break
-                        cur.close()
-                        conn.close()
-                    except:
-                        pass
-                else:
-                    print("⚠ Locations table still does not exist after waiting.")
-                    return
+            print("✗ Locations table still does not exist after creation attempt")
+            cur.close()
+            conn.close()
+            return
         
         # Load locations from JSON
         boxes = load_locations_from_json()
@@ -329,6 +313,9 @@ def seed_teams():
         conn, _ = get_db_connection()
         cur = conn.cursor()
         
+        # Ensure all tables exist (including teams)
+        ensure_all_tables_exist(conn, cur)
+        
         # Check if teams exist
         cur.execute("SELECT COUNT(*) FROM teams")
         count = cur.fetchone()[0]
@@ -371,6 +358,9 @@ def seed_test_user():
         
         conn, _ = get_db_connection()
         cur = conn.cursor(dictionary=True)
+        
+        # Ensure all tables exist (including members)
+        ensure_all_tables_exist(conn, cur)
         
         # Check if test user exists
         cur.execute("SELECT uf_id FROM members WHERE uf_email = %s", ("test@ufl.edu",))

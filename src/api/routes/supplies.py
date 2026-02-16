@@ -66,6 +66,24 @@ def get_supplies(current_user_id=None):
                     'qty': loc_row['amount']
                 })
             
+            # Get teams for this supply
+            cur.execute("""
+                SELECT team_name
+                FROM supplies_teams
+                WHERE supply_id = %s
+                ORDER BY team_name
+            """, (row['id'],))
+            teams = [team_row['team_name'].lower() for team_row in cur.fetchall()]
+            
+            # Get categories for this supply
+            cur.execute("""
+                SELECT category_id
+                FROM supplies_categories
+                WHERE supply_id = %s
+                ORDER BY category_id
+            """, (row['id'],))
+            category_ids = [cat_row['category_id'] for cat_row in cur.fetchall()]
+            
             supply_dict = {
                 'id': row['id'],
                 'name': row['name'],
@@ -74,7 +92,9 @@ def get_supplies(current_user_id=None):
                 'lastModified': row['last_modified'].isoformat() if row['last_modified'] else None,
                 'last_modified_by': row['last_modified_by'],
                 'totalQty': int(row['totalQty']),
-                'locations': locations
+                'locations': locations,
+                'teams': teams,
+                'categories': category_ids
             }
             if row['last_order_date']:
                 supply_dict['last_order_date'] = row['last_order_date'].isoformat() if hasattr(row['last_order_date'], 'isoformat') else str(row['last_order_date'])
@@ -156,6 +176,24 @@ def get_supply(supply_id, current_user_id=None):
                 'qty': loc_row['amount']
             })
         
+        # Get teams for this supply
+        cur.execute("""
+            SELECT team_name
+            FROM supplies_teams
+            WHERE supply_id = %s
+            ORDER BY team_name
+        """, (supply_id,))
+        teams = [team_row['team_name'].lower() for team_row in cur.fetchall()]
+        
+        # Get categories for this supply
+        cur.execute("""
+            SELECT category_id
+            FROM supplies_categories
+            WHERE supply_id = %s
+            ORDER BY category_id
+        """, (supply_id,))
+        category_ids = [cat_row['category_id'] for cat_row in cur.fetchall()]
+        
         supply_dict = {
             'id': row['id'],
             'name': row['name'],
@@ -164,7 +202,9 @@ def get_supply(supply_id, current_user_id=None):
             'lastModified': row['last_modified'].isoformat() if row['last_modified'] else None,
             'last_modified_by': row['last_modified_by'],
             'totalQty': int(row['totalQty']),
-            'locations': locations
+            'locations': locations,
+            'teams': teams,
+            'categories': category_ids
         }
         if row['last_order_date']:
             supply_dict['last_order_date'] = row['last_order_date'].isoformat() if hasattr(row['last_order_date'], 'isoformat') else str(row['last_order_date'])
@@ -224,7 +264,7 @@ def create_supply(current_user_id=None):
                     return jsonify({'error': 'Image file size exceeds 10MB limit'}), 400
         
         conn = get_db()
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
         # Check if supply with this name already exists
         cur.execute("SELECT id FROM supplies WHERE name = %s", (data['name'].strip(),))
@@ -246,18 +286,69 @@ def create_supply(current_user_id=None):
         ))
         
         supply_id = cur.lastrowid
+        
+        # Insert teams
+        if data.get('teams'):
+            for team_name in data['teams']:
+                # Normalize team name (capitalize to match database: Software, Electrical, Mechanical)
+                team_name_capitalized = team_name.capitalize()
+                # Handle special case: "Software" not "Software" (already capitalized)
+                if team_name_capitalized not in ['Software', 'Electrical', 'Mechanical']:
+                    # Try to match case-insensitively
+                    if team_name.lower() == 'software':
+                        team_name_capitalized = 'Software'
+                    elif team_name.lower() == 'electrical':
+                        team_name_capitalized = 'Electrical'
+                    elif team_name.lower() == 'mechanical':
+                        team_name_capitalized = 'Mechanical'
+                
+                cur.execute(
+                    "INSERT IGNORE INTO supplies_teams (supply_id, team_name) VALUES (%s, %s)",
+                    (supply_id, team_name_capitalized)
+                )
+        
+        # Insert categories
+        if data.get('categories'):
+            for category_id in data['categories']:
+                # Ensure category_id is an integer
+                try:
+                    cat_id = int(category_id)
+                    cur.execute(
+                        "INSERT IGNORE INTO supplies_categories (supply_id, category_id) VALUES (%s, %s)",
+                        (supply_id, cat_id)
+                    )
+                except (ValueError, TypeError):
+                    # Skip invalid category IDs
+                    continue
+        
         conn.commit()
         
-        # Fetch the created supply
+        # Fetch the created supply with teams and categories
         cur.execute("""
             SELECT id, name, description, image, last_order_date, last_modified, last_modified_by, created_at
             FROM supplies WHERE id = %s
         """, (supply_id,))
         
         row = cur.fetchone()
-        supply = Supply.from_db_row(row).to_dict()
+        
+        # Get teams
+        cur.execute("""
+            SELECT team_name FROM supplies_teams WHERE supply_id = %s ORDER BY team_name
+        """, (supply_id,))
+        teams = [t['team_name'].lower() for t in cur.fetchall()]
+        
+        # Get categories
+        cur.execute("""
+            SELECT category_id FROM supplies_categories WHERE supply_id = %s ORDER BY category_id
+        """, (supply_id,))
+        category_ids = [c['category_id'] for c in cur.fetchall()]
+        
+        # Convert row dict to Supply object
+        supply = Supply.from_dict(row).to_dict()
         supply['totalQty'] = 0
         supply['locations'] = []
+        supply['teams'] = teams
+        supply['categories'] = category_ids
         
         cur.close()
         conn.close()
@@ -305,7 +396,7 @@ def update_supply(supply_id, current_user_id=None):
                     return jsonify({'error': 'Image file size exceeds 10MB limit'}), 400
         
         conn = get_db()
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
         # Check if supply exists
         cur.execute("SELECT id FROM supplies WHERE id = %s", (supply_id,))
@@ -348,7 +439,46 @@ def update_supply(supply_id, current_user_id=None):
         if updates:
             query = f"UPDATE supplies SET {', '.join(updates)} WHERE id = %s"
             cur.execute(query, values)
-            conn.commit()
+        
+        # Update teams if provided
+        if 'teams' in data:
+            # Delete existing teams
+            cur.execute("DELETE FROM supplies_teams WHERE supply_id = %s", (supply_id,))
+            # Insert new teams
+            if data.get('teams'):
+                for team_name in data['teams']:
+                    # Normalize team name (capitalize to match database)
+                    team_name_capitalized = team_name.capitalize()
+                    # Handle special cases
+                    if team_name.lower() == 'software':
+                        team_name_capitalized = 'Software'
+                    elif team_name.lower() == 'electrical':
+                        team_name_capitalized = 'Electrical'
+                    elif team_name.lower() == 'mechanical':
+                        team_name_capitalized = 'Mechanical'
+                    
+                    cur.execute(
+                        "INSERT INTO supplies_teams (supply_id, team_name) VALUES (%s, %s)",
+                        (supply_id, team_name_capitalized)
+                    )
+        
+        # Update categories if provided
+        if 'categories' in data:
+            # Delete existing categories
+            cur.execute("DELETE FROM supplies_categories WHERE supply_id = %s", (supply_id,))
+            # Insert new categories
+            if data.get('categories'):
+                for category_id in data['categories']:
+                    try:
+                        cat_id = int(category_id)
+                        cur.execute(
+                            "INSERT INTO supplies_categories (supply_id, category_id) VALUES (%s, %s)",
+                            (supply_id, cat_id)
+                        )
+                    except (ValueError, TypeError):
+                        continue
+        
+        conn.commit()
         
         # Fetch updated supply
         cur.execute("""
@@ -357,7 +487,7 @@ def update_supply(supply_id, current_user_id=None):
         """, (supply_id,))
         
         row = cur.fetchone()
-        supply = Supply.from_db_row(row).to_dict()
+        supply = Supply.from_dict(row).to_dict()
         
         # Get computed quantities
         cur.execute("""
@@ -365,7 +495,8 @@ def update_supply(supply_id, current_user_id=None):
             FROM supplies_location
             WHERE supply_id = %s
         """, (supply_id,))
-        total_qty = cur.fetchone()[0] or 0
+        total_qty_row = cur.fetchone()
+        total_qty = total_qty_row['totalQty'] if total_qty_row else 0
         
         cur.execute("""
             SELECT location_name, shelf, amount
@@ -377,25 +508,39 @@ def update_supply(supply_id, current_user_id=None):
         locations = []
         for loc_row in cur.fetchall():
             locations.append({
-                'location': loc_row[0],
-                'shelf': loc_row[1],
-                'qty': loc_row[2]
+                'location': loc_row['location_name'],
+                'shelf': loc_row['shelf'],
+                'qty': loc_row['amount']
             })
+        
+        # Get teams
+        cur.execute("""
+            SELECT team_name FROM supplies_teams WHERE supply_id = %s ORDER BY team_name
+        """, (supply_id,))
+        teams = [t['team_name'].lower() for t in cur.fetchall()]
+        
+        # Get categories
+        cur.execute("""
+            SELECT category_id FROM supplies_categories WHERE supply_id = %s ORDER BY category_id
+        """, (supply_id,))
+        category_ids = [c['category_id'] for c in cur.fetchall()]
         
         supply['totalQty'] = int(total_qty)
         supply['locations'] = locations
+        supply['teams'] = teams
+        supply['categories'] = category_ids
         
         # Get member name for last_modified_by if available
-        if row[6]:  # last_modified_by is at index 6
+        if row['last_modified_by']:
             cur.execute("""
                 SELECT first_name, last_name, uf_email
                 FROM members
                 WHERE uf_id = %s
-            """, (row[6],))
+            """, (row['last_modified_by'],))
             member = cur.fetchone()
             if member:
-                supply['last_modified_by_name'] = f"{member[0]} {member[1]}"
-                supply['last_modified_by_email'] = member[2]
+                supply['last_modified_by_name'] = f"{member['first_name']} {member['last_name']}"
+                supply['last_modified_by_email'] = member['uf_email']
         
         cur.close()
         conn.close()

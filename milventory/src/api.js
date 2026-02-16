@@ -356,6 +356,7 @@ export const getCategories = async () => {
     throw new Error('Failed to fetch categories');
   }
   const data = await response.json();
+  // Categories now come as objects with {id, name}
   return data.categories || [];
 };
 

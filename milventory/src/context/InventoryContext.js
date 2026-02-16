@@ -202,6 +202,8 @@ export const InventoryProvider = ({ children }) => {
             description: supply.description || '',
             image: supply.image || null,
             locations: locations,
+            teams: supply.teams || [],
+            categories: supply.categories || [],
             lastModified: supply.lastModified || null,
             last_modified_by: supply.last_modified_by || null,
             last_modified_by_name: supply.last_modified_by_name || null,
@@ -622,7 +624,9 @@ export const InventoryProvider = ({ children }) => {
       const created = await api.createSupply({
         name: item.name,
         description: item.description || '',
-        image: item.image || null
+        image: item.image || null,
+        teams: item.teams || [],
+        categories: item.categories || []
       });
       
       // Update local state
@@ -632,7 +636,9 @@ export const InventoryProvider = ({ children }) => {
           name: created.name,
           description: created.description || '',
           image: created.image || null,
-          locations: [],
+          locations: created.locations || [],
+          teams: created.teams || [],
+          categories: created.categories || [],
           lastModified: created.lastModified || null,
           last_modified_by: created.last_modified_by || null,
           last_modified_by_name: created.last_modified_by_name || null,
@@ -667,7 +673,9 @@ export const InventoryProvider = ({ children }) => {
       const updated = await api.updateSupply(oldItem.id, {
         name: newItem.name,
         description: newItem.description || '',
-        image: newItem.image || null
+        image: newItem.image || null,
+        teams: newItem.teams || [],
+        categories: newItem.categories || []
       });
       
       // Update local state
@@ -692,6 +700,8 @@ export const InventoryProvider = ({ children }) => {
           description: updated.description || '',
           image: updated.image || null,
           locations: updated.locations || [],
+          teams: updated.teams || [],
+          categories: updated.categories || [],
           lastModified: updated.lastModified || null,
           last_modified_by: updated.last_modified_by || null,
           last_modified_by_name: updated.last_modified_by_name || null,
@@ -845,4 +855,3 @@ export const InventoryProvider = ({ children }) => {
     </InventoryContext.Provider>
   );
 };
-

@@ -16,13 +16,13 @@ def get_db_connection():
 
 @categories_bp.route('/categories', methods=['GET'])
 def get_categories():
-    """Get all categories."""
+    """Get all categories with IDs."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        cur.execute("SELECT name FROM categories ORDER BY name")
-        categories = [row[0] for row in cur.fetchall()]
+        cur.execute("SELECT id, name FROM categories ORDER BY name")
+        categories = [{'id': row[0], 'name': row[1]} for row in cur.fetchall()]
         
         cur.close()
         conn.close()
