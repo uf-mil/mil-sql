@@ -1,8 +1,9 @@
 """Categories API routes."""
-from flask import Blueprint, jsonify
+from flask import Blueprint, request, jsonify
 import mysql.connector
 import os
 from src.scripts.helpers import parse_database_url
+from src.api.middleware.auth import require_leader
 
 categories_bp = Blueprint('categories', __name__)
 
@@ -53,6 +54,53 @@ def get_category(category_id):
         from src.api.models.category import Category
         category = Category.from_db_row(row)
         return jsonify(category.to_dict()), 200
+    except mysql.connector.Error as e:
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+
+
+@categories_bp.route('/categories', methods=['POST'])
+@require_leader
+def create_category():
+    """Create a new category. Requires leader/admin access."""
+    try:
+        data = request.json
+        if not data or 'name' not in data:
+            return jsonify({'error': 'Category name is required'}), 400
+        
+        name = data['name'].strip()
+        if not name:
+            return jsonify({'error': 'Category name cannot be empty'}), 400
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        try:
+            cur.execute(
+                "INSERT INTO categories (name) VALUES (%s)",
+                (name,)
+            )
+            conn.commit()
+            
+            # Fetch created category
+            cur.execute("SELECT id, name, created_at FROM categories WHERE id = LAST_INSERT_ID()")
+            row = cur.fetchone()
+            
+            from src.api.models.category import Category
+            category = Category.from_db_row(row)
+            
+            cur.close()
+            conn.close()
+            
+            return jsonify(category.to_dict()), 201
+        except mysql.connector.IntegrityError as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            if 'Duplicate entry' in str(e) or 'UNIQUE constraint' in str(e):
+                return jsonify({'error': 'Category with this name already exists'}), 409
+            return jsonify({'error': f'Database error: {str(e)}'}), 400
     except mysql.connector.Error as e:
         return jsonify({'error': f'Database error: {str(e)}'}), 500
     except Exception as e:

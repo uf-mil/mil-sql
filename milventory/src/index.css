@@ -827,6 +827,37 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   padding: 2rem 1rem;
 }
 
+/* Admin Subtabs */
+.admin-subtabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  padding-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.admin-subtab {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  margin-bottom: -0.5rem;
+}
+
+.admin-subtab:hover {
+  color: var(--text);
+}
+
+.admin-subtab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
 .master-table-actions {
   flex-shrink: 0;
   margin-top: 0.5rem;
@@ -1307,5 +1338,59 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 
 .add-button:hover {
   opacity: 0.9;
+}
+
+/* Admin Actions Panel */
+.admin-actions-panel {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: var(--panel);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  padding: 1rem;
+  min-width: 200px;
+  z-index: 100;
+}
+
+.admin-actions-header {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+
+.admin-actions-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.admin-actions-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-action-button {
+  background: var(--accent);
+  color: var(--panel);
+  border: none;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: opacity 0.2s;
+  width: 100%;
+}
+
+.admin-action-button:hover {
+  opacity: 0.9;
+}
+
+.admin-action-button:active {
+  opacity: 0.8;
 }
 

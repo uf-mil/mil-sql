@@ -372,3 +372,116 @@ export const getTeams = async () => {
   return data.teams || [];
 };
 
+// Admin API functions
+export const admin = {
+  // Locations (Inventory Boxes)
+  getLocations: () =>
+    fetch(`${API_BASE}/locations`, {
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (r.status === 403) {
+        const error = new Error('Leader access required');
+        error.response = { status: 403 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+
+  createLocation: (location) =>
+    fetch(`${API_BASE}/locations`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify(location)
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (r.status === 403) {
+        const error = new Error('Leader access required');
+        error.response = { status: 403 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+
+  deleteLocation: (name) =>
+    fetch(`${API_BASE}/locations/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (r.status === 403) {
+        const error = new Error('Leader access required');
+        error.response = { status: 403 };
+        throw error;
+      }
+      if (r.status === 204) {
+        return null;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+
+  // Categories
+  createCategory: (name) =>
+    fetch(`${API_BASE}/categories`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify({ name })
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (r.status === 403) {
+        const error = new Error('Leader access required');
+        error.response = { status: 403 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+};
+

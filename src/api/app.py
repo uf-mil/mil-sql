@@ -115,6 +115,13 @@ def initialize_schema():
 # Initialize schema on startup
 initialize_schema()
 
+# Run migrations for existing tables
+try:
+    from src.scripts.migrate_locations_schema import migrate_locations_schema
+    migrate_locations_schema()
+except Exception as e:
+    print(f"⚠ Warning: Could not run migrations: {e}")
+
 # Seed test user, teams, categories, and locations
 try:
     from src.scripts.seed_data import seed_test_user, seed_teams, seed_categories, seed_locations

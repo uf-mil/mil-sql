@@ -2,6 +2,7 @@
 Location API routes.
 """
 import sys
+import json
 from pathlib import Path
 
 # Add src to path for imports (must be before other imports)
@@ -11,8 +12,101 @@ from flask import Blueprint, request, jsonify
 import mysql.connector
 from src.api.db import get_db
 from src.api.models.location import Location
+from src.api.middleware.auth import require_leader
 
 locations_bp = Blueprint('locations', __name__)
+
+
+def get_fill_for_type(location_type):
+    """Get CSS fill color variable for location type."""
+    type_fills = {
+        'drawer': 'var(--drawer)',
+        'cabinet': 'var(--table)',
+        'tall_cabinet': 'var(--table)',
+        'table': 'var(--table)',
+        'workbench': 'var(--table)',
+    }
+    return type_fills.get(location_type, 'var(--table)')
+
+
+def sync_locations_json():
+    """
+    Sync inventory-locations.json with database.
+    Updates the JSON file to match current database state.
+    """
+    try:
+        # Get project root (go up from src/api/routes to project root)
+        script_dir = Path(__file__).parent.parent.parent.parent
+        json_path = script_dir / "milventory" / "public" / "inventory-locations.json"
+        
+        if not json_path.exists():
+            # Try alternative path
+            json_path = script_dir / "src" / "seed_data" / "inventory-locations.json"
+            if not json_path.exists():
+                print(f"⚠ Warning: inventory-locations.json not found at {json_path}")
+                return False
+        
+        # Fetch all locations from DB
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT name, x, y, width, height, type FROM locations ORDER BY name")
+        db_locations = {}
+        for row in cur.fetchall():
+            db_locations[row[0]] = {
+                'name': row[0],
+                'x': row[1],
+                'y': row[2],
+                'width': row[3],
+                'height': row[4],
+                'type': row[5]
+            }
+        cur.close()
+        conn.close()
+        
+        # Load existing JSON to preserve inventory-bounds
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Create default structure if file doesn't exist or is invalid
+            data = {
+                "inventory-bounds": {
+                    "viewBox": {"x": 0, "y": 0, "width": 4000, "height": 4000},
+                    "room": {"x": 80, "y": 80, "width": 3600, "height": 3840, "rx": 18, "ry": 18}
+                },
+                "boxes": []
+            }
+        
+        # Convert DB locations to JSON boxes format
+        boxes = []
+        for name, loc_data in db_locations.items():
+            boxes.append({
+                'title': loc_data['name'],
+                'x': loc_data['x'],
+                'y': loc_data['y'],
+                'width': loc_data['width'],
+                'height': loc_data['height'],
+                'fill': get_fill_for_type(loc_data['type'])
+            })
+        
+        data['boxes'] = boxes
+        
+        # Write back to JSON
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        
+        # Also update the alternative path if it exists
+        alt_path = script_dir / "milventory" / "public" / "inventory-locations.json"
+        if alt_path.exists() and alt_path != json_path:
+            with open(alt_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+        
+        return True
+    except Exception as e:
+        print(f"⚠ Warning: Failed to sync locations JSON: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 @locations_bp.route('', methods=['GET'])
@@ -67,6 +161,7 @@ def get_location(name):
 
 
 @locations_bp.route('', methods=['POST'])
+@require_leader
 def create_location():
     """
     POST /api/locations
@@ -107,6 +202,9 @@ def create_location():
         conn.commit()
         cur.close()
         conn.close()
+        
+        # Sync JSON file
+        sync_locations_json()
         
         return jsonify(location.to_dict()), 201
     except mysql.connector.IntegrityError as e:
@@ -187,6 +285,7 @@ def update_location(name):
 
 
 @locations_bp.route('/<name>', methods=['DELETE'])
+@require_leader
 def delete_location(name):
     """
     DELETE /api/locations/<name>
@@ -213,6 +312,9 @@ def delete_location(name):
         conn.commit()
         cur.close()
         conn.close()
+        
+        # Sync JSON file
+        sync_locations_json()
         
         return '', 204
     except Exception as e:

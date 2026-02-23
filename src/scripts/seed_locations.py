@@ -176,20 +176,26 @@ def seed_locations():
             location_type = derive_location_type(name)
             shelf_count = 6 if location_type == 'tall_cabinet' else 0
             
+            # Get coordinates from JSON box
+            x = box.get('x', 0)
+            y = box.get('y', 0)
+            width = box.get('width', 150)
+            height = box.get('height', 150)
+            
             if name in existing_names:
-                # Update existing location (preserve if exists, but update type/shelf_count if changed)
+                # Update existing location (update all fields including coordinates)
                 cur.execute(
-                    "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
-                    (location_type, shelf_count, name)
+                    "UPDATE locations SET type = %s, shelf_count = %s, x = %s, y = %s, width = %s, height = %s WHERE name = %s",
+                    (location_type, shelf_count, x, y, width, height, name)
                 )
                 if cur.rowcount > 0:
                     update_count += 1
             else:
-                # Insert new location
+                # Insert new location with coordinates
                 try:
                     cur.execute(
-                        "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
-                        (name, location_type, shelf_count)
+                        "INSERT INTO locations (name, type, shelf_count, x, y, width, height) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (name, location_type, shelf_count, x, y, width, height)
                     )
                     insert_count += 1
                 except mysql.connector.IntegrityError:
