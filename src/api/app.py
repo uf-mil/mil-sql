@@ -139,6 +139,16 @@ def health_check():
     return {'status': 'healthy'}, 200
 
 
+# Error handler to ensure CORS headers are always sent
+@app.errorhandler(500)
+def handle_500_error(e):
+    """Handle 500 errors and ensure CORS headers are sent."""
+    from flask import jsonify
+    response = jsonify({'error': str(e) if hasattr(e, 'description') and e.description else 'Internal server error'})
+    response.status_code = 500
+    return response
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)

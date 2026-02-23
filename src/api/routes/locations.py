@@ -193,18 +193,26 @@ def create_location():
         
         location = Location.from_dict(data)
         
+        # Determine shelf_count based on type
+        shelf_count = 6 if location.type == 'tall_cabinet' else 0
+        
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO locations (name, x, y, width, height, type) VALUES (%s, %s, %s, %s, %s, %s)",
-            (location.name, location.x, location.y, location.width, location.height, location.type)
+            "INSERT INTO locations (name, x, y, width, height, type, shelf_count) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (location.name, location.x, location.y, location.width, location.height, location.type, shelf_count)
         )
         conn.commit()
         cur.close()
         conn.close()
         
-        # Sync JSON file
-        sync_locations_json()
+        # Sync JSON file (don't fail if this errors, just log it)
+        try:
+            sync_locations_json()
+        except Exception as sync_error:
+            print(f"⚠ Warning: Failed to sync locations JSON after create: {sync_error}")
+            import traceback
+            traceback.print_exc()
         
         return jsonify(location.to_dict()), 201
     except mysql.connector.IntegrityError as e:
@@ -212,6 +220,9 @@ def create_location():
             return jsonify({'error': 'Location with this name already exists'}), 409
         return jsonify({'error': str(e)}), 400
     except Exception as e:
+        print(f"Error creating location: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
