@@ -270,42 +270,64 @@ def seed_locations():
             height = box.get('height', 150)
             
             if name in existing_names:
-                # Update existing location (update all fields including coordinates)
+                # Update existing location (update all fields including coordinates and protected status)
                 # Check if columns exist first
                 try:
                     cur.execute(
-                        "UPDATE locations SET type = %s, shelf_count = %s, x = %s, y = %s, width = %s, height = %s WHERE name = %s",
-                        (location_type, shelf_count, x, y, width, height, name)
+                        "UPDATE locations SET type = %s, shelf_count = %s, x = %s, y = %s, width = %s, height = %s, protected = %s WHERE name = %s",
+                        (location_type, shelf_count, x, y, width, height, True, name)
                     )
                     if cur.rowcount > 0:
                         update_count += 1
                 except mysql.connector.Error as e:
                     # If columns don't exist, try without them
                     if 'Unknown column' in str(e):
-                        cur.execute(
-                            "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
-                            (location_type, shelf_count, name)
-                        )
-                        if cur.rowcount > 0:
-                            update_count += 1
+                        # Try without protected column
+                        try:
+                            cur.execute(
+                                "UPDATE locations SET type = %s, shelf_count = %s, x = %s, y = %s, width = %s, height = %s WHERE name = %s",
+                                (location_type, shelf_count, x, y, width, height, name)
+                            )
+                            if cur.rowcount > 0:
+                                update_count += 1
+                        except mysql.connector.Error as e2:
+                            if 'Unknown column' in str(e2):
+                                cur.execute(
+                                    "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
+                                    (location_type, shelf_count, name)
+                                )
+                                if cur.rowcount > 0:
+                                    update_count += 1
+                            else:
+                                raise
                     else:
                         raise
             else:
-                # Insert new location with coordinates
+                # Insert new location with coordinates - set protected=True for locations from JSON
                 try:
-                    # Try with coordinates first
+                    # Try with coordinates and protected first
                     try:
                         cur.execute(
-                            "INSERT INTO locations (name, type, shelf_count, x, y, width, height) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                            (name, location_type, shelf_count, x, y, width, height)
+                            "INSERT INTO locations (name, type, shelf_count, x, y, width, height, protected) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                            (name, location_type, shelf_count, x, y, width, height, True)
                         )
                     except mysql.connector.Error as e:
-                        # If columns don't exist, insert without them
-                        if 'Unknown column' in str(e):
-                            cur.execute(
-                                "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
-                                (name, location_type, shelf_count)
-                            )
+                        # If protected column doesn't exist, try without it
+                        if 'Unknown column' in str(e) and 'protected' in str(e):
+                            try:
+                                cur.execute(
+                                    "INSERT INTO locations (name, type, shelf_count, x, y, width, height) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                                    (name, location_type, shelf_count, x, y, width, height)
+                                )
+                            except mysql.connector.Error as e2:
+                                # If coordinate columns don't exist, insert without them
+                                if 'Unknown column' in str(e2):
+                                    cur.execute(
+                                        "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
+                                        (name, location_type, shelf_count)
+                                    )
+                                else:
+                                    raise
                         else:
                             raise
                     insert_count += 1

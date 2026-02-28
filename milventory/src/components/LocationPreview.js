@@ -1,36 +1,16 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { admin } from '../api';
 
 const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneCollapsed }) => {
   const previewRef = useRef(null);
   const [deleting, setDeleting] = useState(false);
-  const [protectedLocations, setProtectedLocations] = useState(new Set());
-
-  // Load protected locations from JSON file
-  useEffect(() => {
-    const loadProtectedLocations = async () => {
-      try {
-        const response = await fetch('/inventory-locations.json');
-        if (response.ok) {
-          const data = await response.json();
-          const protectedNames = new Set(
-            (data.boxes || []).map(box => box.title)
-          );
-          setProtectedLocations(protectedNames);
-        }
-      } catch (err) {
-        console.error('Error loading protected locations:', err);
-      }
-    };
-    loadProtectedLocations();
-  }, []);
 
   // Calculate position to the right of left pane
   const leftPaneActualWidth = leftPaneCollapsed ? 40 : leftPaneWidth;
   const positionX = leftPaneActualWidth + 20;
   const positionY = 20;
 
-  const isProtected = location && protectedLocations.has(location.name);
+  const isProtected = location?.protected || false;
 
   const handleDelete = async () => {
     if (!location) return;
@@ -38,8 +18,8 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
     // Check if location is protected
     if (isProtected) {
       alert(
-        `This location is protected because it's in the inventory-locations.json file. ` +
-        `It is a permanent inventory location. To delete it, edit the code/JSON file directly.`
+        `This location is protected and is a permanent inventory location. ` +
+        `To delete it, you must edit the database directly to set protected = FALSE.`
       );
       return;
     }
@@ -127,7 +107,7 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
           }}>
             <strong>⚠ Protected Location</strong>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem' }}>
-              This location is in inventory-locations.json and is permanent. Edit the JSON file to remove it.
+              This location is protected and cannot be deleted. Edit the database to change protection status.
             </p>
           </div>
         )}

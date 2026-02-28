@@ -86,23 +86,11 @@ export const InventoryProvider = ({ children }) => {
       setError(null);
       
       try {
-        // 1. Load inventory bounds from JSON (for viewBox and room bounds)
-        try {
-          const response = await fetch('/inventory-locations.json');
-          if (response.ok) {
-            const data = await response.json();
-            if (data['inventory-bounds']) {
-              setInventoryBounds(data['inventory-bounds']);
-            }
-          }
-        } catch (boundsError) {
-          console.warn('Could not load inventory bounds from JSON, using defaults:', boundsError);
-          // Use default bounds if JSON fails
-          setInventoryBounds({
-            viewBox: { x: 0, y: 0, width: 4000, height: 4000 },
-            room: { x: 80, y: 80, width: 3600, height: 3840, rx: 18, ry: 18 }
-          });
-        }
+        // 1. Set default inventory bounds (no longer loading from JSON)
+        setInventoryBounds({
+          viewBox: { x: 0, y: 0, width: 4000, height: 4000 },
+          room: { x: 80, y: 80, width: 3600, height: 3840, rx: 18, ry: 18 }
+        });
         
         // 2. Load locations from database API
         const locations = await admin.getLocations();

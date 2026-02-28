@@ -17,11 +17,11 @@ from helpers import parse_database_url, get_sql_base_path, execute_sql_file, tab
 
 
 def load_locations_from_json():
-    """Load locations from milventory/public/inventory-locations.json."""
+    """Load locations from src/seed_data/inventory-locations.json."""
     # Get project root (go up from src/scripts to project root)
     script_dir = Path(__file__).parent
     project_root = script_dir.parent.parent
-    json_path = project_root / "milventory" / "public" / "inventory-locations.json"
+    json_path = project_root / "src" / "seed_data" / "inventory-locations.json"
     
     if not json_path.exists():
         print(f"⚠ Warning: {json_path} not found, using empty locations list")
@@ -57,7 +57,7 @@ def derive_location_type(title):
 
 
 def seed_locations():
-    """Sync locations from milventory/public/inventory-locations.json with database."""
+    """Sync locations from src/seed_data/inventory-locations.json with database."""
     try:
         # Get database connection parameters
         database_url = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@db:3306/mydb")
@@ -183,19 +183,19 @@ def seed_locations():
             height = box.get('height', 150)
             
             if name in existing_names:
-                # Update existing location (update all fields including coordinates)
+                # Update existing location (update all fields including coordinates and protected status)
                 cur.execute(
-                    "UPDATE locations SET type = %s, shelf_count = %s, x = %s, y = %s, width = %s, height = %s WHERE name = %s",
-                    (location_type, shelf_count, x, y, width, height, name)
+                    "UPDATE locations SET type = %s, shelf_count = %s, x = %s, y = %s, width = %s, height = %s, protected = %s WHERE name = %s",
+                    (location_type, shelf_count, x, y, width, height, True, name)
                 )
                 if cur.rowcount > 0:
                     update_count += 1
             else:
-                # Insert new location with coordinates
+                # Insert new location with coordinates - set protected=True for locations from JSON
                 try:
                     cur.execute(
-                        "INSERT INTO locations (name, type, shelf_count, x, y, width, height) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                        (name, location_type, shelf_count, x, y, width, height)
+                        "INSERT INTO locations (name, type, shelf_count, x, y, width, height, protected) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        (name, location_type, shelf_count, x, y, width, height, True)
                     )
                     insert_count += 1
                 except mysql.connector.IntegrityError:

@@ -33,15 +33,17 @@ def sync_locations_json():
     """
     Sync inventory-locations.json with database.
     Updates the JSON file to match current database state.
+    NOTE: This function is deprecated and no longer called. JSON file is now seed data only.
     """
     try:
         # Get project root (go up from src/api/routes to project root)
         script_dir = Path(__file__).parent.parent.parent.parent
-        json_path = script_dir / "milventory" / "public" / "inventory-locations.json"
+        # JSON file is now in seed_data directory
+        json_path = script_dir / "src" / "seed_data" / "inventory-locations.json"
         
         if not json_path.exists():
-            # Try alternative path
-            json_path = script_dir / "src" / "seed_data" / "inventory-locations.json"
+            # Try legacy path for backwards compatibility
+            json_path = script_dir / "milventory" / "public" / "inventory-locations.json"
             if not json_path.exists():
                 print(f"⚠ Warning: inventory-locations.json not found at {json_path}")
                 return False
@@ -49,7 +51,7 @@ def sync_locations_json():
         # Fetch all locations from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT name, x, y, width, height, type FROM locations ORDER BY name")
+        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations ORDER BY name")
         db_locations = {}
         for row in cur.fetchall():
             db_locations[row[0]] = {
@@ -58,7 +60,8 @@ def sync_locations_json():
                 'y': row[2],
                 'width': row[3],
                 'height': row[4],
-                'type': row[5]
+                'type': row[5],
+                'protected': bool(row[6]) if len(row) > 6 else False
             }
         cur.close()
         conn.close()
@@ -121,7 +124,7 @@ def get_locations():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT name, x, y, width, height, type FROM locations ORDER BY name")
+        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations ORDER BY name")
         rows = cur.fetchall()
         locations = [Location.from_db_row(row).to_dict() for row in rows]
         cur.close()
@@ -146,7 +149,7 @@ def get_location(name):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT name, x, y, width, height, type FROM locations WHERE name = %s", (name,))
+        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations WHERE name = %s", (name,))
         row = cur.fetchone()
         cur.close()
         conn.close()
@@ -199,16 +202,15 @@ def create_location(current_user_id=None):
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO locations (name, x, y, width, height, type, shelf_count) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (location.name, location.x, location.y, location.width, location.height, location.type, shelf_count)
+            "INSERT INTO locations (name, x, y, width, height, type, shelf_count, protected) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (location.name, location.x, location.y, location.width, location.height, location.type, shelf_count, False)
         )
         conn.commit()
         cur.close()
         conn.close()
         
-        # Note: We do NOT sync to JSON file anymore.
-        # The inventory-locations.json file is now the source of truth for permanent locations.
-        # New locations created via the API are stored only in the database.
+        # Note: New locations are stored only in the database with protected=FALSE by default.
+        # Protected status is managed via the database column, not the JSON file.
         
         return jsonify(location.to_dict()), 201
     except mysql.connector.IntegrityError as e:
@@ -279,7 +281,7 @@ def update_location(name):
         conn.commit()
         
         # Fetch updated location
-        cur.execute("SELECT name, x, y, width, height, type FROM locations WHERE name = %s", (name,))
+        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations WHERE name = %s", (name,))
         row = cur.fetchone()
         location = Location.from_db_row(row).to_dict()
         
@@ -320,9 +322,8 @@ def delete_location(name, current_user_id=None):
         cur.close()
         conn.close()
         
-        # Note: We do NOT sync to JSON file anymore.
-        # The inventory-locations.json file is now the source of truth for permanent locations.
-        # Deletions only affect the database, not the JSON file.
+        # Note: Deletions only affect the database.
+        # Protected locations cannot be deleted (enforced by frontend based on protected column).
         
         return '', 204
     except Exception as e:
