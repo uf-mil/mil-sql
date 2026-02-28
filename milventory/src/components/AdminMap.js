@@ -14,6 +14,7 @@ const AdminMap = forwardRef((props, ref) => {
   const drawStartRef = useRef(null);
   const currentDrawingBoxRef = useRef(null);
   const currentTransformRef = useRef(d3.zoomIdentity);
+  const isZoomInitializedRef = useRef(false); // Track if initial zoom has been set
   const [isDraggingEdge, setIsDraggingEdge] = useState(false);
   const isDraggingEdgeRef = useRef(false); // Synchronous ref for D3 filter
   const [draggingEdge, setDraggingEdge] = useState(null); // 'top', 'bottom', 'left', 'right'
@@ -61,8 +62,10 @@ const AdminMap = forwardRef((props, ref) => {
     
     const svg = d3.select(svgRef.current);
     svg.call(zoom).on('dblclick.zoom', null);
-    if (!drawMode) {
+    // Only set initial transform on first mount, not when drawMode changes
+    if (!isZoomInitializedRef.current && !drawMode) {
       svg.call(zoom.transform, d3.zoomIdentity.scale(1.03));
+      isZoomInitializedRef.current = true;
     }
   }, [drawMode]);
 
