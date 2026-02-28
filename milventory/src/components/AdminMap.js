@@ -15,6 +15,7 @@ const AdminMap = forwardRef((props, ref) => {
   const currentDrawingBoxRef = useRef(null);
   const currentTransformRef = useRef(d3.zoomIdentity);
   const [isDraggingEdge, setIsDraggingEdge] = useState(false);
+  const isDraggingEdgeRef = useRef(false); // Synchronous ref for D3 filter
   const [draggingEdge, setDraggingEdge] = useState(null); // 'top', 'bottom', 'left', 'right'
   const edgeDragStartRef = useRef(null);
 
@@ -35,7 +36,14 @@ const AdminMap = forwardRef((props, ref) => {
 
     const zoom = d3.zoom()
       .scaleExtent([0.6, 6])
-      .filter(() => !drawMode) // Disable zoom/pan when in draw mode
+      .filter((event) => {
+        // Disable zoom/pan when in draw mode or when dragging an edge handle
+        if (drawMode) return false;
+        if (isDraggingEdgeRef.current) return false;
+        // Check if the event target is an edge handle
+        if (event.target && event.target.dataset && event.target.dataset.edgeHandle) return false;
+        return true;
+      })
       .on('start', () => {
         if (!drawMode) {
           isPanningRef.current = true;
@@ -143,8 +151,9 @@ const AdminMap = forwardRef((props, ref) => {
 
   // Handle mouse up to complete drawing
   const handleMouseUp = (e) => {
-    if (isDraggingEdge) {
+    if (isDraggingEdgeRef.current) {
       // End edge dragging
+      isDraggingEdgeRef.current = false;
       setIsDraggingEdge(false);
       setDraggingEdge(null);
       edgeDragStartRef.current = null;
@@ -193,6 +202,7 @@ const AdminMap = forwardRef((props, ref) => {
     e.stopPropagation();
     
     const svgCoords = screenToSVG(e.clientX, e.clientY);
+    isDraggingEdgeRef.current = true;
     setIsDraggingEdge(true);
     setDraggingEdge(edge);
     edgeDragStartRef.current = {
@@ -204,7 +214,7 @@ const AdminMap = forwardRef((props, ref) => {
 
   // Handle edge drag move
   const handleEdgeMouseMove = (e) => {
-    if (!isDraggingEdge || !draggingEdge || !edgeDragStartRef.current || !onPreviewEdgeDrag) return;
+    if (!isDraggingEdgeRef.current || !edgeDragStartRef.current || !onPreviewEdgeDrag) return;
     
     e.preventDefault();
     e.stopPropagation();
@@ -270,17 +280,28 @@ const AdminMap = forwardRef((props, ref) => {
         cursor: drawMode ? 'crosshair' : 'default'
       }}
       onMouseDown={drawMode ? handleMouseDown : undefined}
-      onMouseMove={drawMode ? handleMouseMove : isDraggingEdge ? handleEdgeMouseMove : undefined}
-      onMouseUp={drawMode ? handleMouseUp : isDraggingEdge ? handleMouseUp : undefined}
-      onMouseLeave={drawMode ? () => {
-        // Cancel drawing if mouse leaves
+      onMouseMove={(e) => {
+        if (drawMode) { handleMouseMove(e); return; }
+        if (isDraggingEdgeRef.current) { handleEdgeMouseMove(e); return; }
+      }}
+      onMouseUp={(e) => {
+        if (isDraggingEdgeRef.current) { handleMouseUp(e); return; }
+        if (drawMode) { handleMouseUp(e); return; }
+      }}
+      onMouseLeave={() => {
         if (isDrawing) {
           setIsDrawing(false);
           setDrawingBox(null);
           currentDrawingBoxRef.current = null;
           drawStartRef.current = null;
         }
-      } : undefined}
+        if (isDraggingEdgeRef.current) {
+          isDraggingEdgeRef.current = false;
+          setIsDraggingEdge(false);
+          setDraggingEdge(null);
+          edgeDragStartRef.current = null;
+        }
+      }}
     >
       <g ref={worldRef} id="world">
         <rect 
@@ -391,9 +412,20 @@ const AdminMap = forwardRef((props, ref) => {
               x2={previewBox.x + previewBox.width}
               y2={previewBox.y}
               stroke="var(--accent)"
-              strokeWidth="4"
+              strokeWidth="8"
+              strokeOpacity="0"
+              data-edge-handle="top"
               style={{ cursor: 'ns-resize', pointerEvents: 'auto' }}
               onMouseDown={(e) => handleEdgeMouseDown(e, 'top')}
+            />
+            <line
+              x1={previewBox.x}
+              y1={previewBox.y}
+              x2={previewBox.x + previewBox.width}
+              y2={previewBox.y}
+              stroke="var(--accent)"
+              strokeWidth="2"
+              style={{ pointerEvents: 'none' }}
             />
             {/* Bottom edge */}
             <line
@@ -402,9 +434,20 @@ const AdminMap = forwardRef((props, ref) => {
               x2={previewBox.x + previewBox.width}
               y2={previewBox.y + previewBox.height}
               stroke="var(--accent)"
-              strokeWidth="4"
+              strokeWidth="8"
+              strokeOpacity="0"
+              data-edge-handle="bottom"
               style={{ cursor: 'ns-resize', pointerEvents: 'auto' }}
               onMouseDown={(e) => handleEdgeMouseDown(e, 'bottom')}
+            />
+            <line
+              x1={previewBox.x}
+              y1={previewBox.y + previewBox.height}
+              x2={previewBox.x + previewBox.width}
+              y2={previewBox.y + previewBox.height}
+              stroke="var(--accent)"
+              strokeWidth="2"
+              style={{ pointerEvents: 'none' }}
             />
             {/* Left edge */}
             <line
@@ -413,9 +456,20 @@ const AdminMap = forwardRef((props, ref) => {
               x2={previewBox.x}
               y2={previewBox.y + previewBox.height}
               stroke="var(--accent)"
-              strokeWidth="4"
+              strokeWidth="8"
+              strokeOpacity="0"
+              data-edge-handle="left"
               style={{ cursor: 'ew-resize', pointerEvents: 'auto' }}
               onMouseDown={(e) => handleEdgeMouseDown(e, 'left')}
+            />
+            <line
+              x1={previewBox.x}
+              y1={previewBox.y}
+              x2={previewBox.x}
+              y2={previewBox.y + previewBox.height}
+              stroke="var(--accent)"
+              strokeWidth="2"
+              style={{ pointerEvents: 'none' }}
             />
             {/* Right edge */}
             <line
@@ -424,9 +478,20 @@ const AdminMap = forwardRef((props, ref) => {
               x2={previewBox.x + previewBox.width}
               y2={previewBox.y + previewBox.height}
               stroke="var(--accent)"
-              strokeWidth="4"
+              strokeWidth="8"
+              strokeOpacity="0"
+              data-edge-handle="right"
               style={{ cursor: 'ew-resize', pointerEvents: 'auto' }}
               onMouseDown={(e) => handleEdgeMouseDown(e, 'right')}
+            />
+            <line
+              x1={previewBox.x + previewBox.width}
+              y1={previewBox.y}
+              x2={previewBox.x + previewBox.width}
+              y2={previewBox.y + previewBox.height}
+              stroke="var(--accent)"
+              strokeWidth="2"
+              style={{ pointerEvents: 'none' }}
             />
           </>
         )}
