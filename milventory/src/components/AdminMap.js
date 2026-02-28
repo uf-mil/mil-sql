@@ -4,7 +4,7 @@ import { useInventory } from '../context/InventoryContext';
 import { admin } from '../api';
 
 const AdminMap = forwardRef((props, ref) => {
-  const { drawMode, onDrawComplete, selectedLocation, onLocationSelect } = props;
+  const { drawMode, onDrawComplete, selectedLocation, onLocationSelect, previewBox, onPreviewEdgeDrag } = props;
   const { inventoryData, inventoryBounds } = useInventory();
   const worldRef = useRef(null);
   const svgRef = useRef(null);
@@ -14,6 +14,9 @@ const AdminMap = forwardRef((props, ref) => {
   const drawStartRef = useRef(null);
   const currentDrawingBoxRef = useRef(null);
   const currentTransformRef = useRef(d3.zoomIdentity);
+  const [isDraggingEdge, setIsDraggingEdge] = useState(false);
+  const [draggingEdge, setDraggingEdge] = useState(null); // 'top', 'bottom', 'left', 'right'
+  const edgeDragStartRef = useRef(null);
 
   // Expose svgRef to parent via forwarded ref
   useEffect(() => {
@@ -76,6 +79,11 @@ const AdminMap = forwardRef((props, ref) => {
     };
   };
 
+  // Snap value to nearest multiple of 5
+  const snapTo5 = (value) => {
+    return Math.round(value / 5) * 5;
+  };
+
   // Handle mouse down for drawing
   const handleMouseDown = (e) => {
     if (!drawMode || isPanningRef.current) return;
@@ -108,11 +116,26 @@ const AdminMap = forwardRef((props, ref) => {
     const svgCoords = screenToSVG(e.clientX, e.clientY);
     const start = drawStartRef.current;
     
+    // Calculate raw dimensions
+    const rawWidth = Math.abs(svgCoords.x - start.x);
+    const rawHeight = Math.abs(svgCoords.y - start.y);
+    
+    // Snap width and height to nearest multiple of 5
+    const snappedWidth = snapTo5(rawWidth);
+    const snappedHeight = snapTo5(rawHeight);
+    
+    // Calculate box position: always use the minimum of start and current position
+    // This ensures the box always starts from the top-left corner
+    const minX = Math.min(start.x, svgCoords.x);
+    const minY = Math.min(start.y, svgCoords.y);
+    
+    // Adjust position if we're dragging left or up to account for snapped dimensions
+    // If dragging left, adjust x; if dragging up, adjust y
     const updatedBox = {
-      x: Math.min(start.x, svgCoords.x),
-      y: Math.min(start.y, svgCoords.y),
-      width: Math.abs(svgCoords.x - start.x),
-      height: Math.abs(svgCoords.y - start.y)
+      x: svgCoords.x < start.x ? start.x - snappedWidth : minX,
+      y: svgCoords.y < start.y ? start.y - snappedHeight : minY,
+      width: snappedWidth,
+      height: snappedHeight
     };
     currentDrawingBoxRef.current = updatedBox;
     setDrawingBox(updatedBox);
@@ -120,6 +143,14 @@ const AdminMap = forwardRef((props, ref) => {
 
   // Handle mouse up to complete drawing
   const handleMouseUp = (e) => {
+    if (isDraggingEdge) {
+      // End edge dragging
+      setIsDraggingEdge(false);
+      setDraggingEdge(null);
+      edgeDragStartRef.current = null;
+      return;
+    }
+    
     if (!drawMode || !isDrawing) return;
     
     // Prevent default to avoid conflicts with zoom
@@ -137,13 +168,14 @@ const AdminMap = forwardRef((props, ref) => {
     }
     
     // Only complete if box has minimum size
+    // Dimensions are already snapped to 5px intervals from handleMouseMove
     if (currentBox.width > 10 && currentBox.height > 10) {
       if (onDrawComplete) {
         onDrawComplete({
           x: Math.round(currentBox.x),
           y: Math.round(currentBox.y),
-          width: Math.round(currentBox.width),
-          height: Math.round(currentBox.height)
+          width: currentBox.width, // Already snapped to 5px
+          height: currentBox.height // Already snapped to 5px
         });
       }
     }
@@ -152,6 +184,63 @@ const AdminMap = forwardRef((props, ref) => {
     setDrawingBox(null);
     currentDrawingBoxRef.current = null;
     drawStartRef.current = null;
+  };
+
+  // Handle edge drag start
+  const handleEdgeMouseDown = (e, edge) => {
+    if (!previewBox || !onPreviewEdgeDrag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const svgCoords = screenToSVG(e.clientX, e.clientY);
+    setIsDraggingEdge(true);
+    setDraggingEdge(edge);
+    edgeDragStartRef.current = {
+      edge,
+      startCoords: svgCoords,
+      initialBox: { ...previewBox }
+    };
+  };
+
+  // Handle edge drag move
+  const handleEdgeMouseMove = (e) => {
+    if (!isDraggingEdge || !draggingEdge || !edgeDragStartRef.current || !onPreviewEdgeDrag) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const svgCoords = screenToSVG(e.clientX, e.clientY);
+    const { initialBox } = edgeDragStartRef.current;
+    
+    let newTopY = initialBox.y;
+    let newBottomY = initialBox.y + initialBox.height;
+    let newLeftX = initialBox.x;
+    let newRightX = initialBox.x + initialBox.width;
+    
+    // Snap to 5px intervals
+    const snapTo5 = (value) => Math.round(value / 5) * 5;
+    
+    if (draggingEdge === 'top') {
+      newTopY = snapTo5(svgCoords.y);
+      if (newTopY >= newBottomY) newTopY = newBottomY - 5;
+    } else if (draggingEdge === 'bottom') {
+      newBottomY = snapTo5(svgCoords.y);
+      if (newBottomY <= newTopY) newBottomY = newTopY + 5;
+    } else if (draggingEdge === 'left') {
+      newLeftX = snapTo5(svgCoords.x);
+      if (newLeftX >= newRightX) newLeftX = newRightX - 5;
+    } else if (draggingEdge === 'right') {
+      newRightX = snapTo5(svgCoords.x);
+      if (newRightX <= newLeftX) newRightX = newLeftX + 5;
+    }
+    
+    // Update preview box
+    onPreviewEdgeDrag({
+      topY: newTopY,
+      bottomY: newBottomY,
+      leftX: newLeftX,
+      rightX: newRightX
+    });
   };
 
   const boxes = inventoryData ? Array.from(inventoryData.values()) : [];
@@ -181,8 +270,8 @@ const AdminMap = forwardRef((props, ref) => {
         cursor: drawMode ? 'crosshair' : 'default'
       }}
       onMouseDown={drawMode ? handleMouseDown : undefined}
-      onMouseMove={drawMode ? handleMouseMove : undefined}
-      onMouseUp={drawMode ? handleMouseUp : undefined}
+      onMouseMove={drawMode ? handleMouseMove : isDraggingEdge ? handleEdgeMouseMove : undefined}
+      onMouseUp={drawMode ? handleMouseUp : isDraggingEdge ? handleMouseUp : undefined}
       onMouseLeave={drawMode ? () => {
         // Cancel drawing if mouse leaves
         if (isDrawing) {
@@ -278,6 +367,68 @@ const AdminMap = forwardRef((props, ref) => {
             strokeDasharray="4,4"
             style={{ pointerEvents: 'none' }}
           />
+        )}
+
+        {/* Preview box from AddLocationModal with draggable edges */}
+        {previewBox && !drawingBox && (
+          <>
+            <rect
+              className="box"
+              x={previewBox.x}
+              y={previewBox.y}
+              width={previewBox.width}
+              height={previewBox.height}
+              fill="rgba(74, 158, 255, 0.3)"
+              stroke="var(--accent)"
+              strokeWidth="2"
+              strokeDasharray="4,4"
+              style={{ pointerEvents: 'none' }}
+            />
+            {/* Top edge */}
+            <line
+              x1={previewBox.x}
+              y1={previewBox.y}
+              x2={previewBox.x + previewBox.width}
+              y2={previewBox.y}
+              stroke="var(--accent)"
+              strokeWidth="4"
+              style={{ cursor: 'ns-resize', pointerEvents: 'auto' }}
+              onMouseDown={(e) => handleEdgeMouseDown(e, 'top')}
+            />
+            {/* Bottom edge */}
+            <line
+              x1={previewBox.x}
+              y1={previewBox.y + previewBox.height}
+              x2={previewBox.x + previewBox.width}
+              y2={previewBox.y + previewBox.height}
+              stroke="var(--accent)"
+              strokeWidth="4"
+              style={{ cursor: 'ns-resize', pointerEvents: 'auto' }}
+              onMouseDown={(e) => handleEdgeMouseDown(e, 'bottom')}
+            />
+            {/* Left edge */}
+            <line
+              x1={previewBox.x}
+              y1={previewBox.y}
+              x2={previewBox.x}
+              y2={previewBox.y + previewBox.height}
+              stroke="var(--accent)"
+              strokeWidth="4"
+              style={{ cursor: 'ew-resize', pointerEvents: 'auto' }}
+              onMouseDown={(e) => handleEdgeMouseDown(e, 'left')}
+            />
+            {/* Right edge */}
+            <line
+              x1={previewBox.x + previewBox.width}
+              y1={previewBox.y}
+              x2={previewBox.x + previewBox.width}
+              y2={previewBox.y + previewBox.height}
+              stroke="var(--accent)"
+              strokeWidth="4"
+              style={{ cursor: 'ew-resize', pointerEvents: 'auto' }}
+              onMouseDown={(e) => handleEdgeMouseDown(e, 'right')}
+            />
+          </>
         )}
       </g>
     </svg>

@@ -12,8 +12,10 @@ const AdminDashboard = () => {
   const [drawMode, setDrawMode] = useState(false);
   const [showAddLocationModal, setShowAddLocationModal] = useState(false);
   const [drawnBox, setDrawnBox] = useState(null);
+  const [previewBox, setPreviewBox] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState(null);
+  const edgeDragHandlerRef = useRef(null);
 
   const handleAddLocation = () => {
     setDrawMode(true);
@@ -28,6 +30,7 @@ const AdminDashboard = () => {
   const handleModalClose = () => {
     setShowAddLocationModal(false);
     setDrawnBox(null);
+    setPreviewBox(null);
     setDrawMode(false);
   };
 
@@ -80,6 +83,21 @@ const AdminDashboard = () => {
           onDrawComplete={handleDrawComplete}
           selectedLocation={selectedLocation}
           onLocationSelect={handleLocationSelect}
+          previewBox={previewBox}
+          onPreviewEdgeDrag={(edges) => {
+            // Update preview box state directly
+            const newPreviewBox = {
+              x: edges.leftX,
+              y: edges.topY,
+              width: edges.rightX - edges.leftX,
+              height: edges.bottomY - edges.topY
+            };
+            setPreviewBox(newPreviewBox);
+            // Also trigger form update via edge drag handler if available
+            if (edgeDragHandlerRef.current) {
+              edgeDragHandlerRef.current(edges);
+            }
+          }}
         />
         <AdminActionsPanel 
           onAddLocation={handleAddLocation}
@@ -91,6 +109,11 @@ const AdminDashboard = () => {
           onClose={handleModalClose}
           onSuccess={handleLocationAdded}
           initialBox={drawnBox}
+          leftPaneWidth={leftPaneWidth}
+          leftPaneCollapsed={leftPaneCollapsed}
+          onPreviewUpdate={setPreviewBox}
+          previewBox={previewBox}
+          onEdgeDrag={edgeDragHandlerRef}
         />
         <LocationPreview
           location={selectedLocation}
