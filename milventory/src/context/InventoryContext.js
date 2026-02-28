@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import * as d3 from 'd3';
-import { api } from '../api';
+import { api, admin } from '../api';
 
 const InventoryContext = createContext(null);
 
@@ -67,37 +67,71 @@ export const InventoryProvider = ({ children }) => {
   const worldRef = useRef(null);
   const isPanningRef = useRef(false);
 
-  // Initialize inventory data from JSON (layout only) and API (inventory data)
+  // Helper function to get fill color for location type
+  const getFillForType = (type) => {
+    const typeFills = {
+      'drawer': 'var(--drawer)',
+      'cabinet': 'var(--table)',
+      'tall_cabinet': 'var(--files)', // Tall cabinets use files color
+      'table': 'var(--table)',
+      'workbench': '#e7ebf3', // Workbench has special color
+    };
+    return typeFills[type] || 'var(--table)';
+  };
+
+  // Initialize inventory data from database (locations) and API (inventory data)
   useEffect(() => {
     const loadInventoryData = async () => {
       setIsLoading(true);
       setError(null);
       
       try {
-        // 1. Load layout from JSON (no inventory arrays)
-        const response = await fetch('/inventory-locations.json');
-        if (!response.ok) {
-          throw new Error('Failed to load inventory layout');
-        }
-        const data = await response.json();
-        
-        // Store inventory bounds
-        if (data['inventory-bounds']) {
-          setInventoryBounds(data['inventory-bounds']);
-        }
-        
-        // Initialize inventoryData with layout only (empty inventory arrays)
-        const newInventoryData = new Map();
-        data.boxes.forEach(box => {
-          newInventoryData.set(box.title, {
-            ...box,
-            inventory: [] // Will be populated from API
+        // 1. Load inventory bounds from JSON (for viewBox and room bounds)
+        try {
+          const response = await fetch('/inventory-locations.json');
+          if (response.ok) {
+            const data = await response.json();
+            if (data['inventory-bounds']) {
+              setInventoryBounds(data['inventory-bounds']);
+            }
+          }
+        } catch (boundsError) {
+          console.warn('Could not load inventory bounds from JSON, using defaults:', boundsError);
+          // Use default bounds if JSON fails
+          setInventoryBounds({
+            viewBox: { x: 0, y: 0, width: 4000, height: 4000 },
+            room: { x: 80, y: 80, width: 3600, height: 3840, rx: 18, ry: 18 }
           });
+        }
+        
+        // 2. Load locations from database API
+        const locations = await admin.getLocations();
+        
+        // Convert API locations to box format expected by map
+        const newInventoryData = new Map();
+        locations.forEach(location => {
+          const boxData = {
+            title: location.name,
+            x: location.x,
+            y: location.y,
+            width: location.width,
+            height: location.height,
+            fill: getFillForType(location.type),
+            type: location.type,
+            inventory: [] // Will be populated from supply locations API
+          };
+          
+          // Add isWorkbench property if it's a workbench
+          if (location.type === 'workbench') {
+            boxData.isWorkbench = true;
+          }
+          
+          newInventoryData.set(location.name, boxData);
         });
         
         setInventoryData(newInventoryData);
         
-        // 2. Load supply locations from API and merge into inventoryData
+        // 3. Load supply locations from API and merge into inventoryData
         try {
           const supplyLocations = await api.getAllSupplyLocations();
           
@@ -139,8 +173,13 @@ export const InventoryProvider = ({ children }) => {
         console.error('Error loading inventory data:', error);
         setError(error.message || 'Failed to load inventory data');
         setIsLoading(false);
-        // Fallback to empty data if JSON fails to load
+        // Fallback to empty data if API fails
         setInventoryData(new Map());
+        // Set default bounds
+        setInventoryBounds({
+          viewBox: { x: 0, y: 0, width: 4000, height: 4000 },
+          room: { x: 80, y: 80, width: 3600, height: 3840, rx: 18, ry: 18 }
+        });
       }
     };
     
