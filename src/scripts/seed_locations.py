@@ -51,9 +51,9 @@ def derive_location_type(title):
     elif title_lower.startswith('table'):
         return 'table'
     elif 'workbench' in title_lower or title_lower == 'workbench':
-        return 'workbench'
+        return 'other'
     else:
-        return 'unknown'
+        return 'other'  # Default to 'other' instead of 'unknown'
 
 
 def seed_locations():

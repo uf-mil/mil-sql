@@ -54,7 +54,7 @@
     { "title": "Cabinet 10"      , "x": 3325, "y": 2390, "width": 155, "height": 305, "fill": "var(--table)" },
     { "title": "Cabinet 11"      , "x": 3325, "y": 2700, "width": 155, "height": 305, "fill": "var(--table)" },
     { "title": "Cabinet 12"      , "x": 3325, "y": 3010, "width": 155, "height": 305, "fill": "var(--table)" },
-    { "title": "Workbench"       , "x": 140 , "y": 1680, "width": 350, "height": 520, "fill": "#e7ebf3"      , "isWorkbench": true },
+    { "title": "Workbench"       , "x": 140 , "y": 1680, "width": 350, "height": 520, "fill": "#e7ebf3" },
     { "title": "Tall Cabinet 103", "x": 140 , "y": 2260, "width": 240, "height": 300, "fill": "var(--files)" },
     { "title": "Tall Cabinet 102", "x": 140 , "y": 2565, "width": 240, "height": 300, "fill": "var(--files)" },
     { "title": "Tall Cabinet 101", "x": 140 , "y": 2870, "width": 240, "height": 300, "fill": "var(--files)" },

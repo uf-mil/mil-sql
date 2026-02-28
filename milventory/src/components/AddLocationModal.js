@@ -6,7 +6,7 @@ const LOCATION_TYPES = [
   { value: 'cabinet', label: 'Cabinet' },
   { value: 'tall_cabinet', label: 'Tall Cabinet' },
   { value: 'table', label: 'Table' },
-  { value: 'workbench', label: 'Workbench' }
+  { value: 'other', label: 'Other' }
 ];
 
 const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox }) => {

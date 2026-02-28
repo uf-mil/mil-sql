@@ -74,7 +74,7 @@ export const InventoryProvider = ({ children }) => {
       'cabinet': 'var(--table)',
       'tall_cabinet': 'var(--files)', // Tall cabinets use files color
       'table': 'var(--table)',
-      'workbench': '#e7ebf3', // Workbench has special color
+      'other': '#e7ebf3', // Other category (includes workbench) has special color
     };
     return typeFills[type] || 'var(--table)';
   };
@@ -108,11 +108,6 @@ export const InventoryProvider = ({ children }) => {
             type: location.type,
             inventory: [] // Will be populated from supply locations API
           };
-          
-          // Add isWorkbench property if it's a workbench
-          if (location.type === 'workbench') {
-            boxData.isWorkbench = true;
-          }
           
           newInventoryData.set(location.name, boxData);
         });

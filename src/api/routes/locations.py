@@ -24,7 +24,7 @@ def get_fill_for_type(location_type):
         'cabinet': 'var(--table)',
         'tall_cabinet': 'var(--table)',
         'table': 'var(--table)',
-        'workbench': 'var(--table)',
+        'other': 'var(--table)',
     }
     return type_fills.get(location_type, 'var(--table)')
 
