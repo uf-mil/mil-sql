@@ -3,7 +3,7 @@ import { useInventory } from '../context/InventoryContext';
 import InventoryBoxesTable from './InventoryBoxesTable';
 import CategoriesTable from './CategoriesTable';
 
-const AdminLeftPanel = () => {
+const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
   const { leftPaneWidth, setLeftPaneWidth, leftPaneCollapsed, setLeftPaneCollapsed } = useInventory();
   const [isResizing, setIsResizing] = useState(false);
   const [activeTab, setActiveTab] = useState('boxes'); // 'boxes' or 'categories'
@@ -92,7 +92,12 @@ const AdminLeftPanel = () => {
 
           {/* Tab content */}
           <div className="master-table-content">
-            {activeTab === 'boxes' && <InventoryBoxesTable />}
+            {activeTab === 'boxes' && (
+              <InventoryBoxesTable 
+                selectedLocation={selectedLocation}
+                onLocationSelect={onLocationSelect}
+              />
+            )}
             {activeTab === 'categories' && <CategoriesTable />}
           </div>
         </div>

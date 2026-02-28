@@ -1,9 +1,10 @@
 import React, { forwardRef, useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useInventory } from '../context/InventoryContext';
+import { admin } from '../api';
 
 const AdminMap = forwardRef((props, ref) => {
-  const { drawMode, onDrawComplete } = props;
+  const { drawMode, onDrawComplete, selectedLocation, onLocationSelect } = props;
   const { inventoryData, inventoryBounds } = useInventory();
   const worldRef = useRef(null);
   const svgRef = useRef(null);
@@ -203,19 +204,65 @@ const AdminMap = forwardRef((props, ref) => {
           ry={roomBounds.ry}
         />
         
-        {boxes.map((box, idx) => (
-          <rect
-            key={idx}
-            className="box"
-            x={box.x}
-            y={box.y}
-            width={box.width}
-            height={box.height}
-            fill={box.fill}
-            data-title={box.title}
-            style={{ cursor: 'default', pointerEvents: drawMode ? 'none' : 'auto' }}
-          />
-        ))}
+        {boxes.map((box, idx) => {
+          const isSelected = selectedLocation && selectedLocation.name === box.title;
+          return (
+            <rect
+              key={idx}
+              className="box"
+              x={box.x}
+              y={box.y}
+              width={box.width}
+              height={box.height}
+              fill={box.fill}
+              data-title={box.title}
+              style={{ 
+                cursor: drawMode ? 'default' : 'pointer', 
+                pointerEvents: drawMode ? 'none' : 'auto',
+                stroke: isSelected ? 'var(--accent)' : 'none',
+                strokeWidth: isSelected ? 3 : 0,
+                opacity: isSelected ? 0.9 : 1
+              }}
+              onClick={async (e) => {
+                if (!drawMode && onLocationSelect) {
+                  e.stopPropagation();
+                  try {
+                    // Fetch the full location data from the API
+                    const location = await admin.getLocations().then(locations => 
+                      locations.find(loc => loc.name === box.title)
+                    );
+                    if (location) {
+                      onLocationSelect(location);
+                    } else {
+                      // Fallback: construct from box data if API doesn't have it
+                      const fallbackLocation = {
+                        name: box.title,
+                        x: box.x,
+                        y: box.y,
+                        width: box.width,
+                        height: box.height,
+                        type: 'drawer'
+                      };
+                      onLocationSelect(fallbackLocation);
+                    }
+                  } catch (err) {
+                    console.error('Error fetching location:', err);
+                    // Fallback: construct from box data
+                    const fallbackLocation = {
+                      name: box.title,
+                      x: box.x,
+                      y: box.y,
+                      width: box.width,
+                      height: box.height,
+                      type: 'drawer'
+                    };
+                    onLocationSelect(fallbackLocation);
+                  }
+                }
+              }}
+            />
+          );
+        })}
 
         {/* Drawing preview box */}
         {drawingBox && (

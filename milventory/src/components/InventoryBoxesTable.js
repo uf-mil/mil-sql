@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { admin } from '../api';
 
-const InventoryBoxesTable = () => {
+const InventoryBoxesTable = ({ selectedLocation, onLocationSelect }) => {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -78,20 +78,32 @@ const InventoryBoxesTable = () => {
             </tr>
           </thead>
           <tbody>
-            {sortedLocations.map(location => (
-              <tr key={location.name} className="master-table-row">
-                <td>{location.name}</td>
-                <td style={{ textTransform: 'capitalize', color: 'var(--muted)' }}>
-                  {location.type.replace('_', ' ')}
-                </td>
-                <td style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-                  ({location.x}, {location.y})
-                </td>
-                <td style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-                  {location.width}×{location.height}
-                </td>
-              </tr>
-            ))}
+            {sortedLocations.map(location => {
+              const isSelected = selectedLocation && selectedLocation.name === location.name;
+              return (
+                <tr 
+                  key={location.name} 
+                  className={`master-table-row ${isSelected ? 'selected' : ''}`}
+                  onClick={() => {
+                    if (onLocationSelect) {
+                      onLocationSelect(location);
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <td>{location.name}</td>
+                  <td style={{ textTransform: 'capitalize', color: 'var(--muted)' }}>
+                    {location.type.replace('_', ' ')}
+                  </td>
+                  <td style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                    ({location.x}, {location.y})
+                  </td>
+                  <td style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                    {location.width}×{location.height}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

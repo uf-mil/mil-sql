@@ -206,13 +206,9 @@ def create_location(current_user_id=None):
         cur.close()
         conn.close()
         
-        # Sync JSON file (don't fail if this errors, just log it)
-        try:
-            sync_locations_json()
-        except Exception as sync_error:
-            print(f"⚠ Warning: Failed to sync locations JSON after create: {sync_error}")
-            import traceback
-            traceback.print_exc()
+        # Note: We do NOT sync to JSON file anymore.
+        # The inventory-locations.json file is now the source of truth for permanent locations.
+        # New locations created via the API are stored only in the database.
         
         return jsonify(location.to_dict()), 201
     except mysql.connector.IntegrityError as e:
@@ -324,8 +320,9 @@ def delete_location(name, current_user_id=None):
         cur.close()
         conn.close()
         
-        # Sync JSON file
-        sync_locations_json()
+        # Note: We do NOT sync to JSON file anymore.
+        # The inventory-locations.json file is now the source of truth for permanent locations.
+        # Deletions only affect the database, not the JSON file.
         
         return '', 204
     except Exception as e:

@@ -4,14 +4,16 @@ import AdminMap from './AdminMap';
 import AdminLeftPanel from './AdminLeftPanel';
 import AdminActionsPanel from './AdminActionsPanel';
 import AddLocationModal from './AddLocationModal';
+import LocationPreview from './LocationPreview';
 
 const AdminDashboard = () => {
-  const { wrapRef } = useInventory();
+  const { wrapRef, leftPaneWidth, leftPaneCollapsed } = useInventory();
   const svgRef = useRef(null);
   const [drawMode, setDrawMode] = useState(false);
   const [showAddLocationModal, setShowAddLocationModal] = useState(false);
   const [drawnBox, setDrawnBox] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [selectedLocation, setSelectedLocation] = useState(null);
 
   const handleAddLocation = () => {
     setDrawMode(true);
@@ -39,9 +41,26 @@ const AdminDashboard = () => {
     }, 300);
   };
 
+  const handleLocationSelect = (location) => {
+    setSelectedLocation(location);
+  };
+
+  const handleLocationDeselect = () => {
+    setSelectedLocation(null);
+  };
+
+  const handleLocationDeleted = () => {
+    setSelectedLocation(null);
+    setRefreshTrigger(prev => prev + 1);
+  };
+
   return (
     <>
-      <AdminLeftPanel key={refreshTrigger} />
+      <AdminLeftPanel 
+        key={refreshTrigger}
+        selectedLocation={selectedLocation}
+        onLocationSelect={handleLocationSelect}
+      />
       <div className="wrap" ref={wrapRef}>
         <div className="titlebar">
           Admin Dashboard
@@ -59,6 +78,8 @@ const AdminDashboard = () => {
           ref={svgRef} 
           drawMode={drawMode}
           onDrawComplete={handleDrawComplete}
+          selectedLocation={selectedLocation}
+          onLocationSelect={handleLocationSelect}
         />
         <AdminActionsPanel 
           onAddLocation={handleAddLocation}
@@ -70,6 +91,13 @@ const AdminDashboard = () => {
           onClose={handleModalClose}
           onSuccess={handleLocationAdded}
           initialBox={drawnBox}
+        />
+        <LocationPreview
+          location={selectedLocation}
+          onClose={handleLocationDeselect}
+          onDelete={handleLocationDeleted}
+          leftPaneWidth={leftPaneWidth}
+          leftPaneCollapsed={leftPaneCollapsed}
         />
       </div>
     </>
