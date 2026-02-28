@@ -162,7 +162,7 @@ def get_location(name):
 
 @locations_bp.route('', methods=['POST'])
 @require_leader
-def create_location():
+def create_location(current_user_id=None):
     """
     POST /api/locations
     Create a new location.
@@ -297,7 +297,7 @@ def update_location(name):
 
 @locations_bp.route('/<name>', methods=['DELETE'])
 @require_leader
-def delete_location(name):
+def delete_location(name, current_user_id=None):
     """
     DELETE /api/locations/<name>
     Delete a location.
