@@ -126,8 +126,8 @@ const MapComponent = forwardRef((props, ref) => {
     ry: 18
   };
 
-  // All Tall Cabinets get shelf overlays in add mode
-  const tallCabinets = addModeItem
+  // All Tall Cabinets get shelf overlays in add mode or move mode
+  const tallCabinets = (addModeItem || moveModeItem)
     ? boxes.filter(b => b.title.startsWith('Tall Cabinet'))
     : [];
 
@@ -167,7 +167,7 @@ const MapComponent = forwardRef((props, ref) => {
             />
           ))}
 
-          {/* Shelf overlays for all Tall Cabinets in add mode — always visible */}
+          {/* Shelf overlays for all Tall Cabinets in add mode or move mode */}
           {tallCabinets.map(box => {
             const shelfH = box.height / SHELF_NAMES.length;
             return (
@@ -175,7 +175,7 @@ const MapComponent = forwardRef((props, ref) => {
                 {SHELF_NAMES.map((name, idx) => {
                   const shelfY = box.y + idx * shelfH;
                   const pendingKey = `${box.title}||${idx}`;
-                  const isAffected = addModePending.has(pendingKey);
+                  const isAffected = addModeItem && addModePending.has(pendingKey);
                   const pendingQty = addModePending.get(pendingKey);
 
                   return (
@@ -186,10 +186,11 @@ const MapComponent = forwardRef((props, ref) => {
                         y={shelfY}
                         width={box.width}
                         height={shelfH}
-                        onClick={(e) => {
+                        onClick={addModeItem ? (e) => {
                           e.stopPropagation();
                           handleBoxClickAddMode(box.title, idx);
-                        }}
+                        } : undefined}
+                        style={moveModeItem ? { pointerEvents: 'none' } : undefined}
                       />
                       <text
                         className="add-mode-shelf-label"

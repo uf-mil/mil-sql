@@ -621,8 +621,13 @@ export const InventoryProvider = ({ children }) => {
         }
       }
 
+      const isSameBox = sourceBoxTitle === targetBoxTitle;
+
+      // For same-box moves (between shelves), work from the already-updated source inventory
+      const baseTargetInventory = isSameBox ? newSourceInventory : [...targetBoxData.inventory];
+
       // Add to target (combine if exists)
-      const newTargetInventory = [...targetBoxData.inventory];
+      const newTargetInventory = [...baseTargetInventory];
       const existingIndex = newTargetInventory.findIndex(item => {
         if (item.name !== moveModeItemRef.current) return false;
         if (targetShelf !== undefined) return (item.shelf ?? 0) === targetShelf;
@@ -642,8 +647,13 @@ export const InventoryProvider = ({ children }) => {
 
       setInventoryData(prev => {
         const next = new Map(prev);
-        next.set(sourceBoxTitle, { ...sourceBoxData, inventory: newSourceInventory });
-        next.set(targetBoxTitle, { ...targetBoxData, inventory: newTargetInventory });
+        if (isSameBox) {
+          // Same box, different shelf — only set once with the fully updated inventory
+          next.set(sourceBoxTitle, { ...sourceBoxData, inventory: newTargetInventory });
+        } else {
+          next.set(sourceBoxTitle, { ...sourceBoxData, inventory: newSourceInventory });
+          next.set(targetBoxTitle, { ...targetBoxData, inventory: newTargetInventory });
+        }
         return next;
       });
 

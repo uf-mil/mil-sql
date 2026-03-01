@@ -119,7 +119,10 @@ const MasterItemPreview = () => {
             <h3>{item.name}</h3>
             <button
               className="master-preview-pane-close"
-              onClick={clearSelectedMasterItem}
+              onClick={() => {
+                if (isInMoveMode) cancelMoveMode();
+                clearSelectedMasterItem();
+              }}
               title="Close preview"
             >
               ×
@@ -210,9 +213,14 @@ const MasterItemPreview = () => {
             <strong>Actions:</strong>
             <div className="master-preview-actions-buttons">
               {isInMoveMode ? (
-                <button className="master-action-button cancel-button" onClick={cancelMoveMode} title="Cancel move mode">
-                  Cancel Move
-                </button>
+                <>
+                  <button className="master-action-button add-button" onClick={cancelMoveMode} title="Apply moves and exit move mode">
+                    Apply Move
+                  </button>
+                  <button className="master-action-button cancel-button" onClick={cancelMoveMode} title="Cancel move mode">
+                    Cancel Move
+                  </button>
+                </>
               ) : (
                 <>
                   <button className="master-action-button add-button" onClick={handleAddToBoxes} title="Add to boxes on map">
