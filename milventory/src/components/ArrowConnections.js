@@ -121,12 +121,50 @@ const ArrowConnections = () => {
     path.moveTo(previewX, previewY);
     path.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, boxX, boxY);
 
-    // Arrowhead
-    const angle = Math.atan2(dy, dx);
+    // Arrowhead - calculate angle from curve tangent at endpoint
+    // For a cubic Bezier P(t), the derivative at t=1 is: P'(1) = 3(P₃ - P₂)
+    // However, to get the visual direction of the curve as it enters the box,
+    // we sample two points very close to the endpoint to get the actual curve direction
+    const t1 = 0.95; // Sample point before endpoint
+    const t2 = 1.0;   // Endpoint
+    
+    // Cubic Bezier evaluation: P(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃
+    const evalBezier = (t, p0, p1, p2, p3) => {
+      const mt = 1 - t;
+      const mt2 = mt * mt;
+      const mt3 = mt2 * mt;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      return mt3 * p0 + 3 * mt2 * t * p1 + 3 * mt * t2 * p2 + t3 * p3;
+    };
+    
+    // Sample the curve at t1 and t2
+    const x1 = evalBezier(t1, previewX, cp1x, cp2x, boxX);
+    const y1 = evalBezier(t1, previewY, cp1y, cp2y, boxY);
+    const x2 = boxX; // t2 = 1.0, endpoint
+    const y2 = boxY;
+    
+    // Calculate the direction vector from sampled point to endpoint
+    const tangentDx = x2 - x1;
+    const tangentDy = y2 - y1;
+    
+    // Calculate angle from this direction vector
+    // If the vector is too small (degenerate case), fall back to derivative formula
+    const tangentLength = Math.sqrt(tangentDx * tangentDx + tangentDy * tangentDy);
+    let angle;
+    if (tangentLength < 0.001) {
+      // Degenerate case: use the derivative formula P'(1) = 3(P₃ - P₂)
+      const derivDx = 3 * (boxX - cp2x);
+      const derivDy = 3 * (boxY - cp2y);
+      angle = Math.atan2(derivDy, derivDx);
+    } else {
+      // Use the sampled direction
+      angle = Math.atan2(tangentDy, tangentDx);
+    }
     const arrowLength = 12;
     const arrowAngle = Math.PI / 6;
-    const arrowX = boxX - Math.cos(angle) * 20;
-    const arrowY = boxY - Math.sin(angle) * 20;
+    const arrowX = boxX;
+    const arrowY = boxY;
 
     path.moveTo(arrowX, arrowY);
     path.lineTo(

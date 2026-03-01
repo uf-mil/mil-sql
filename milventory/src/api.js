@@ -1,7 +1,8 @@
 /**
  * API client for milventory backend.
  */
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Use relative path in development (goes through proxy) or absolute URL if specified
+const API_BASE = process.env.REACT_APP_API_URL || '/api';
 
 // Authentication helpers
 export const auth = {
@@ -398,6 +399,15 @@ export const admin = {
         });
       }
       return r.json();
+    }).catch(err => {
+      // Handle network errors (connection refused, CORS, etc.)
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        const networkError = new Error('Network error: Unable to connect to server. Please check if the server is running.');
+        networkError.response = { status: 0 };
+        throw networkError;
+      }
+      // Re-throw other errors
+      throw err;
     }),
 
   createLocation: (location) =>
@@ -425,6 +435,15 @@ export const admin = {
         });
       }
       return r.json();
+    }).catch(err => {
+      // Handle network errors (connection refused, CORS, etc.)
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        const networkError = new Error('Network error: Unable to connect to server. Please check if the server is running.');
+        networkError.response = { status: 0 };
+        throw networkError;
+      }
+      // Re-throw other errors
+      throw err;
     }),
 
   deleteLocation: (name) =>
@@ -454,6 +473,15 @@ export const admin = {
         });
       }
       return r.json();
+    }).catch(err => {
+      // Handle network errors (connection refused, CORS, etc.)
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        const networkError = new Error('Network error: Unable to connect to server. Please check if the server is running.');
+        networkError.response = { status: 0 };
+        throw networkError;
+      }
+      // Re-throw other errors
+      throw err;
     }),
 
   // Categories

@@ -292,15 +292,15 @@ def seed_locations():
                                 update_count += 1
                         except mysql.connector.Error as e2:
                             if 'Unknown column' in str(e2):
-                                cur.execute(
-                                    "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
-                                    (location_type, shelf_count, name)
-                                )
-                                if cur.rowcount > 0:
-                                    update_count += 1
-                            else:
-                                raise
+                        cur.execute(
+                            "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
+                            (location_type, shelf_count, name)
+                        )
+                        if cur.rowcount > 0:
+                            update_count += 1
                     else:
+                        raise
+            else:
                         raise
             else:
                 # Insert new location with coordinates - set protected=True for locations from JSON
@@ -322,10 +322,10 @@ def seed_locations():
                             except mysql.connector.Error as e2:
                                 # If coordinate columns don't exist, insert without them
                                 if 'Unknown column' in str(e2):
-                                    cur.execute(
-                                        "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
-                                        (name, location_type, shelf_count)
-                                    )
+                            cur.execute(
+                                "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
+                                (name, location_type, shelf_count)
+                            )
                                 else:
                                     raise
                         else:

@@ -206,7 +206,7 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
     >
       <div className="master-preview-pane">
         <div className="master-preview-pane-header">
-          <h3>Add New Location</h3>
+        <h3>Add New Location</h3>
           <button
             className="master-preview-pane-close"
             onClick={handleCancel}
@@ -231,14 +231,14 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
         )}
 
         <div style={{ marginTop: '0.5rem' }}>
-          <input
-            type="text"
-            placeholder="Location Name *"
-            value={formData.name}
-            name="name"
-            onChange={handleChange}
-            required
-            disabled={submitting}
+        <input
+          type="text"
+          placeholder="Location Name *"
+          value={formData.name}
+          name="name"
+          onChange={handleChange}
+          required
+          disabled={submitting}
             style={{
               width: '70%',
               padding: '0.5rem',
@@ -249,13 +249,13 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
               color: 'var(--text)',
               fontSize: '0.9rem'
             }}
-          />
-          <select
-            value={formData.type}
-            name="type"
-            onChange={handleChange}
-            required
-            disabled={submitting}
+        />
+        <select
+          value={formData.type}
+          name="type"
+          onChange={handleChange}
+          required
+          disabled={submitting}
             style={{
               width: '70%',
               padding: '0.5rem',
@@ -265,13 +265,13 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
               color: 'var(--text)',
               fontSize: '0.9rem'
             }}
-          >
-            {LOCATION_TYPES.map(type => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
+        >
+          {LOCATION_TYPES.map(type => (
+            <option key={type.value} value={type.value}>
+              {type.label}
+            </option>
+          ))}
+        </select>
         </div>
         <div style={{ marginTop: '0.5rem', marginBottom: '0.25rem', fontSize: '0.85rem', color: 'var(--text)', opacity: 0.8 }}>
           Position & Size
@@ -281,8 +281,8 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
             <div style={{ fontSize: '0.75rem', marginBottom: '0.25rem', color: 'var(--text)', opacity: 0.7, fontWeight: '600' }}>
               Top Y
             </div>
-            <input
-              type="number"
+          <input
+            type="number"
               placeholder="Top Y"
               value={formData.topY === '' ? '' : formData.topY}
               onChange={(e) => handleEdgeChange('topY', e.target.value)}
@@ -302,8 +302,8 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
             <div style={{ fontSize: '0.75rem', marginBottom: '0.25rem', color: 'var(--text)', opacity: 0.7, fontWeight: '600' }}>
               Bottom Y
             </div>
-            <input
-              type="number"
+          <input
+            type="number"
               placeholder="Bottom Y"
               value={formData.bottomY === '' ? '' : formData.bottomY}
               onChange={(e) => handleEdgeChange('bottomY', e.target.value)}
@@ -317,14 +317,14 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
                 borderRadius: '4px',
                 color: 'var(--text)'
               }}
-            />
-          </div>
+          />
+        </div>
           <div>
             <div style={{ fontSize: '0.75rem', marginBottom: '0.25rem', color: 'var(--text)', opacity: 0.7, fontWeight: '600' }}>
               Left X
             </div>
-            <input
-              type="number"
+          <input
+            type="number"
               placeholder="Left X"
               value={formData.leftX === '' ? '' : formData.leftX}
               onChange={(e) => handleEdgeChange('leftX', e.target.value)}
@@ -344,8 +344,8 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
             <div style={{ fontSize: '0.75rem', marginBottom: '0.25rem', color: 'var(--text)', opacity: 0.7, fontWeight: '600' }}>
               Right X
             </div>
-            <input
-              type="number"
+          <input
+            type="number"
               placeholder="Right X"
               value={formData.rightX === '' ? '' : formData.rightX}
               onChange={(e) => handleEdgeChange('rightX', e.target.value)}
@@ -359,33 +359,33 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
                 borderRadius: '4px',
                 color: 'var(--text)'
               }}
-            />
+          />
           </div>
         </div>
         <div className="master-preview-actions" style={{ marginTop: '1rem' }}>
           <div className="master-preview-actions-buttons" style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              type="button"
-              onClick={handleCancel}
-              disabled={submitting}
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={submitting}
               className="master-action-button"
               style={{ flex: 1 }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting || !formData.name.trim()}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting || !formData.name.trim()}
               className="master-action-button"
               style={{ 
                 flex: 1,
                 background: 'var(--accent)',
                 color: 'white'
               }}
-            >
-              {submitting ? 'Creating...' : 'Create Location'}
-            </button>
+          >
+            {submitting ? 'Creating...' : 'Create Location'}
+          </button>
           </div>
         </div>
       </div>
