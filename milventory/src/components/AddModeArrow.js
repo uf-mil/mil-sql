@@ -51,12 +51,49 @@ const AddModeArrow = () => {
     path.moveTo(previewX, previewY);
     path.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, mx, my);
 
-    // Arrowhead
-    const angle = Math.atan2(dy, dx);
+    // Arrowhead - calculate angle from curve tangent at endpoint
+    // Sample the curve near the endpoint to get the actual curve direction
+    const t1 = 0.95; // Sample point before endpoint
+    const t2 = 1.0;   // Endpoint (mouse position)
+    
+    // Cubic Bezier evaluation: P(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃
+    const evalBezier = (t, p0, p1, p2, p3) => {
+      const mt = 1 - t;
+      const mt2 = mt * mt;
+      const mt3 = mt2 * mt;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      return mt3 * p0 + 3 * mt2 * t * p1 + 3 * mt * t2 * p2 + t3 * p3;
+    };
+    
+    // Sample the curve at t1 and t2
+    const x1 = evalBezier(t1, previewX, cp1x, cp2x, mx);
+    const y1 = evalBezier(t1, previewY, cp1y, cp2y, my);
+    const x2 = mx; // t2 = 1.0, endpoint (mouse position)
+    const y2 = my;
+    
+    // Calculate the direction vector from sampled point to endpoint
+    const tangentDx = x2 - x1;
+    const tangentDy = y2 - y1;
+    
+    // Calculate angle from this direction vector
+    // If the vector is too small (degenerate case), fall back to derivative formula
+    const tangentLength = Math.sqrt(tangentDx * tangentDx + tangentDy * tangentDy);
+    let angle;
+    if (tangentLength < 0.001) {
+      // Degenerate case: use the derivative formula P'(1) = 3(P₃ - P₂)
+      const derivDx = 3 * (mx - cp2x);
+      const derivDy = 3 * (my - cp2y);
+      angle = Math.atan2(derivDy, derivDx);
+    } else {
+      // Use the sampled direction
+      angle = Math.atan2(tangentDy, tangentDx);
+    }
+    
     const arrowLength = 12;
     const arrowAngle = Math.PI / 6;
-    const arrowX = mx - Math.cos(angle) * 20;
-    const arrowY = my - Math.sin(angle) * 20;
+    const arrowX = mx;
+    const arrowY = my;
 
     path.moveTo(arrowX, arrowY);
     path.lineTo(

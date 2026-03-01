@@ -137,35 +137,55 @@ const MapComponent = forwardRef((props, ref) => {
         <g ref={worldRef} id="world">
           <rect className="room" x={roomBounds.x} y={roomBounds.y} width={roomBounds.width} height={roomBounds.height} rx={roomBounds.rx} ry={roomBounds.ry}/>
           
-          {boxes.map((box, idx) => (
-            <rect
-              key={idx}
-              className={`box ${!addModeItem && selectedBox === box.title ? 'selected' : ''} ${currentDragOverBox === box.title ? 'drag-over-box' : ''} ${addModeItem && boxHasAnyPending(box.title) ? 'add-mode-affected' : ''} ${highlightedBoxes && highlightedBoxes.has(box.title) ? 'box-highlighted' : ''}`}
-              x={box.x}
-              y={box.y}
-              width={box.width}
-              height={box.height}
-              fill={box.fill}
-              data-title={box.title}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (addModeItem) {
-                  // For Tall Cabinets, shelf rects on top handle clicks
-                  if (!box.title.startsWith('Tall Cabinet')) {
-                    handleBoxClickAddMode(box.title);
-                  }
-                } else {
-                  handleBoxClick(box.title);
-                }
-              }}
-              onMouseEnter={(e) => handleBoxMouseEnter(e, box.title)}
-              onMouseLeave={handleBoxHoverLeave}
-              onDragEnter={(e) => handleDragEnter(e, box.title)}
-              onDragOver={(e) => handleDragOver(e, box.title)}
-              onDragLeave={(e) => handleDragLeave(e, box.title)}
-              onDrop={(e) => handleDropBox(e, box.title)}
-            />
-          ))}
+          {boxes.map((box, idx) => {
+            // For regular boxes (not Tall Cabinets), check if they have pending items
+            const isRegularBox = !box.title.startsWith('Tall Cabinet');
+            const hasPending = isRegularBox && addModeItem && addModePending.has(box.title);
+            const pendingQty = hasPending ? addModePending.get(box.title) : null;
+            
+            return (
+              <g key={idx}>
+                <rect
+                  className={`box ${!addModeItem && selectedBox === box.title ? 'selected' : ''} ${currentDragOverBox === box.title ? 'drag-over-box' : ''} ${addModeItem && boxHasAnyPending(box.title) ? 'add-mode-affected' : ''} ${highlightedBoxes && highlightedBoxes.has(box.title) ? 'box-highlighted' : ''}`}
+                  x={box.x}
+                  y={box.y}
+                  width={box.width}
+                  height={box.height}
+                  fill={box.fill}
+                  data-title={box.title}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (addModeItem) {
+                      // For Tall Cabinets, shelf rects on top handle clicks
+                      if (!box.title.startsWith('Tall Cabinet')) {
+                        handleBoxClickAddMode(box.title);
+                      }
+                    } else {
+                      handleBoxClick(box.title);
+                    }
+                  }}
+                  onMouseEnter={(e) => handleBoxMouseEnter(e, box.title)}
+                  onMouseLeave={handleBoxHoverLeave}
+                  onDragEnter={(e) => handleDragEnter(e, box.title)}
+                  onDragOver={(e) => handleDragOver(e, box.title)}
+                  onDragLeave={(e) => handleDragLeave(e, box.title)}
+                  onDrop={(e) => handleDropBox(e, box.title)}
+                />
+                {hasPending && (
+                  <text
+                    className="add-mode-shelf-qty"
+                    x={box.x + box.width - 8}
+                    y={box.y + box.height / 2}
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                    pointerEvents="none"
+                  >
+                    +{pendingQty}
+                  </text>
+                )}
+              </g>
+            );
+          })}
 
           {/* Shelf overlays for all Tall Cabinets in add mode or move mode */}
           {tallCabinets.map(box => {
