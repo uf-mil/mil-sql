@@ -2,13 +2,23 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import * as d3 from 'd3';
 
+const SHELF_NAMES = [
+  'Shelf 6 (Top)',
+  'Shelf 5',
+  'Shelf 4',
+  'Shelf 3',
+  'Shelf 2',
+  'Shelf 1 (Bottom)'
+];
+
 const ArrowConnections = () => {
   const {
     selectedMasterItem,
     getItemLocations,
     inventoryData,
     svgRef,
-    worldRef
+    worldRef,
+    moveModeItem
   } = useInventory();
 
   const arrowsRef = useRef(null);
@@ -53,50 +63,87 @@ const ArrowConnections = () => {
     const previewX = preview.x;
     const previewY = preview.y;
 
-    // Draw arrows to each location box
+    // Draw arrows to each location box (or move boxes if in move mode)
     locations.forEach((boxTitle) => {
       const boxData = inventoryData.get(boxTitle);
       if (!boxData) return;
 
-      const boxX = boxData.x + boxData.width / 2;
-      const boxY = boxData.y + boxData.height / 2;
-
-      const path = d3.path();
-      const dx = boxX - previewX;
-      const dy = boxY - previewY;
-
-      const cp1x = previewX + dx * 0.3;
-      const cp1y = previewY;
-      const cp2x = boxX - dx * 0.3;
-      const cp2y = boxY;
-
-      path.moveTo(previewX, previewY);
-      path.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, boxX, boxY);
-
-      // Arrowhead
-      const angle = Math.atan2(dy, dx);
-      const arrowLength = 12;
-      const arrowAngle = Math.PI / 6;
-      const arrowX = boxX - Math.cos(angle) * 20;
-      const arrowY = boxY - Math.sin(angle) * 20;
-
-      path.moveTo(arrowX, arrowY);
-      path.lineTo(
-        arrowX - arrowLength * Math.cos(angle - arrowAngle),
-        arrowY - arrowLength * Math.sin(angle - arrowAngle)
-      );
-      path.moveTo(arrowX, arrowY);
-      path.lineTo(
-        arrowX - arrowLength * Math.cos(angle + arrowAngle),
-        arrowY - arrowLength * Math.sin(angle + arrowAngle)
-      );
-
-      const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      pathElement.setAttribute('d', path.toString());
-      pathElement.setAttribute('class', 'master-arrow-path');
-      arrowsGroup.appendChild(pathElement);
+      let boxX, boxY;
+      
+      if (moveModeItem && moveModeItem === selectedMasterItem) {
+        // In move mode, point to the little red boxes
+        const matchingItems = boxData.inventory.filter(item => item.name === moveModeItem);
+        if (matchingItems.length === 0) return;
+        
+        const isTallCabinet = boxTitle.startsWith('Tall Cabinet');
+        
+        if (isTallCabinet) {
+          // For Tall Cabinets, point to each shelf's move box
+          matchingItems.forEach(item => {
+            const shelfIdx = item.shelf ?? 0;
+            const shelfH = boxData.height / SHELF_NAMES.length;
+            const shelfY = boxData.y + shelfIdx * shelfH;
+            
+            const boxSize = Math.min(shelfH * 0.6, boxData.width * 0.4, 60);
+            boxX = boxData.x + (boxData.width - boxSize) / 2 + boxSize / 2;
+            boxY = shelfY + (shelfH - boxSize) / 2 + boxSize / 2;
+            
+            drawArrowToPoint(previewX, previewY, boxX, boxY, arrowsGroup);
+          });
+          return; // Skip the regular box arrow for Tall Cabinets
+        } else {
+          // For regular boxes, point to the center move box
+          const boxSize = Math.min(boxData.height * 0.5, boxData.width * 0.4, 60);
+          boxX = boxData.x + (boxData.width - boxSize) / 2 + boxSize / 2;
+          boxY = boxData.y + (boxData.height - boxSize) / 2 + boxSize / 2;
+        }
+      } else {
+        // Normal mode: point to center of inventory box
+        boxX = boxData.x + boxData.width / 2;
+        boxY = boxData.y + boxData.height / 2;
+      }
+      
+      drawArrowToPoint(previewX, previewY, boxX, boxY, arrowsGroup);
     });
-  }, [selectedMasterItem, getItemLocations, inventoryData, svgRef, screenToWorld]);
+  }, [selectedMasterItem, getItemLocations, inventoryData, svgRef, screenToWorld, moveModeItem]);
+  
+  const drawArrowToPoint = (previewX, previewY, boxX, boxY, arrowsGroup) => {
+
+    const path = d3.path();
+    const dx = boxX - previewX;
+    const dy = boxY - previewY;
+
+    const cp1x = previewX + dx * 0.3;
+    const cp1y = previewY;
+    const cp2x = boxX - dx * 0.3;
+    const cp2y = boxY;
+
+    path.moveTo(previewX, previewY);
+    path.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, boxX, boxY);
+
+    // Arrowhead
+    const angle = Math.atan2(dy, dx);
+    const arrowLength = 12;
+    const arrowAngle = Math.PI / 6;
+    const arrowX = boxX - Math.cos(angle) * 20;
+    const arrowY = boxY - Math.sin(angle) * 20;
+
+    path.moveTo(arrowX, arrowY);
+    path.lineTo(
+      arrowX - arrowLength * Math.cos(angle - arrowAngle),
+      arrowY - arrowLength * Math.sin(angle - arrowAngle)
+    );
+    path.moveTo(arrowX, arrowY);
+    path.lineTo(
+      arrowX - arrowLength * Math.cos(angle + arrowAngle),
+      arrowY - arrowLength * Math.sin(angle + arrowAngle)
+    );
+
+    const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    pathElement.setAttribute('d', path.toString());
+    pathElement.setAttribute('class', 'master-arrow-path');
+    arrowsGroup.appendChild(pathElement);
+  };
 
   // Draw arrows when selectedMasterItem changes
   useEffect(() => {

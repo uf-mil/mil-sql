@@ -48,6 +48,12 @@ export const InventoryProvider = ({ children }) => {
   const addModePendingRef = useRef(new Map());
   const addModeQtyPerClickRef = useRef(1);
   
+  // Move Mode state
+  const [moveModeItem, setMoveModeItem] = useState(null);
+  const [moveModeDragging, setMoveModeDragging] = useState(null); // { boxTitle, shelf, qty, x, y }
+  const moveModeItemRef = useRef(null);
+  const isDraggingMoveBoxRef = useRef(false); // Synchronous ref for D3 filter
+  
   // Keep refs in sync with state
   useEffect(() => {
     addModeItemRef.current = addModeItem;
@@ -60,6 +66,10 @@ export const InventoryProvider = ({ children }) => {
   useEffect(() => {
     addModeQtyPerClickRef.current = addModeQtyPerClick;
   }, [addModeQtyPerClick]);
+  
+  useEffect(() => {
+    moveModeItemRef.current = moveModeItem;
+  }, [moveModeItem]);
   
   // Refs
   const wrapRef = useRef(null);
@@ -175,6 +185,13 @@ export const InventoryProvider = ({ children }) => {
 
     const zoom = d3.zoom()
       .scaleExtent([0.6, 6])
+      .filter((event) => {
+        // Disable zoom/pan when dragging a move box
+        if (isDraggingMoveBoxRef.current) return false;
+        // Check if the event target is a move box
+        if (event.target && event.target.dataset && event.target.dataset.moveBox) return false;
+        return true;
+      })
       .on('start', () => {
         isPanningRef.current = true;
       })
@@ -506,6 +523,141 @@ export const InventoryProvider = ({ children }) => {
     setAddModeQtyPerClick(1);
     setAddModePending(new Map());
   }, []);
+
+  // Move Mode functions
+  const startMoveMode = useCallback((itemName) => {
+    setMoveModeItem(itemName);
+    setMoveModeDragging(null);
+    setSelectedBox(null); // Clear box selection when entering move mode
+  }, []);
+
+  const cancelMoveMode = useCallback(() => {
+    setMoveModeItem(null);
+    setMoveModeDragging(null);
+    setCurrentDragOverBox(null);
+    isDraggingMoveBoxRef.current = false;
+  }, []);
+  
+  const clearMoveModeDragging = useCallback(() => {
+    setMoveModeDragging(null);
+    setCurrentDragOverBox(null);
+    isDraggingMoveBoxRef.current = false;
+  }, []);
+
+  const handleMoveModeDragStart = useCallback((boxTitle, shelf, qty, x, y) => {
+    isDraggingMoveBoxRef.current = true;
+    setMoveModeDragging({ boxTitle, shelf, qty, x, y, originalX: x, originalY: y });
+  }, []);
+  
+  const handleMoveModeDragMove = useCallback((x, y) => {
+    if (moveModeDragging) {
+      setMoveModeDragging(prev => ({ ...prev, x, y }));
+    }
+  }, [moveModeDragging]);
+
+  const handleMoveModeDrop = useCallback(async (targetBoxTitle, targetShelf) => {
+    if (!moveModeDragging || !moveModeItemRef.current) return;
+    
+    const { boxTitle: sourceBoxTitle, shelf: sourceShelf, qty } = moveModeDragging;
+    
+    // Don't allow dropping on the same location
+    if (sourceBoxTitle === targetBoxTitle && sourceShelf === targetShelf) {
+      setMoveModeDragging(null);
+      return;
+    }
+
+    const supplyId = supplyNameToId.get(moveModeItemRef.current);
+    if (!supplyId) {
+      console.error(`Supply ID not found for item: ${moveModeItemRef.current}`);
+      setError(`Supply ID not found for item: ${moveModeItemRef.current}`);
+      setMoveModeDragging(null);
+      return;
+    }
+
+    try {
+      await api.moveSupplyLocations({
+        from_location: sourceBoxTitle,
+        to_location: targetBoxTitle,
+        supply_id: supplyId,
+        shelf_from: sourceShelf !== undefined ? sourceShelf : null,
+        shelf_to: targetShelf !== undefined ? targetShelf : null,
+        amount: qty
+      });
+
+      // Update local state optimistically
+      const sourceBoxData = inventoryData.get(sourceBoxTitle);
+      const targetBoxData = inventoryData.get(targetBoxTitle);
+      
+      if (!sourceBoxData || !targetBoxData) {
+        setMoveModeDragging(null);
+        return;
+      }
+
+      // Remove from source - find the exact item and subtract qty
+      const newSourceInventory = [];
+      let foundSource = false;
+      
+      for (const item of sourceBoxData.inventory) {
+        if (item.name === moveModeItemRef.current) {
+          const itemShelf = item.shelf ?? 0;
+          const sourceShelfValue = sourceShelf ?? 0;
+          
+          if (itemShelf === sourceShelfValue && !foundSource) {
+            // This is the source item - subtract qty
+            foundSource = true;
+            const newQty = item.qty - qty;
+            if (newQty > 0) {
+              // Keep item with reduced qty
+              newSourceInventory.push({ ...item, qty: newQty });
+            }
+            // If newQty <= 0, don't add it (effectively removing it)
+          } else {
+            // Different shelf or already found - keep as is
+            newSourceInventory.push(item);
+          }
+        } else {
+          // Different item - keep as is
+          newSourceInventory.push(item);
+        }
+      }
+
+      // Add to target (combine if exists)
+      const newTargetInventory = [...targetBoxData.inventory];
+      const existingIndex = newTargetInventory.findIndex(item => {
+        if (item.name !== moveModeItemRef.current) return false;
+        if (targetShelf !== undefined) return (item.shelf ?? 0) === targetShelf;
+        return item.shelf === undefined;
+      });
+
+      if (existingIndex >= 0) {
+        newTargetInventory[existingIndex] = {
+          ...newTargetInventory[existingIndex],
+          qty: newTargetInventory[existingIndex].qty + qty
+        };
+      } else {
+        const newItem = { name: moveModeItemRef.current, qty };
+        if (targetShelf !== undefined) newItem.shelf = targetShelf;
+        newTargetInventory.push(newItem);
+      }
+
+      setInventoryData(prev => {
+        const next = new Map(prev);
+        next.set(sourceBoxTitle, { ...sourceBoxData, inventory: newSourceInventory });
+        next.set(targetBoxTitle, { ...targetBoxData, inventory: newTargetInventory });
+        return next;
+      });
+
+      setMoveModeDragging(null);
+      isDraggingMoveBoxRef.current = false;
+    } catch (error) {
+      console.error('Error moving item:', error);
+      if (!isPanningRef.current) {
+        setError(error.message || 'Failed to move item');
+      }
+      setMoveModeDragging(null);
+      isDraggingMoveBoxRef.current = false;
+    }
+  }, [moveModeDragging, inventoryData, supplyNameToId]);
 
   const handleDragStart = useCallback((boxTitle, index, isMultiple, selectedIndices) => {
     const boxData = inventoryData.get(boxTitle);
@@ -869,6 +1021,16 @@ export const InventoryProvider = ({ children }) => {
     cancelAddMode,
     handleBoxClickAddMode,
     boxHasAnyPending,
+    // Move Mode
+    moveModeItem,
+    moveModeDragging,
+    startMoveMode,
+    cancelMoveMode,
+    clearMoveModeDragging,
+    handleMoveModeDragStart,
+    handleMoveModeDragMove,
+    handleMoveModeDrop,
+    isDraggingMoveBoxRef,
   };
 
   return (

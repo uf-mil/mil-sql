@@ -12,6 +12,9 @@ const MasterItemPreview = () => {
     clearSelectedMasterItem,
     deleteMasterItem,
     startAddMode,
+    startMoveMode,
+    cancelMoveMode,
+    moveModeItem,
     leftPaneWidth,
     leftPaneCollapsed
   } = useInventory();
@@ -87,9 +90,15 @@ const MasterItemPreview = () => {
     startAddMode(selectedMasterItem);
   };
 
+  const handleMove = () => {
+    startMoveMode(selectedMasterItem);
+  };
+
   const handleEdit = () => {
     setEditingItem(selectedMasterItem);
   };
+  
+  const isInMoveMode = moveModeItem === selectedMasterItem;
 
   if (!selectedMasterItem || !item) return null;
 
@@ -200,15 +209,26 @@ const MasterItemPreview = () => {
           <div className="master-preview-actions">
             <strong>Actions:</strong>
             <div className="master-preview-actions-buttons">
-              <button className="master-action-button add-button" onClick={handleAddToBoxes} title="Add to boxes on map">
-                Add to Boxes
-              </button>
-              <button className="master-action-button edit-button" onClick={handleEdit} title="Edit item">
-                Edit
-              </button>
-              <button className="master-action-button delete-button" onClick={handleDelete} title="Delete item">
-                Delete
-              </button>
+              {isInMoveMode ? (
+                <button className="master-action-button cancel-button" onClick={cancelMoveMode} title="Cancel move mode">
+                  Cancel Move
+                </button>
+              ) : (
+                <>
+                  <button className="master-action-button add-button" onClick={handleAddToBoxes} title="Add to boxes on map">
+                    Add to Boxes
+                  </button>
+                  <button className="master-action-button move-button" onClick={handleMove} title="Move items between boxes">
+                    Move
+                  </button>
+                  <button className="master-action-button edit-button" onClick={handleEdit} title="Edit item">
+                    Edit
+                  </button>
+                  <button className="master-action-button delete-button" onClick={handleDelete} title="Delete item">
+                    Delete
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

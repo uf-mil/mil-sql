@@ -4,6 +4,7 @@ import MasterItemPreview from './MasterItemPreview';
 import ArrowConnections from './ArrowConnections';
 import BoxInventoryOverlay from './BoxInventoryOverlay';
 import AddModeArrow from './AddModeArrow';
+import MoveModeBoxes from './MoveModeBoxes';
 
 const SHELF_NAMES = [
   'Shelf 6 (Top)',
@@ -15,7 +16,7 @@ const SHELF_NAMES = [
 ];
 
 const MapComponent = forwardRef((props, ref) => {
-  const { worldRef, inventoryData, inventoryBounds, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox, addModeItem, addModePending, handleBoxClickAddMode, boxHasAnyPending, selectedMasterItem, getItemLocations } = useInventory();
+  const { worldRef, inventoryData, inventoryBounds, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox, addModeItem, addModePending, handleBoxClickAddMode, boxHasAnyPending, selectedMasterItem, getItemLocations, moveModeItem, moveModeDragging, handleMoveModeDrop } = useInventory();
 
   // Compute highlighted box set from selected Master item (for React-managed className)
   const highlightedBoxes = selectedMasterItem ? new Set(getItemLocations(selectedMasterItem)) : null;
@@ -33,16 +34,30 @@ const MapComponent = forwardRef((props, ref) => {
 
   const handleDragEnter = (e, boxTitle) => {
     e.preventDefault();
-    if (boxTitle !== currentDragOverBox) {
-      setCurrentDragOverBox(boxTitle);
+    if (moveModeItem && moveModeDragging) {
+      // In move mode, track drag over for move boxes
+      if (boxTitle !== currentDragOverBox) {
+        setCurrentDragOverBox(boxTitle);
+      }
+    } else {
+      if (boxTitle !== currentDragOverBox) {
+        setCurrentDragOverBox(boxTitle);
+      }
     }
   };
 
   const handleDragOver = (e, boxTitle) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (boxTitle !== currentDragOverBox) {
-      setCurrentDragOverBox(boxTitle);
+    if (moveModeItem && moveModeDragging) {
+      // In move mode, track drag over for move boxes
+      if (boxTitle !== currentDragOverBox) {
+        setCurrentDragOverBox(boxTitle);
+      }
+    } else {
+      if (boxTitle !== currentDragOverBox) {
+        setCurrentDragOverBox(boxTitle);
+      }
     }
   };
 
@@ -65,8 +80,35 @@ const MapComponent = forwardRef((props, ref) => {
   const handleDropBox = (e, boxTitle) => {
     e.preventDefault();
     e.stopPropagation();
-    handleDrop(boxTitle);
-    setCurrentDragOverBox(null);
+    if (moveModeItem && moveModeDragging) {
+      // In move mode, handle drop for moving items
+      // For Tall Cabinets, we need to determine which shelf was dropped on
+      const boxData = inventoryData.get(boxTitle);
+      let targetShelf = undefined;
+      
+      if (boxData && boxTitle.startsWith('Tall Cabinet') && worldRef.current) {
+        // Calculate which shelf based on mouse position
+        const svg = e.currentTarget.ownerSVGElement;
+        if (svg) {
+          const pt = svg.createSVGPoint();
+          pt.x = e.clientX;
+          pt.y = e.clientY;
+          const ctm = worldRef.current.getScreenCTM();
+          if (ctm) {
+            const worldPt = pt.matrixTransform(ctm.inverse());
+            const shelfH = boxData.height / SHELF_NAMES.length;
+            const relativeY = worldPt.y - boxData.y;
+            targetShelf = Math.max(0, Math.min(SHELF_NAMES.length - 1, Math.floor(relativeY / shelfH)));
+          }
+        }
+      }
+      
+      handleMoveModeDrop(boxTitle, targetShelf);
+      setCurrentDragOverBox(null);
+    } else {
+      handleDrop(boxTitle);
+      setCurrentDragOverBox(null);
+    }
   };
 
   const boxes = Array.from(inventoryData.values());
@@ -181,6 +223,7 @@ const MapComponent = forwardRef((props, ref) => {
           <ArrowConnections />
           <BoxInventoryOverlay />
           <AddModeArrow />
+          <MoveModeBoxes />
         </g>
       </svg>
       <MasterItemPreview />
