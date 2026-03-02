@@ -33,3 +33,5 @@ def get_teams():
     except Exception as e:
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
+
+

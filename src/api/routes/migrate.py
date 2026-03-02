@@ -44,3 +44,5 @@ def migrate_locations():
             'error': str(e)
         }), 500
 
+
+

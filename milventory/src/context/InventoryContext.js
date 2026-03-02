@@ -48,6 +48,15 @@ export const InventoryProvider = ({ children }) => {
   const addModePendingRef = useRef(new Map());
   const addModeQtyPerClickRef = useRef(1);
   
+  // Delete Mode state
+  const [deleteModeItem, setDeleteModeItem] = useState(null);
+  const [deleteModeQtyPerClick, setDeleteModeQtyPerClick] = useState(1);
+  const [deleteModePending, setDeleteModePending] = useState(new Map()); // Map<boxTitle, qty>
+  const deleteModePreviewRef = useRef(null);
+  const deleteModeItemRef = useRef(null);
+  const deleteModePendingRef = useRef(new Map());
+  const deleteModeQtyPerClickRef = useRef(1);
+  
   // Move Mode state
   const [moveModeItem, setMoveModeItem] = useState(null);
   const [moveModeDragging, setMoveModeDragging] = useState(null); // { boxTitle, shelf, qty, x, y }
@@ -66,6 +75,18 @@ export const InventoryProvider = ({ children }) => {
   useEffect(() => {
     addModeQtyPerClickRef.current = addModeQtyPerClick;
   }, [addModeQtyPerClick]);
+
+  useEffect(() => {
+    deleteModeItemRef.current = deleteModeItem;
+  }, [deleteModeItem]);
+  
+  useEffect(() => {
+    deleteModePendingRef.current = deleteModePending;
+  }, [deleteModePending]);
+
+  useEffect(() => {
+    deleteModeQtyPerClickRef.current = deleteModeQtyPerClick;
+  }, [deleteModeQtyPerClick]);
   
   useEffect(() => {
     moveModeItemRef.current = moveModeItem;
@@ -88,6 +109,45 @@ export const InventoryProvider = ({ children }) => {
     };
     return typeFills[type] || 'var(--table)';
   };
+
+  // Function to reload supply locations from API
+  const reloadSupplyLocations = useCallback(async () => {
+    try {
+      const supplyLocations = await api.getAllSupplyLocations();
+      
+      // Group by location_name and merge into inventoryData
+      const locationMap = new Map();
+      supplyLocations.forEach(sl => {
+        const key = sl.location;
+        if (!locationMap.has(key)) {
+          locationMap.set(key, []);
+        }
+        locationMap.get(key).push({
+          id: sl.id, // supply_location_id from API
+          name: sl.supply_name || '', // From JOIN in API
+          qty: sl.qty, // API maps amount to qty
+          shelf: sl.shelf !== null ? sl.shelf : undefined
+        });
+      });
+      
+      // Merge into inventoryData
+      setInventoryData(prev => {
+        const next = new Map(prev);
+        locationMap.forEach((items, locationName) => {
+          const boxData = next.get(locationName);
+          if (boxData) {
+            next.set(locationName, {
+              ...boxData,
+              inventory: items
+            });
+          }
+        });
+        return next;
+      });
+    } catch (apiError) {
+      console.error('Error reloading supply locations from API:', apiError);
+    }
+  }, []);
 
   // Initialize inventory data from database (locations) and API (inventory data)
   useEffect(() => {
@@ -125,41 +185,7 @@ export const InventoryProvider = ({ children }) => {
         setInventoryData(newInventoryData);
         
         // 3. Load supply locations from API and merge into inventoryData
-        try {
-          const supplyLocations = await api.getAllSupplyLocations();
-          
-          // Group by location_name and merge into inventoryData
-          const locationMap = new Map();
-          supplyLocations.forEach(sl => {
-            const key = sl.location;
-            if (!locationMap.has(key)) {
-              locationMap.set(key, []);
-            }
-            locationMap.get(key).push({
-              name: sl.supply_name || '', // From JOIN in API
-              qty: sl.qty, // API maps amount to qty
-              shelf: sl.shelf !== null ? sl.shelf : undefined
-            });
-          });
-          
-          // Merge into inventoryData
-          setInventoryData(prev => {
-            const next = new Map(prev);
-            locationMap.forEach((items, locationName) => {
-              const boxData = next.get(locationName);
-              if (boxData) {
-                next.set(locationName, {
-                  ...boxData,
-                  inventory: items
-                });
-              }
-            });
-            return next;
-          });
-        } catch (apiError) {
-          console.error('Error loading supply locations from API:', apiError);
-          // Continue with empty inventory arrays if API fails
-        }
+        await reloadSupplyLocations();
         
         setIsLoading(false);
       } catch (error) {
@@ -505,6 +531,9 @@ export const InventoryProvider = ({ children }) => {
         });
       });
 
+      // Reload supply locations to get the IDs for newly added items
+      await reloadSupplyLocations();
+
       // Clear add mode
       setAddModeItem(null);
       setAddModeQtyPerClick(1);
@@ -516,12 +545,194 @@ export const InventoryProvider = ({ children }) => {
         setError(error.message || 'Failed to add items');
       }
     }
-  }, [inventoryData, supplyNameToId]);
+  }, [inventoryData, supplyNameToId, reloadSupplyLocations]);
 
   const cancelAddMode = useCallback(() => {
     setAddModeItem(null);
     setAddModeQtyPerClick(1);
     setAddModePending(new Map());
+  }, []);
+
+  // Delete Mode functions
+  const startDeleteMode = useCallback((itemName) => {
+    setDeleteModeItem(itemName);
+    setDeleteModeQtyPerClick(1);
+    setDeleteModePending(new Map());
+    setSelectedBox(null); // Clear box selection when entering delete mode
+    setSelectedMasterItem(null); // Clear Master preview when entering delete mode
+  }, []);
+
+  // shelf is optional — undefined for non-shelf boxes, number for Tall Cabinet shelves
+  const handleBoxClickDeleteMode = useCallback((boxTitle, shelf) => {
+    const qty = deleteModeQtyPerClickRef.current;
+    const key = shelf !== undefined ? `${boxTitle}||${shelf}` : boxTitle;
+    
+    // Get current quantity in this location
+    const boxData = inventoryData.get(boxTitle);
+    if (!boxData) return;
+    
+    const matchingItems = boxData.inventory.filter(item => {
+      if (item.name !== deleteModeItemRef.current) return false;
+      if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
+      return item.shelf === undefined;
+    });
+    
+    const currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
+    const existingPending = deleteModePendingRef.current.get(key) || 0;
+    
+    // Don't allow deleting more than what's available
+    const maxDeletable = currentQty - existingPending;
+    const toDelete = Math.min(qty, maxDeletable);
+    
+    if (toDelete <= 0) return; // Nothing to delete
+    
+    setDeleteModePending(prev => {
+      const next = new Map(prev);
+      const existing = next.get(key) || 0;
+      next.set(key, existing + toDelete);
+      return next;
+    });
+  }, [inventoryData]);
+
+  // Check if any pending deletion belongs to a given box (handles compound keys)
+  const boxHasAnyDeletePending = useCallback((boxTitle) => {
+    for (const key of deleteModePending.keys()) {
+      if (key === boxTitle || key.startsWith(boxTitle + '||')) return true;
+    }
+    return false;
+  }, [deleteModePending]);
+
+  const finishDeleteMode = useCallback(async () => {
+    const currentItem = deleteModeItemRef.current;
+    const pending = deleteModePendingRef.current;
+    
+    if (!currentItem) {
+      setDeleteModeItem(null);
+      setDeleteModeQtyPerClick(1);
+      setDeleteModePending(new Map());
+      return;
+    }
+
+    // Get supply_id for the item
+    const supplyId = supplyNameToId.get(currentItem);
+    if (!supplyId) {
+      console.error(`Supply ID not found for item: ${currentItem}`);
+      setError(`Supply ID not found for item: ${currentItem}`);
+      return;
+    }
+
+    // Convert pending map to deletions
+    const deletions = [];
+    pending.forEach((pendingQty, key) => {
+      const parts = key.split('||');
+      const boxTitle = parts[0];
+      const shelf = parts.length > 1 ? parseInt(parts[1], 10) : null;
+      
+      // Find the supply_location_id for this item at this location
+      const boxData = inventoryData.get(boxTitle);
+      if (!boxData) return;
+      
+      const matchingItems = boxData.inventory.filter(item => {
+        if (item.name !== currentItem) return false;
+        if (shelf !== null && shelf !== undefined) return (item.shelf ?? 0) === shelf;
+        return item.shelf === undefined;
+      });
+      
+      // For each matching item, we need to delete or reduce it
+      let remainingToDelete = pendingQty;
+      matchingItems.forEach(item => {
+        if (item.id && remainingToDelete > 0) {
+          const deleteQty = Math.min(remainingToDelete, item.qty);
+          deletions.push({
+            id: item.id,
+            location: boxTitle,
+            shelf: shelf,
+            amount: deleteQty
+          });
+          remainingToDelete -= deleteQty;
+        }
+      });
+    });
+
+    if (deletions.length === 0) {
+      setDeleteModeItem(null);
+      setDeleteModeQtyPerClick(1);
+      setDeleteModePending(new Map());
+      return;
+    }
+
+    try {
+      // Delete items via API
+      for (const deletion of deletions) {
+        const item = inventoryData.get(deletion.location)?.inventory.find(i => i.id === deletion.id);
+        if (!item) continue;
+        
+        if (item.qty <= deletion.amount) {
+          // Delete the entire entry
+          await api.deleteSupplyLocation(deletion.id);
+        } else {
+          // Reduce the quantity
+          await api.updateSupplyLocation(deletion.id, { amount: item.qty - deletion.amount });
+        }
+      }
+
+      // Update local state optimistically
+      const byBox = new Map();
+      deletions.forEach(({ location, shelf, amount, id }) => {
+        if (!byBox.has(location)) byBox.set(location, []);
+        byBox.get(location).push({ shelf, amount, id });
+      });
+
+      byBox.forEach((entries, boxTitle) => {
+        const boxData = inventoryData.get(boxTitle);
+        if (!boxData) return;
+
+        const newInventory = [...boxData.inventory];
+
+        entries.forEach(({ shelf, amount, id }) => {
+          const existingIndex = newInventory.findIndex(item => item.id === id);
+          if (existingIndex >= 0) {
+            const newQty = newInventory[existingIndex].qty - amount;
+            if (newQty <= 0) {
+              // Remove item
+              newInventory.splice(existingIndex, 1);
+            } else {
+              // Update quantity
+              newInventory[existingIndex] = {
+                ...newInventory[existingIndex],
+                qty: newQty
+              };
+            }
+          }
+        });
+
+        setInventoryData(prev => {
+          const next = new Map(prev);
+          const box = next.get(boxTitle);
+          if (box) {
+            next.set(boxTitle, { ...box, inventory: newInventory });
+          }
+          return next;
+        });
+      });
+
+      // Clear delete mode
+      setDeleteModeItem(null);
+      setDeleteModeQtyPerClick(1);
+      setDeleteModePending(new Map());
+    } catch (error) {
+      console.error('Error finishing delete mode:', error);
+      // Only set error if not panning (to avoid breaking pan)
+      if (!isPanningRef.current) {
+        setError(error.message || 'Failed to delete items');
+      }
+    }
+  }, [inventoryData, supplyNameToId]);
+
+  const cancelDeleteMode = useCallback(() => {
+    setDeleteModeItem(null);
+    setDeleteModeQtyPerClick(1);
+    setDeleteModePending(new Map());
   }, []);
 
   // Move Mode functions
@@ -1031,6 +1242,17 @@ export const InventoryProvider = ({ children }) => {
     cancelAddMode,
     handleBoxClickAddMode,
     boxHasAnyPending,
+    // Delete Mode
+    deleteModeItem,
+    deleteModeQtyPerClick,
+    setDeleteModeQtyPerClick,
+    deleteModePending,
+    deleteModePreviewRef,
+    startDeleteMode,
+    finishDeleteMode,
+    cancelDeleteMode,
+    handleBoxClickDeleteMode,
+    boxHasAnyDeletePending,
     // Move Mode
     moveModeItem,
     moveModeDragging,

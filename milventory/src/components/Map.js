@@ -5,6 +5,7 @@ import ArrowConnections from './ArrowConnections';
 import BoxInventoryOverlay from './BoxInventoryOverlay';
 import AddModeArrow from './AddModeArrow';
 import MoveModeBoxes from './MoveModeBoxes';
+import DeleteModePreview from './DeleteModePreview';
 
 const SHELF_NAMES = [
   'Shelf 6 (Top)',
@@ -16,10 +17,13 @@ const SHELF_NAMES = [
 ];
 
 const MapComponent = forwardRef((props, ref) => {
-  const { worldRef, inventoryData, inventoryBounds, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox, addModeItem, addModePending, handleBoxClickAddMode, boxHasAnyPending, selectedMasterItem, getItemLocations, moveModeItem, moveModeDragging, handleMoveModeDrop } = useInventory();
+  const { worldRef, inventoryData, inventoryBounds, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox, addModeItem, addModePending, handleBoxClickAddMode, boxHasAnyPending, selectedMasterItem, getItemLocations, moveModeItem, moveModeDragging, handleMoveModeDrop, deleteModeItem, deleteModePending, handleBoxClickDeleteMode, boxHasAnyDeletePending } = useInventory();
 
   // Compute highlighted box set from selected Master item (for React-managed className)
   const highlightedBoxes = selectedMasterItem ? new Set(getItemLocations(selectedMasterItem)) : null;
+  
+  // Compute highlighted box set for delete mode (all boxes containing the item)
+  const deleteModeHighlightedBoxes = deleteModeItem ? new Set(getItemLocations(deleteModeItem)) : null;
 
   const handleBoxMouseEnter = (e, boxTitle) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -126,8 +130,8 @@ const MapComponent = forwardRef((props, ref) => {
     ry: 18
   };
 
-  // All Tall Cabinets get shelf overlays in add mode or move mode
-  const tallCabinets = (addModeItem || moveModeItem)
+  // All Tall Cabinets get shelf overlays in add mode, delete mode, or move mode
+  const tallCabinets = (addModeItem || deleteModeItem || moveModeItem)
     ? boxes.filter(b => b.title.startsWith('Tall Cabinet'))
     : [];
 
@@ -140,13 +144,28 @@ const MapComponent = forwardRef((props, ref) => {
           {boxes.map((box, idx) => {
             // For regular boxes (not Tall Cabinets), check if they have pending items
             const isRegularBox = !box.title.startsWith('Tall Cabinet');
-            const hasPending = isRegularBox && addModeItem && addModePending.has(box.title);
-            const pendingQty = hasPending ? addModePending.get(box.title) : null;
+            const hasAddPending = isRegularBox && addModeItem && addModePending.has(box.title);
+            const addPendingQty = hasAddPending ? addModePending.get(box.title) : null;
+            
+            // For delete mode, get current quantity, deleted quantity, and remaining
+            const hasDeletePending = isRegularBox && deleteModeItem && deleteModePending.has(box.title);
+            const deletePendingQty = hasDeletePending ? deleteModePending.get(box.title) : 0;
+            const hasDeleteItem = isRegularBox && deleteModeItem && deleteModeHighlightedBoxes && deleteModeHighlightedBoxes.has(box.title);
+            let currentQty = 0;
+            let remainingQty = 0;
+            if (deleteModeItem && isRegularBox) {
+              const boxData = inventoryData.get(box.title);
+              if (boxData) {
+                const matchingItems = boxData.inventory.filter(item => item.name === deleteModeItem);
+                currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
+                remainingQty = Math.max(0, currentQty - deletePendingQty);
+              }
+            }
             
             return (
               <g key={idx}>
                 <rect
-                  className={`box ${!addModeItem && selectedBox === box.title ? 'selected' : ''} ${currentDragOverBox === box.title ? 'drag-over-box' : ''} ${addModeItem && boxHasAnyPending(box.title) ? 'add-mode-affected' : ''} ${highlightedBoxes && highlightedBoxes.has(box.title) ? 'box-highlighted' : ''}`}
+                  className={`box ${!addModeItem && !deleteModeItem && selectedBox === box.title ? 'selected' : ''} ${currentDragOverBox === box.title ? 'drag-over-box' : ''} ${addModeItem && boxHasAnyPending(box.title) ? 'add-mode-affected' : ''} ${deleteModeItem && (boxHasAnyDeletePending(box.title) || hasDeleteItem) ? 'add-mode-affected' : ''} ${highlightedBoxes && highlightedBoxes.has(box.title) ? 'box-highlighted' : ''}`}
                   x={box.x}
                   y={box.y}
                   width={box.width}
@@ -160,6 +179,11 @@ const MapComponent = forwardRef((props, ref) => {
                       if (!box.title.startsWith('Tall Cabinet')) {
                         handleBoxClickAddMode(box.title);
                       }
+                    } else if (deleteModeItem) {
+                      // For Tall Cabinets, shelf rects on top handle clicks
+                      if (!box.title.startsWith('Tall Cabinet')) {
+                        handleBoxClickDeleteMode(box.title);
+                      }
                     } else {
                       handleBoxClick(box.title);
                     }
@@ -171,7 +195,7 @@ const MapComponent = forwardRef((props, ref) => {
                   onDragLeave={(e) => handleDragLeave(e, box.title)}
                   onDrop={(e) => handleDropBox(e, box.title)}
                 />
-                {hasPending && (
+                {hasAddPending && (
                   <text
                     className="add-mode-shelf-qty"
                     x={box.x + box.width - 8}
@@ -180,14 +204,27 @@ const MapComponent = forwardRef((props, ref) => {
                     dominantBaseline="middle"
                     pointerEvents="none"
                   >
-                    +{pendingQty}
+                    +{addPendingQty}
+                  </text>
+                )}
+                {hasDeleteItem && (
+                  <text
+                    className="add-mode-shelf-qty"
+                    x={box.x + box.width - 8}
+                    y={box.y + box.height / 2}
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                    pointerEvents="none"
+                    fill={hasDeletePending ? "#ff6b6b" : "var(--accent)"}
+                  >
+                    {hasDeletePending ? `${currentQty} / -${deletePendingQty} / ${remainingQty}` : currentQty}
                   </text>
                 )}
               </g>
             );
           })}
 
-          {/* Shelf overlays for all Tall Cabinets in add mode or move mode */}
+          {/* Shelf overlays for all Tall Cabinets in add mode, delete mode, or move mode */}
           {tallCabinets.map(box => {
             const shelfH = box.height / SHELF_NAMES.length;
             return (
@@ -195,8 +232,28 @@ const MapComponent = forwardRef((props, ref) => {
                 {SHELF_NAMES.map((name, idx) => {
                   const shelfY = box.y + idx * shelfH;
                   const pendingKey = `${box.title}||${idx}`;
-                  const isAffected = addModeItem && addModePending.has(pendingKey);
-                  const pendingQty = addModePending.get(pendingKey);
+                  const isAddAffected = addModeItem && addModePending.has(pendingKey);
+                  const addPendingQty = addModePending.get(pendingKey);
+                  
+                  // For delete mode, get current quantity, deleted quantity, and remaining
+                  const isDeleteAffected = deleteModeItem && deleteModePending.has(pendingKey);
+                  const deletePendingQty = isDeleteAffected ? deleteModePending.get(pendingKey) : 0;
+                  let currentQty = 0;
+                  let remainingQty = 0;
+                  let hasDeleteItemOnShelf = false;
+                  if (deleteModeItem) {
+                    const boxData = inventoryData.get(box.title);
+                    if (boxData) {
+                      const matchingItems = boxData.inventory.filter(item => 
+                        item.name === deleteModeItem && (item.shelf ?? 0) === idx
+                      );
+                      currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
+                      remainingQty = Math.max(0, currentQty - deletePendingQty);
+                      hasDeleteItemOnShelf = currentQty > 0;
+                    }
+                  }
+                  
+                  const isAffected = isAddAffected || isDeleteAffected || hasDeleteItemOnShelf;
 
                   return (
                     <g key={idx}>
@@ -206,9 +263,13 @@ const MapComponent = forwardRef((props, ref) => {
                         y={shelfY}
                         width={box.width}
                         height={shelfH}
-                        onClick={addModeItem ? (e) => {
+                        onClick={(addModeItem || deleteModeItem) ? (e) => {
                           e.stopPropagation();
-                          handleBoxClickAddMode(box.title, idx);
+                          if (addModeItem) {
+                            handleBoxClickAddMode(box.title, idx);
+                          } else if (deleteModeItem) {
+                            handleBoxClickDeleteMode(box.title, idx);
+                          }
                         } : undefined}
                         style={moveModeItem ? { pointerEvents: 'none' } : undefined}
                       />
@@ -222,7 +283,7 @@ const MapComponent = forwardRef((props, ref) => {
                       >
                         {name}
                       </text>
-                      {isAffected && (
+                      {isAddAffected && (
                         <text
                           className="add-mode-shelf-qty"
                           x={box.x + box.width - 8}
@@ -231,7 +292,20 @@ const MapComponent = forwardRef((props, ref) => {
                           dominantBaseline="middle"
                           pointerEvents="none"
                         >
-                          +{pendingQty}
+                          +{addPendingQty}
+                        </text>
+                      )}
+                      {hasDeleteItemOnShelf && (
+                        <text
+                          className="add-mode-shelf-qty"
+                          x={box.x + box.width - 8}
+                          y={shelfY + shelfH / 2}
+                          textAnchor="end"
+                          dominantBaseline="middle"
+                          pointerEvents="none"
+                          fill={isDeleteAffected ? "#ff6b6b" : "var(--accent)"}
+                        >
+                          {isDeleteAffected ? `${currentQty} / -${deletePendingQty} / ${remainingQty}` : currentQty}
                         </text>
                       )}
                     </g>
@@ -248,6 +322,7 @@ const MapComponent = forwardRef((props, ref) => {
         </g>
       </svg>
       <MasterItemPreview />
+      <DeleteModePreview />
     </>
   );
 });

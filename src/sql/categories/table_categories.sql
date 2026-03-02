@@ -5,3 +5,5 @@ CREATE TABLE IF NOT EXISTS categories (
     INDEX idx_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+

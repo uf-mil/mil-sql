@@ -13,6 +13,7 @@ const MasterItemPreview = () => {
     deleteMasterItem,
     startAddMode,
     startMoveMode,
+    startDeleteMode,
     cancelMoveMode,
     moveModeItem,
     leftPaneWidth,
@@ -76,7 +77,7 @@ const MasterItemPreview = () => {
   const positionX = leftPaneActualWidth + 20;
   const positionY = 20;
 
-  const handleDelete = () => {
+  const handleDeleteItem = () => {
     if (locations.length > 0) {
       const confirmed = window.confirm(
         `This item is used in ${locations.length} box(es). Delete from all boxes?`
@@ -92,6 +93,10 @@ const MasterItemPreview = () => {
 
   const handleMove = () => {
     startMoveMode(selectedMasterItem);
+  };
+
+  const handleDelete = () => {
+    startDeleteMode(selectedMasterItem);
   };
 
   const handleEdit = () => {
@@ -224,7 +229,10 @@ const MasterItemPreview = () => {
               ) : (
                 <>
                   <button className="master-action-button add-button" onClick={handleAddToBoxes} title="Add to boxes on map">
-                    Add to Boxes
+                    Add
+                  </button>
+                  <button className="master-action-button delete-button" onClick={handleDelete} title="Delete items from boxes">
+                    Delete Some
                   </button>
                   <button className="master-action-button move-button" onClick={handleMove} title="Move items between boxes">
                     Move
@@ -232,8 +240,8 @@ const MasterItemPreview = () => {
                   <button className="master-action-button edit-button" onClick={handleEdit} title="Edit item">
                     Edit
                   </button>
-                  <button className="master-action-button delete-button" onClick={handleDelete} title="Delete item">
-                    Delete
+                  <button className="master-action-button delete-button" onClick={handleDeleteItem} title="Delete item from master inventory">
+                    Delete All
                   </button>
                 </>
               )}
