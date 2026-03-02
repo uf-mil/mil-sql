@@ -446,6 +446,40 @@ export const admin = {
       throw err;
     }),
 
+  updateLocation: (name, data) =>
+    fetch(`${API_BASE}/locations/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify(data)
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (r.status === 403) {
+        const error = new Error('Leader access required');
+        error.response = { status: 403 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }).catch(err => {
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        const networkError = new Error('Network error: Unable to connect to server. Please check if the server is running.');
+        networkError.response = { status: 0 };
+        throw networkError;
+      }
+      throw err;
+    }),
+
   deleteLocation: (name) =>
     fetch(`${API_BASE}/locations/${encodeURIComponent(name)}`, {
       method: 'DELETE',

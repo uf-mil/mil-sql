@@ -1,10 +1,11 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import AdminMap from './AdminMap';
 import AdminLeftPanel from './AdminLeftPanel';
 import AdminActionsPanel from './AdminActionsPanel';
 import AddLocationModal from './AddLocationModal';
 import LocationPreview from './LocationPreview';
+import MoveLocationsModal from './MoveLocationsModal';
 
 const AdminDashboard = () => {
   const { wrapRef, leftPaneWidth, leftPaneCollapsed } = useInventory();
@@ -16,6 +17,12 @@ const AdminDashboard = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState(null);
   const edgeDragHandlerRef = useRef(null);
+
+  // Move mode state
+  // 'idle' | 'selecting' | 'moving'
+  const [moveMode, setMoveMode] = useState('idle');
+  const [moveSelectedBoxes, setMoveSelectedBoxes] = useState([]); // [{name, x, y, width, height, ...}]
+  const [moveTransform, setMoveTransform] = useState({ x: 0, y: 0 }); // current dx, dy offset
 
   const handleAddLocation = () => {
     setDrawMode(true);
@@ -35,10 +42,7 @@ const AdminDashboard = () => {
   };
 
   const handleLocationAdded = () => {
-    // Trigger refresh of components
     setRefreshTrigger(prev => prev + 1);
-    // Reload page after a short delay to ensure backend has synced JSON
-    // The JSON file is synced by sync_locations_json() when location is created
     setTimeout(() => {
       window.location.reload();
     }, 300);
@@ -56,6 +60,48 @@ const AdminDashboard = () => {
     setSelectedLocation(null);
     setRefreshTrigger(prev => prev + 1);
   };
+
+  // Move mode handlers
+  const handleStartMove = useCallback(() => {
+    setMoveMode('selecting');
+    setMoveSelectedBoxes([]);
+    setMoveTransform({ x: 0, y: 0 });
+    setSelectedLocation(null);
+  }, []);
+
+  const handleSelectBoxes = useCallback(() => {
+    // Transition from modal state to actual rectangle selection on map
+    setMoveMode('selecting');
+  }, []);
+
+  const handleBoxesSelected = useCallback((boxes) => {
+    setMoveSelectedBoxes(boxes);
+    setMoveMode('moving');
+    setMoveTransform({ x: 0, y: 0 });
+  }, []);
+
+  const handleMoveTransformChange = useCallback((newTransform) => {
+    setMoveTransform(newTransform);
+  }, []);
+
+  const handleCancelMove = useCallback(() => {
+    setMoveMode('idle');
+    setMoveSelectedBoxes([]);
+    setMoveTransform({ x: 0, y: 0 });
+  }, []);
+
+  const handleApplyMove = useCallback(() => {
+    // Applied successfully from the modal - refresh
+    setMoveMode('idle');
+    setMoveSelectedBoxes([]);
+    setMoveTransform({ x: 0, y: 0 });
+    setRefreshTrigger(prev => prev + 1);
+    setTimeout(() => {
+      window.location.reload();
+    }, 300);
+  }, []);
+
+  const isInMoveMode = moveMode !== 'idle';
 
   return (
     <>
@@ -76,6 +122,24 @@ const AdminDashboard = () => {
               Draw Mode: Drag on map to create a box
             </span>
           )}
+          {moveMode === 'selecting' && (
+            <span style={{ 
+              marginLeft: '1rem', 
+              color: '#ffc107',
+              fontWeight: '600'
+            }}>
+              Move Mode: Drag on map to select boxes
+            </span>
+          )}
+          {moveMode === 'moving' && (
+            <span style={{ 
+              marginLeft: '1rem', 
+              color: '#ffc107',
+              fontWeight: '600'
+            }}>
+              Move Mode: Drag selected boxes or type transform values
+            </span>
+          )}
         </div>
         <AdminMap 
           ref={svgRef} 
@@ -85,7 +149,6 @@ const AdminDashboard = () => {
           onLocationSelect={handleLocationSelect}
           previewBox={previewBox}
           onPreviewEdgeDrag={(edges) => {
-            // Update preview box state directly
             const newPreviewBox = {
               x: edges.leftX,
               y: edges.topY,
@@ -93,16 +156,31 @@ const AdminDashboard = () => {
               height: edges.bottomY - edges.topY
             };
             setPreviewBox(newPreviewBox);
-            // Also trigger form update via edge drag handler if available
             if (edgeDragHandlerRef.current) {
               edgeDragHandlerRef.current(edges);
             }
           }}
+          moveMode={moveMode}
+          moveSelectedBoxes={moveSelectedBoxes}
+          moveTransform={moveTransform}
+          onBoxesSelected={handleBoxesSelected}
+          onMoveTransformChange={handleMoveTransformChange}
         />
         <AdminActionsPanel 
           onAddLocation={handleAddLocation}
           drawMode={drawMode}
           onCancelDraw={() => setDrawMode(false)}
+          onStartMove={handleStartMove}
+          isInMoveMode={isInMoveMode}
+        />
+        <MoveLocationsModal
+          moveMode={moveMode}
+          selectedBoxes={moveSelectedBoxes}
+          transform={moveTransform}
+          onTransformChange={handleMoveTransformChange}
+          onSelectBoxes={handleSelectBoxes}
+          onCancel={handleCancelMove}
+          onApply={handleApplyMove}
         />
         <AddLocationModal
           isOpen={showAddLocationModal}

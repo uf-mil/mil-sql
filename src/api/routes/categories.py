@@ -1,25 +1,17 @@
 """Categories API routes."""
 from flask import Blueprint, request, jsonify
 import mysql.connector
-import os
-from src.scripts.helpers import parse_database_url
+from src.api.db import get_db
 from src.api.middleware.auth import require_leader
 
 categories_bp = Blueprint('categories', __name__)
-
-
-def get_db_connection():
-    """Get database connection."""
-    database_url = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@db:3306/mydb")
-    db_params = parse_database_url(database_url)
-    return mysql.connector.connect(**db_params)
 
 
 @categories_bp.route('/categories', methods=['GET'])
 def get_categories():
     """Get all categories with IDs."""
     try:
-        conn = get_db_connection()
+        conn = get_db()
         cur = conn.cursor()
         
         cur.execute("SELECT id, name FROM categories ORDER BY name")
@@ -39,7 +31,7 @@ def get_categories():
 def get_category(category_id):
     """Get a single category by ID."""
     try:
-        conn = get_db_connection()
+        conn = get_db()
         cur = conn.cursor()
         
         cur.execute("SELECT id, name, created_at FROM categories WHERE id = %s", (category_id,))
@@ -62,7 +54,7 @@ def get_category(category_id):
 
 @categories_bp.route('/categories', methods=['POST'])
 @require_leader
-def create_category():
+def create_category(current_user_id=None):
     """Create a new category. Requires leader/admin access."""
     try:
         data = request.json
@@ -73,7 +65,7 @@ def create_category():
         if not name:
             return jsonify({'error': 'Category name cannot be empty'}), 400
         
-        conn = get_db_connection()
+        conn = get_db()
         cur = conn.cursor()
         
         try:

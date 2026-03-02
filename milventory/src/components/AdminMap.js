@@ -1,10 +1,14 @@
-import React, { forwardRef, useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useInventory } from '../context/InventoryContext';
 import { admin } from '../api';
 
 const AdminMap = forwardRef((props, ref) => {
-  const { drawMode, onDrawComplete, selectedLocation, onLocationSelect, previewBox, onPreviewEdgeDrag } = props;
+  const { 
+    drawMode, onDrawComplete, selectedLocation, onLocationSelect, previewBox, onPreviewEdgeDrag,
+    // Move mode props
+    moveMode, moveSelectedBoxes, moveTransform, onBoxesSelected, onMoveTransformChange
+  } = props;
   const { inventoryData, inventoryBounds } = useInventory();
   const worldRef = useRef(null);
   const svgRef = useRef(null);
@@ -14,11 +18,22 @@ const AdminMap = forwardRef((props, ref) => {
   const drawStartRef = useRef(null);
   const currentDrawingBoxRef = useRef(null);
   const currentTransformRef = useRef(d3.zoomIdentity);
-  const isZoomInitializedRef = useRef(false); // Track if initial zoom has been set
+  const isZoomInitializedRef = useRef(false);
   const [isDraggingEdge, setIsDraggingEdge] = useState(false);
-  const isDraggingEdgeRef = useRef(false); // Synchronous ref for D3 filter
-  const [draggingEdge, setDraggingEdge] = useState(null); // 'top', 'bottom', 'left', 'right'
+  const isDraggingEdgeRef = useRef(false);
+  const [draggingEdge, setDraggingEdge] = useState(null);
   const edgeDragStartRef = useRef(null);
+
+  // Move mode: selection rectangle state
+  const [selectionRect, setSelectionRect] = useState(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const selectionStartRef = useRef(null);
+  const currentSelectionRectRef = useRef(null);
+
+  // Move mode: drag-to-move state
+  const [isDraggingMove, setIsDraggingMove] = useState(false);
+  const isDraggingMoveRef = useRef(false);
+  const moveDragStartRef = useRef(null);
 
   // Expose svgRef to parent via forwarded ref
   useEffect(() => {
@@ -31,27 +46,33 @@ const AdminMap = forwardRef((props, ref) => {
     }
   }, [ref]);
 
-  // Setup D3 zoom/pan (disabled when in draw mode)
+  // Determine if we're in an active move interaction mode
+  const isInMoveInteraction = moveMode === 'selecting' || moveMode === 'moving';
+
+  // Setup D3 zoom/pan (disabled when in draw mode or move mode)
   useEffect(() => {
     if (!svgRef.current || !worldRef.current) return;
 
     const zoom = d3.zoom()
       .scaleExtent([0.6, 6])
       .filter((event) => {
-        // Disable zoom/pan when in draw mode or when dragging an edge handle
         if (drawMode) return false;
         if (isDraggingEdgeRef.current) return false;
-        // Check if the event target is an edge handle
+        if (isDraggingMoveRef.current) return false;
+        // Disable zoom during selection or moving
+        if (moveMode === 'selecting') return false;
+        if (moveMode === 'moving') return false;
         if (event.target && event.target.dataset && event.target.dataset.edgeHandle) return false;
+        if (event.target && event.target.dataset && event.target.dataset.moveHandle) return false;
         return true;
       })
       .on('start', () => {
-        if (!drawMode) {
+        if (!drawMode && !isInMoveInteraction) {
           isPanningRef.current = true;
         }
       })
       .on('zoom', (e) => {
-        if (worldRef.current && !drawMode) {
+        if (worldRef.current && !drawMode && !isInMoveInteraction) {
           worldRef.current.setAttribute('transform', e.transform);
           currentTransformRef.current = e.transform;
         }
@@ -62,12 +83,11 @@ const AdminMap = forwardRef((props, ref) => {
     
     const svg = d3.select(svgRef.current);
     svg.call(zoom).on('dblclick.zoom', null);
-    // Only set initial transform on first mount, not when drawMode changes
-    if (!isZoomInitializedRef.current && !drawMode) {
+    if (!isZoomInitializedRef.current && !drawMode && !isInMoveInteraction) {
       svg.call(zoom.transform, d3.zoomIdentity.scale(1.03));
       isZoomInitializedRef.current = true;
     }
-  }, [drawMode]);
+  }, [drawMode, moveMode, isInMoveInteraction]);
 
   // Convert screen coordinates to SVG coordinates (accounting for zoom/pan)
   const screenToSVG = (screenX, screenY) => {
@@ -256,6 +276,125 @@ const AdminMap = forwardRef((props, ref) => {
     });
   };
 
+  // ===== Move Mode: Selection rectangle handlers =====
+  const handleSelectionMouseDown = (e) => {
+    if (moveMode !== 'selecting') return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const svgCoords = screenToSVG(e.clientX, e.clientY);
+    selectionStartRef.current = svgCoords;
+    const initialRect = { x: svgCoords.x, y: svgCoords.y, width: 0, height: 0 };
+    currentSelectionRectRef.current = initialRect;
+    setIsSelecting(true);
+    setSelectionRect(initialRect);
+  };
+
+  const handleSelectionMouseMove = (e) => {
+    if (!isSelecting || !selectionStartRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const svgCoords = screenToSVG(e.clientX, e.clientY);
+    const start = selectionStartRef.current;
+    
+    const rect = {
+      x: Math.min(start.x, svgCoords.x),
+      y: Math.min(start.y, svgCoords.y),
+      width: Math.abs(svgCoords.x - start.x),
+      height: Math.abs(svgCoords.y - start.y)
+    };
+    currentSelectionRectRef.current = rect;
+    setSelectionRect(rect);
+  };
+
+  const handleSelectionMouseUp = (e) => {
+    if (!isSelecting) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = currentSelectionRectRef.current;
+    setIsSelecting(false);
+    setSelectionRect(null);
+    selectionStartRef.current = null;
+    currentSelectionRectRef.current = null;
+    
+    if (!rect || rect.width < 5 || rect.height < 5) return;
+    
+    // Find all boxes that intersect the selection rectangle
+    const selected = boxes.filter(box => {
+      return !(
+        box.x + box.width < rect.x ||
+        box.x > rect.x + rect.width ||
+        box.y + box.height < rect.y ||
+        box.y > rect.y + rect.height
+      );
+    }).map(box => ({
+      name: box.title,
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height
+    }));
+    
+    if (selected.length > 0 && onBoxesSelected) {
+      onBoxesSelected(selected);
+    }
+  };
+
+  // ===== Move Mode: Drag-to-move selected boxes =====
+  const handleMoveDragMouseDown = (e) => {
+    if (moveMode !== 'moving' || !moveSelectedBoxes || moveSelectedBoxes.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const svgCoords = screenToSVG(e.clientX, e.clientY);
+    isDraggingMoveRef.current = true;
+    setIsDraggingMove(true);
+    moveDragStartRef.current = {
+      startCoords: svgCoords,
+      initialTransform: { ...moveTransform }
+    };
+  };
+
+  const handleMoveDragMouseMove = (e) => {
+    if (!isDraggingMoveRef.current || !moveDragStartRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const svgCoords = screenToSVG(e.clientX, e.clientY);
+    const { startCoords, initialTransform } = moveDragStartRef.current;
+    
+    const dx = snapTo5(svgCoords.x - startCoords.x);
+    const dy = snapTo5(svgCoords.y - startCoords.y);
+    
+    const initX = typeof initialTransform.x === 'number' ? initialTransform.x : 0;
+    const initY = typeof initialTransform.y === 'number' ? initialTransform.y : 0;
+    
+    if (onMoveTransformChange) {
+      onMoveTransformChange({ x: initX + dx, y: initY + dy });
+    }
+  };
+
+  const handleMoveDragMouseUp = (e) => {
+    if (!isDraggingMoveRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    isDraggingMoveRef.current = false;
+    setIsDraggingMove(false);
+    moveDragStartRef.current = null;
+  };
+
+  // Build a set of selected box names for quick lookup
+  const moveSelectedNames = useMemo(() => {
+    if (!moveSelectedBoxes) return new Set();
+    return new Set(moveSelectedBoxes.map(b => b.name));
+  }, [moveSelectedBoxes]);
+
+  const moveDx = typeof moveTransform?.x === 'number' ? moveTransform.x : 0;
+  const moveDy = typeof moveTransform?.y === 'number' ? moveTransform.y : 0;
+
   const boxes = inventoryData ? Array.from(inventoryData.values()) : [];
   
   const viewBox = inventoryBounds?.viewBox 
@@ -271,6 +410,14 @@ const AdminMap = forwardRef((props, ref) => {
     ry: 18
   };
 
+  // Compute cursor style
+  const getCursor = () => {
+    if (drawMode) return 'crosshair';
+    if (moveMode === 'selecting') return 'crosshair';
+    if (moveMode === 'moving') return isDraggingMove ? 'grabbing' : 'default';
+    return 'default';
+  };
+
   return (
     <svg 
       ref={svgRef} 
@@ -280,16 +427,24 @@ const AdminMap = forwardRef((props, ref) => {
       style={{ 
         touchAction: 'none', 
         userSelect: 'none',
-        cursor: drawMode ? 'crosshair' : 'default'
+        cursor: getCursor()
       }}
-      onMouseDown={drawMode ? handleMouseDown : undefined}
+      onMouseDown={(e) => {
+        if (drawMode) { handleMouseDown(e); return; }
+        if (moveMode === 'selecting') { handleSelectionMouseDown(e); return; }
+        if (moveMode === 'moving') { handleMoveDragMouseDown(e); return; }
+      }}
       onMouseMove={(e) => {
         if (drawMode) { handleMouseMove(e); return; }
         if (isDraggingEdgeRef.current) { handleEdgeMouseMove(e); return; }
+        if (isSelecting) { handleSelectionMouseMove(e); return; }
+        if (isDraggingMoveRef.current) { handleMoveDragMouseMove(e); return; }
       }}
       onMouseUp={(e) => {
         if (isDraggingEdgeRef.current) { handleMouseUp(e); return; }
         if (drawMode) { handleMouseUp(e); return; }
+        if (isSelecting) { handleSelectionMouseUp(e); return; }
+        if (isDraggingMoveRef.current) { handleMoveDragMouseUp(e); return; }
       }}
       onMouseLeave={() => {
         if (isDrawing) {
@@ -303,6 +458,17 @@ const AdminMap = forwardRef((props, ref) => {
           setIsDraggingEdge(false);
           setDraggingEdge(null);
           edgeDragStartRef.current = null;
+        }
+        if (isSelecting) {
+          setIsSelecting(false);
+          setSelectionRect(null);
+          selectionStartRef.current = null;
+          currentSelectionRectRef.current = null;
+        }
+        if (isDraggingMoveRef.current) {
+          isDraggingMoveRef.current = false;
+          setIsDraggingMove(false);
+          moveDragStartRef.current = null;
         }
       }}
     >
@@ -319,35 +485,50 @@ const AdminMap = forwardRef((props, ref) => {
         
         {boxes.map((box, idx) => {
           const isSelected = selectedLocation && selectedLocation.name === box.title;
+          const isMoveSelected = moveSelectedNames.has(box.title);
+          const isMoving = moveMode === 'moving' && isMoveSelected;
+
+          // When in moving state, offset selected boxes by the transform
+          const displayX = isMoving ? box.x + moveDx : box.x;
+          const displayY = isMoving ? box.y + moveDy : box.y;
+
           return (
             <rect
               key={idx}
               className="box"
-              x={box.x}
-              y={box.y}
+              x={displayX}
+              y={displayY}
               width={box.width}
               height={box.height}
               fill={box.fill}
               data-title={box.title}
+              data-move-handle={isMoving ? 'true' : undefined}
               style={{ 
-                cursor: drawMode ? 'default' : 'pointer', 
-                pointerEvents: drawMode ? 'none' : 'auto',
-                stroke: isSelected ? 'var(--accent)' : 'none',
-                strokeWidth: isSelected ? 3 : 0,
-                opacity: isSelected ? 0.9 : 1
+                cursor: isInMoveInteraction 
+                  ? (isMoving ? (isDraggingMove ? 'grabbing' : 'grab') : 'default')
+                  : (drawMode ? 'default' : 'pointer'),
+                pointerEvents: (drawMode || moveMode === 'selecting') ? 'none' : 'auto',
+                stroke: isMoving ? '#ffc107' : (isMoveSelected ? '#ffc107' : (isSelected ? 'var(--accent)' : 'none')),
+                strokeWidth: isMoving ? 3 : (isMoveSelected ? 2 : (isSelected ? 3 : 0)),
+                opacity: (moveMode === 'moving' && !isMoveSelected) ? 0.4 : (isSelected ? 0.9 : 1),
+                transition: isDraggingMove ? 'none' : 'opacity 0.2s'
+              }}
+              onMouseDown={(e) => {
+                if (moveMode === 'moving' && isMoveSelected) {
+                  handleMoveDragMouseDown(e);
+                }
               }}
               onClick={async (e) => {
+                if (isInMoveInteraction) return;
                 if (!drawMode && onLocationSelect) {
                   e.stopPropagation();
                   try {
-                    // Fetch the full location data from the API
                     const location = await admin.getLocations().then(locations => 
                       locations.find(loc => loc.name === box.title)
                     );
                     if (location) {
                       onLocationSelect(location);
                     } else {
-                      // Fallback: construct from box data if API doesn't have it
                       const fallbackLocation = {
                         name: box.title,
                         x: box.x,
@@ -360,7 +541,6 @@ const AdminMap = forwardRef((props, ref) => {
                     }
                   } catch (err) {
                     console.error('Error fetching location:', err);
-                    // Fallback: construct from box data
                     const fallbackLocation = {
                       name: box.title,
                       x: box.x,
@@ -377,6 +557,22 @@ const AdminMap = forwardRef((props, ref) => {
           );
         })}
 
+        {/* Ghost outlines for original positions during move */}
+        {moveMode === 'moving' && (moveDx !== 0 || moveDy !== 0) && moveSelectedBoxes.map(box => (
+          <rect
+            key={`ghost-${box.name}`}
+            x={box.x}
+            y={box.y}
+            width={box.width}
+            height={box.height}
+            fill="none"
+            stroke="rgba(255, 193, 7, 0.3)"
+            strokeWidth="1"
+            strokeDasharray="4,4"
+            style={{ pointerEvents: 'none' }}
+          />
+        ))}
+
         {/* Drawing preview box */}
         {drawingBox && (
           <rect
@@ -389,6 +585,21 @@ const AdminMap = forwardRef((props, ref) => {
             stroke="var(--accent)"
             strokeWidth="2"
             strokeDasharray="4,4"
+            style={{ pointerEvents: 'none' }}
+          />
+        )}
+
+        {/* Selection rectangle for move mode */}
+        {selectionRect && (
+          <rect
+            x={selectionRect.x}
+            y={selectionRect.y}
+            width={selectionRect.width}
+            height={selectionRect.height}
+            fill="rgba(255, 193, 7, 0.15)"
+            stroke="#ffc107"
+            strokeWidth="2"
+            strokeDasharray="6,3"
             style={{ pointerEvents: 'none' }}
           />
         )}
