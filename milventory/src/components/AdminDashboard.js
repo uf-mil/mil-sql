@@ -17,6 +17,7 @@ const AdminDashboard = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState(null);
   const edgeDragHandlerRef = useRef(null);
+  const [isEditingLocation, setIsEditingLocation] = useState(false);
 
   // Move mode state
   // 'idle' | 'selecting' | 'moving'
@@ -53,6 +54,11 @@ const AdminDashboard = () => {
   };
 
   const handleLocationDeselect = () => {
+    if (isEditingLocation) {
+      // If editing, cancel edit first
+      setIsEditingLocation(false);
+      setPreviewBox(null);
+    }
     setSelectedLocation(null);
   };
 
@@ -60,6 +66,16 @@ const AdminDashboard = () => {
     setSelectedLocation(null);
     setRefreshTrigger(prev => prev + 1);
   };
+
+  // Edit mode handlers for LocationPreview
+  const handleEditStart = useCallback(() => {
+    setIsEditingLocation(true);
+  }, []);
+
+  const handleEditEnd = useCallback(() => {
+    setIsEditingLocation(false);
+    setPreviewBox(null);
+  }, []);
 
   // Move mode handlers
   const handleStartMove = useCallback(() => {
@@ -120,6 +136,15 @@ const AdminDashboard = () => {
               fontWeight: '600'
             }}>
               Draw Mode: Drag on map to create a box
+            </span>
+          )}
+          {isEditingLocation && (
+            <span style={{ 
+              marginLeft: '1rem', 
+              color: 'var(--accent)',
+              fontWeight: '600'
+            }}>
+              Edit Mode: Drag edges to resize
             </span>
           )}
           {moveMode === 'selecting' && (
@@ -199,6 +224,10 @@ const AdminDashboard = () => {
           onDelete={handleLocationDeleted}
           leftPaneWidth={leftPaneWidth}
           leftPaneCollapsed={leftPaneCollapsed}
+          onEditStart={handleEditStart}
+          onEditEnd={handleEditEnd}
+          onPreviewUpdate={setPreviewBox}
+          onEdgeDrag={edgeDragHandlerRef}
         />
       </div>
     </>
@@ -206,4 +235,3 @@ const AdminDashboard = () => {
 };
 
 export default AdminDashboard;
-

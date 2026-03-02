@@ -25,6 +25,8 @@ def get_fill_for_type(location_type):
         'tall_cabinet': 'var(--table)',
         'table': 'var(--table)',
         'other': 'var(--table)',
+        'special': '#ff69b4',  # Special category - pink
+        'external': '#ff9800',  # External category - orange
     }
     return type_fills.get(location_type, 'var(--table)')
 
@@ -251,8 +253,8 @@ def update_location(name):
         if not data:
             return jsonify({'error': 'Request body is required'}), 400
         
-        # Validate fields (name is not updatable via PUT)
-        updatable_fields = ['x', 'y', 'width', 'height', 'type']
+        # Validate fields
+        updatable_fields = ['x', 'y', 'width', 'height', 'type', 'name']
         update_data = {k: v for k, v in data.items() if k in updatable_fields}
         
         if not update_data:
@@ -268,20 +270,37 @@ def update_location(name):
             conn.close()
             return jsonify({'error': 'Location not found'}), 404
         
-        # Build update query dynamically
-        set_clauses = []
-        values = []
-        for field, value in update_data.items():
-            set_clauses.append(f"{field} = %s")
-            values.append(value)
-        values.append(name)
+        # Handle name rename separately (FK has ON UPDATE CASCADE)
+        new_name = update_data.pop('name', None)
         
-        query = f"UPDATE locations SET {', '.join(set_clauses)} WHERE name = %s"
-        cur.execute(query, values)
+        # Build update query dynamically for non-name fields
+        if update_data:
+            set_clauses = []
+            values = []
+            for field, value in update_data.items():
+                set_clauses.append(f"{field} = %s")
+                values.append(value)
+            values.append(name)
+            
+            query = f"UPDATE locations SET {', '.join(set_clauses)} WHERE name = %s"
+            cur.execute(query, values)
+        
+        # Apply name rename if requested (cascades to supply_locations via FK)
+        final_name = name
+        if new_name and new_name != name:
+            # Check new name doesn't already exist
+            cur.execute("SELECT name FROM locations WHERE name = %s", (new_name,))
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({'error': f'Location "{new_name}" already exists'}), 409
+            cur.execute("UPDATE locations SET name = %s WHERE name = %s", (new_name, name))
+            final_name = new_name
+        
         conn.commit()
         
-        # Fetch updated location
-        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations WHERE name = %s", (name,))
+        # Fetch updated location using final name
+        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations WHERE name = %s", (final_name,))
         row = cur.fetchone()
         location = Location.from_db_row(row).to_dict()
         
