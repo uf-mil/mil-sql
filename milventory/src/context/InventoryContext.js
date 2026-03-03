@@ -133,17 +133,16 @@ export const InventoryProvider = ({ children }) => {
         });
       });
       
-      // Merge into inventoryData
+      // Merge into inventoryData - update ALL boxes, even if they're now empty
       setInventoryData(prev => {
         const next = new Map(prev);
-        locationMap.forEach((items, locationName) => {
-          const boxData = next.get(locationName);
-          if (boxData) {
-            next.set(locationName, {
-              ...boxData,
-              inventory: items
-            });
-          }
+        // Update all existing boxes - set inventory to empty array if not in locationMap
+        prev.forEach((boxData, locationName) => {
+          const items = locationMap.get(locationName) || [];
+          next.set(locationName, {
+            ...boxData,
+            inventory: items
+          });
         });
         return next;
       });
@@ -335,17 +334,6 @@ export const InventoryProvider = ({ children }) => {
   }, []);
 
   const updateInventory = useCallback(async (boxTitle, newInventory) => {
-    // Update local state immediately (optimistic update)
-    setInventoryData(prev => {
-      const next = new Map(prev);
-      const boxData = next.get(boxTitle);
-      if (boxData) {
-        next.set(boxTitle, { ...boxData, inventory: newInventory });
-      }
-      return next;
-    });
-    
-    // Sync to API (fire and forget for now - could add error handling later)
     try {
       // Get current supply locations for this box
       const currentLocations = await api.getLocationSupplies(boxTitle);
@@ -405,14 +393,22 @@ export const InventoryProvider = ({ children }) => {
       for (const id of toDelete) {
         await api.deleteSupplyLocation(id);
       }
+      
+      // Reload supply locations to ensure UI reflects actual server state
+      await reloadSupplyLocations();
     } catch (error) {
       console.error('Error syncing inventory to API:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
-        setError(error.message || 'Failed to sync inventory changes');
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) {
+          setConflictError(errorInfo);
+        } else {
+          setError(errorInfo.message || 'Failed to sync inventory changes');
+        }
       }
     }
-  }, [supplyNameToId]);
+  }, [supplyNameToId, reloadSupplyLocations]);
 
   // Add Mode functions
   const startAddMode = useCallback((itemName) => {
@@ -489,52 +485,7 @@ export const InventoryProvider = ({ children }) => {
         additions: additions
       });
 
-      // Update local state optimistically
-      const byBox = new Map();
-      pending.forEach((qty, key) => {
-        const parts = key.split('||');
-        const boxTitle = parts[0];
-        const shelf = parts.length > 1 ? parseInt(parts[1], 10) : undefined;
-        if (!byBox.has(boxTitle)) byBox.set(boxTitle, []);
-        byBox.get(boxTitle).push({ shelf, qty });
-      });
-
-      byBox.forEach((entries, boxTitle) => {
-        const boxData = inventoryData.get(boxTitle);
-        if (!boxData) return;
-
-        const newInventory = [...boxData.inventory];
-
-        entries.forEach(({ shelf, qty }) => {
-          const existingIndex = newInventory.findIndex(item => {
-            if (item.name !== currentItem) return false;
-            if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
-            return true;
-          });
-
-          if (existingIndex >= 0) {
-            newInventory[existingIndex] = {
-              ...newInventory[existingIndex],
-              qty: newInventory[existingIndex].qty + qty
-            };
-          } else {
-            const newItem = { name: currentItem, qty };
-            if (shelf !== undefined) newItem.shelf = shelf;
-            newInventory.push(newItem);
-          }
-        });
-
-        setInventoryData(prev => {
-          const next = new Map(prev);
-          const box = next.get(boxTitle);
-          if (box) {
-            next.set(boxTitle, { ...box, inventory: newInventory });
-          }
-          return next;
-        });
-      });
-
-      // Reload supply locations to get the IDs for newly added items
+      // Reload supply locations to ensure UI reflects actual server state
       await reloadSupplyLocations();
 
       // Clear add mode
@@ -553,7 +504,7 @@ export const InventoryProvider = ({ children }) => {
         }
       }
     }
-  }, [inventoryData, supplyNameToId, reloadSupplyLocations]);
+  }, [supplyNameToId, reloadSupplyLocations]);
 
   const cancelAddMode = useCallback(() => {
     setAddModeItem(null);
@@ -630,14 +581,17 @@ export const InventoryProvider = ({ children }) => {
     }
 
     // Convert pending map to deletions
+    // Use functional update to get latest inventoryData
     const deletions = [];
+    let currentInventoryData = inventoryData;
+    
     pending.forEach((pendingQty, key) => {
       const parts = key.split('||');
       const boxTitle = parts[0];
       const shelf = parts.length > 1 ? parseInt(parts[1], 10) : null;
       
       // Find the supply_location_id for this item at this location
-      const boxData = inventoryData.get(boxTitle);
+      const boxData = currentInventoryData.get(boxTitle);
       if (!boxData) return;
       
       const matchingItems = boxData.inventory.filter(item => {
@@ -672,7 +626,10 @@ export const InventoryProvider = ({ children }) => {
     try {
       // Delete items via API
       for (const deletion of deletions) {
-        const item = inventoryData.get(deletion.location)?.inventory.find(i => i.id === deletion.id);
+        // Get the item from current state to check quantity
+        const boxData = currentInventoryData.get(deletion.location);
+        const item = boxData?.inventory.find(i => i.id === deletion.id);
+        
         if (!item) continue;
         
         if (item.qty <= deletion.amount) {
@@ -684,45 +641,8 @@ export const InventoryProvider = ({ children }) => {
         }
       }
 
-      // Update local state optimistically
-      const byBox = new Map();
-      deletions.forEach(({ location, shelf, amount, id }) => {
-        if (!byBox.has(location)) byBox.set(location, []);
-        byBox.get(location).push({ shelf, amount, id });
-      });
-
-      byBox.forEach((entries, boxTitle) => {
-        const boxData = inventoryData.get(boxTitle);
-        if (!boxData) return;
-
-        const newInventory = [...boxData.inventory];
-
-        entries.forEach(({ shelf, amount, id }) => {
-          const existingIndex = newInventory.findIndex(item => item.id === id);
-          if (existingIndex >= 0) {
-            const newQty = newInventory[existingIndex].qty - amount;
-            if (newQty <= 0) {
-              // Remove item
-              newInventory.splice(existingIndex, 1);
-            } else {
-              // Update quantity
-              newInventory[existingIndex] = {
-                ...newInventory[existingIndex],
-                qty: newQty
-              };
-            }
-          }
-        });
-
-        setInventoryData(prev => {
-          const next = new Map(prev);
-          const box = next.get(boxTitle);
-          if (box) {
-            next.set(boxTitle, { ...box, inventory: newInventory });
-          }
-          return next;
-        });
-      });
+      // Reload supply locations to ensure UI reflects actual server state
+      await reloadSupplyLocations();
 
       // Clear delete mode
       setDeleteModeItem(null);
@@ -732,10 +652,15 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error finishing delete mode:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
-        setError(error.message || 'Failed to delete items');
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) {
+          setConflictError(errorInfo);
+        } else {
+          setError(errorInfo.message || 'Failed to delete items');
+        }
       }
     }
-  }, [inventoryData, supplyNameToId]);
+  }, [inventoryData, supplyNameToId, reloadSupplyLocations]);
 
   const cancelDeleteMode = useCallback(() => {
     setDeleteModeItem(null);
@@ -803,90 +728,25 @@ export const InventoryProvider = ({ children }) => {
         amount: qty
       });
 
-      // Update local state optimistically
-      const sourceBoxData = inventoryData.get(sourceBoxTitle);
-      const targetBoxData = inventoryData.get(targetBoxTitle);
-      
-      if (!sourceBoxData || !targetBoxData) {
-        setMoveModeDragging(null);
-        return;
-      }
-
-      // Remove from source - find the exact item and subtract qty
-      const newSourceInventory = [];
-      let foundSource = false;
-      
-      for (const item of sourceBoxData.inventory) {
-        if (item.name === moveModeItemRef.current) {
-          const itemShelf = item.shelf ?? 0;
-          const sourceShelfValue = sourceShelf ?? 0;
-          
-          if (itemShelf === sourceShelfValue && !foundSource) {
-            // This is the source item - subtract qty
-            foundSource = true;
-            const newQty = item.qty - qty;
-            if (newQty > 0) {
-              // Keep item with reduced qty
-              newSourceInventory.push({ ...item, qty: newQty });
-            }
-            // If newQty <= 0, don't add it (effectively removing it)
-          } else {
-            // Different shelf or already found - keep as is
-            newSourceInventory.push(item);
-          }
-        } else {
-          // Different item - keep as is
-          newSourceInventory.push(item);
-        }
-      }
-
-      const isSameBox = sourceBoxTitle === targetBoxTitle;
-
-      // For same-box moves (between shelves), work from the already-updated source inventory
-      const baseTargetInventory = isSameBox ? newSourceInventory : [...targetBoxData.inventory];
-
-      // Add to target (combine if exists)
-      const newTargetInventory = [...baseTargetInventory];
-      const existingIndex = newTargetInventory.findIndex(item => {
-        if (item.name !== moveModeItemRef.current) return false;
-        if (targetShelf !== undefined) return (item.shelf ?? 0) === targetShelf;
-        return item.shelf === undefined;
-      });
-
-      if (existingIndex >= 0) {
-        newTargetInventory[existingIndex] = {
-          ...newTargetInventory[existingIndex],
-          qty: newTargetInventory[existingIndex].qty + qty
-        };
-      } else {
-        const newItem = { name: moveModeItemRef.current, qty };
-        if (targetShelf !== undefined) newItem.shelf = targetShelf;
-        newTargetInventory.push(newItem);
-      }
-
-      setInventoryData(prev => {
-        const next = new Map(prev);
-        if (isSameBox) {
-          // Same box, different shelf — only set once with the fully updated inventory
-          next.set(sourceBoxTitle, { ...sourceBoxData, inventory: newTargetInventory });
-        } else {
-          next.set(sourceBoxTitle, { ...sourceBoxData, inventory: newSourceInventory });
-          next.set(targetBoxTitle, { ...targetBoxData, inventory: newTargetInventory });
-        }
-        return next;
-      });
+      // Reload supply locations to ensure UI reflects actual server state
+      await reloadSupplyLocations();
 
       setMoveModeDragging(null);
       isDraggingMoveBoxRef.current = false;
     } catch (error) {
       console.error('Error moving item:', error);
       if (!isPanningRef.current) {
-        setError(error.message || 'Failed to move item');
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) {
+          setConflictError(errorInfo);
+        } else {
+          setError(errorInfo.message || 'Failed to move item');
+        }
       }
       setMoveModeDragging(null);
       isDraggingMoveBoxRef.current = false;
     }
-  }, [moveModeDragging, inventoryData, supplyNameToId]);
+  }, [moveModeDragging, supplyNameToId, reloadSupplyLocations]);
 
   const handleDragStart = useCallback((boxTitle, index, isMultiple, selectedIndices) => {
     const boxData = inventoryData.get(boxTitle);
@@ -950,33 +810,8 @@ export const InventoryProvider = ({ children }) => {
         });
       }
 
-      // Update local state optimistically
-      let newSourceInventory = [...sourceBoxData.inventory];
-      let newTargetInventory = [...targetBoxData.inventory];
-
-      if (draggedItemData.isMultiple) {
-        const sortedIndices = [...draggedItemData.sourceIndices].sort((a, b) => b - a);
-        sortedIndices.forEach(idx => {
-          newSourceInventory.splice(idx, 1);
-        });
-        newTargetInventory.push(...draggedItemData.items);
-      } else {
-        newSourceInventory.splice(draggedItemData.sourceIndex, 1);
-        newTargetInventory.push(draggedItemData.item);
-      }
-
-      setInventoryData(prev => {
-        const next = new Map(prev);
-        const sourceBox = next.get(draggedItemData.sourceBox);
-        const targetBox = next.get(targetBoxTitle);
-        if (sourceBox) {
-          next.set(draggedItemData.sourceBox, { ...sourceBox, inventory: newSourceInventory });
-        }
-        if (targetBox) {
-          next.set(targetBoxTitle, { ...targetBox, inventory: newTargetInventory });
-        }
-        return next;
-      });
+      // Reload supply locations to ensure UI reflects actual server state
+      await reloadSupplyLocations();
 
       // Auto-select the target box after successful drop
       setSelectedBox(targetBoxTitle);
@@ -990,10 +825,15 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error moving items:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
-        setError(error.message || 'Failed to move items');
+        const errorInfo = await handleApiError(error);
+      if (errorInfo.isConflict) {
+        setConflictError(errorInfo);
+      } else {
+        setError(errorInfo.message || 'Failed to move items');
+      }
       }
     }
-  }, [draggedItemData, inventoryData, supplyNameToId]);
+  }, [draggedItemData, supplyNameToId, reloadSupplyLocations]);
 
   // Master Item helper functions
   const resolveMasterItem = useCallback((itemName) => {
@@ -1091,17 +931,6 @@ export const InventoryProvider = ({ children }) => {
         const next = new Map(prev);
         if (oldName !== newItem.name) {
           next.delete(oldName);
-          // Update all box references if name changed
-          setInventoryData(prevData => {
-            const newData = new Map(prevData);
-            newData.forEach((boxData, boxTitle) => {
-              const updatedInventory = boxData.inventory.map(item => 
-                item.name === oldName ? { ...item, name: newItem.name } : item
-              );
-              newData.set(boxTitle, { ...boxData, inventory: updatedInventory });
-            });
-            return newData;
-          });
         }
         next.set(updated.name, {
           name: updated.name,
@@ -1127,6 +956,10 @@ export const InventoryProvider = ({ children }) => {
           return next;
         });
       }
+      
+      // Reload supply locations to get updated item names in boxes
+      // (supply locations API JOINs with supplies table, so names will be updated)
+      await reloadSupplyLocations();
     } catch (error) {
       console.error('Error updating Master item:', error);
       // Only set error if not panning (to avoid breaking pan)
@@ -1140,7 +973,7 @@ export const InventoryProvider = ({ children }) => {
       }
       throw error;
     }
-  }, [masterInventoryItems]);
+  }, [masterInventoryItems, reloadSupplyLocations]);
 
   const deleteMasterItem = useCallback(async (itemName) => {
     try {
@@ -1165,15 +998,9 @@ export const InventoryProvider = ({ children }) => {
         return next;
       });
       
-      // Remove from all boxes (CASCADE in DB handles this, but update UI)
-      setInventoryData(prev => {
-        const newData = new Map(prev);
-        newData.forEach((boxData, boxTitle) => {
-          const updatedInventory = boxData.inventory.filter(item => item.name !== itemName);
-          newData.set(boxTitle, { ...boxData, inventory: updatedInventory });
-        });
-        return newData;
-      });
+      // Reload supply locations to ensure UI reflects actual server state
+      // (CASCADE in DB removes items from boxes, reload will reflect this)
+      await reloadSupplyLocations();
       
       // Close preview if this item was selected
       if (selectedMasterItem === itemName) {
@@ -1192,7 +1019,7 @@ export const InventoryProvider = ({ children }) => {
       }
       throw error;
     }
-  }, [selectedMasterItem, masterInventoryItems]);
+  }, [selectedMasterItem, masterInventoryItems, reloadSupplyLocations]);
 
   const clearSelectedMasterItem = useCallback(() => {
     setSelectedMasterItem(null);
