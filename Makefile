@@ -67,6 +67,14 @@ locations:
 milventory:
 	@cd milventory && npm install && npm start
 
+## test-api:    Run history API integration tests
+.PHONY: test-api
+test-api:
+	@echo Installing test dependencies...
+	@if not exist tests\node_modules (cd tests & npm install)
+	@echo Running history API tests...
+	@cd tests & node test-history-api.js
+
 ## help:        Show this help menu
 help:
 	@echo "Available commands:"

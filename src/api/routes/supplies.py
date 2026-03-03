@@ -868,6 +868,27 @@ def undo_supply_history(history_id, current_user_id=None):
             conn.close()
             return jsonify({'error': 'History entry not found'}), 404
         
+        # For DELETE actions, supply_id might be NULL due to ON DELETE SET NULL
+        # We need to find the original supply_id by looking at the old_name and matching
+        # with any existing supplies, or we can try to extract it from the history entry
+        # before it was set to NULL. Actually, we can't - but we can use the old_name
+        # to find if a supply with that name exists, or we need to store the ID elsewhere.
+        # For now, let's try to get it from the history entry's old data or find by name.
+        original_supply_id = history['supply_id']
+        
+        # If supply_id is NULL (for DELETE), try to find the supply by name
+        if not original_supply_id and history['action_type'] == 'DELETE':
+            if history['old_name']:
+                cur.execute("SELECT id FROM supplies WHERE name = %s", (history['old_name'],))
+                existing = cur.fetchone()
+                if existing:
+                    original_supply_id = existing['id']
+                else:
+                    # Supply doesn't exist, we'll need to create it with a new ID
+                    # But we don't know the original ID, so we can't restore it exactly
+                    # For now, we'll create it without specifying the ID (auto-increment)
+                    original_supply_id = None
+        
         # Get team and category changes
         cur.execute("""
             SELECT team_name, action FROM supplies_history_teams WHERE history_id = %s
@@ -946,23 +967,34 @@ def undo_supply_history(history_id, current_user_id=None):
         
         elif history['action_type'] == 'DELETE':
             # Undo DELETE: Recreate the supply
-            if not history['supply_id']:
-                cur.close()
-                conn.close()
-                return jsonify({'error': 'Cannot undo: supply ID not available'}), 400
-            
-            # Recreate supply
-            cur.execute("""
-                INSERT INTO supplies (id, name, description, image, last_order_date, last_modified_by)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (
-                history['supply_id'],
-                history['old_name'],
-                history['old_description'],
-                history['old_image'],
-                history['old_last_order_date'],
-                current_user_id
-            ))
+            # If original_supply_id is None, we'll create with auto-increment
+            if original_supply_id:
+                # Recreate supply with original ID
+                cur.execute("""
+                    INSERT INTO supplies (id, name, description, image, last_order_date, last_modified_by)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    original_supply_id,
+                    history['old_name'],
+                    history['old_description'],
+                    history['old_image'],
+                    history['old_last_order_date'],
+                    current_user_id
+                ))
+                restored_supply_id = original_supply_id
+            else:
+                # Recreate supply without ID (auto-increment)
+                cur.execute("""
+                    INSERT INTO supplies (name, description, image, last_order_date, last_modified_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    history['old_name'],
+                    history['old_description'],
+                    history['old_image'],
+                    history['old_last_order_date'],
+                    current_user_id
+                ))
+                restored_supply_id = cur.lastrowid
             
             # Recreate teams (all that were REMOVED in delete)
             for team_change in team_changes:
@@ -970,7 +1002,7 @@ def undo_supply_history(history_id, current_user_id=None):
                     cur.execute("""
                         INSERT IGNORE INTO supplies_teams (supply_id, team_name)
                         VALUES (%s, %s)
-                    """, (history['supply_id'], team_change['team_name']))
+                    """, (restored_supply_id, team_change['team_name']))
             
             # Recreate categories (all that were REMOVED in delete)
             for cat_change in category_changes:
@@ -978,19 +1010,25 @@ def undo_supply_history(history_id, current_user_id=None):
                     cur.execute("""
                         INSERT IGNORE INTO supplies_categories (supply_id, category_id)
                         VALUES (%s, %s)
-                    """, (history['supply_id'], cat_change['category_id']))
+                    """, (restored_supply_id, cat_change['category_id']))
         
         # Delete the history entry and all related data (CASCADE will handle teams/categories)
         cur.execute("DELETE FROM supplies_history WHERE id = %s", (history_id,))
         
         conn.commit()
+        
+        # Return the restored supply_id if it was a DELETE undo
+        response_data = {
+            'success': True,
+            'message': f'Successfully undid {history["action_type"]} action'
+        }
+        if history['action_type'] == 'DELETE' and 'restored_supply_id' in locals():
+            response_data['restored_supply_id'] = restored_supply_id
+        
         cur.close()
         conn.close()
         
-        return jsonify({
-            'success': True,
-            'message': f'Successfully undid {history["action_type"]} action'
-        }), 200
+        return jsonify(response_data), 200
     except mysql.connector.IntegrityError as e:
         conn.rollback()
         return jsonify({'error': str(e)}), 400
