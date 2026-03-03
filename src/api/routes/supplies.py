@@ -12,6 +12,12 @@ import mysql.connector
 from src.api.db import get_db
 from src.api.models.supply import Supply
 from src.api.middleware.auth import require_auth
+from src.api.helpers.history import (
+    log_supply_history,
+    log_team_changes,
+    log_category_changes,
+    get_supply_current_state
+)
 
 supplies_bp = Blueprint('supplies', __name__)
 
@@ -321,6 +327,37 @@ def create_supply(current_user_id=None):
                     # Skip invalid category IDs
                     continue
         
+        # Log history for CREATE action
+        old_values = {}
+        new_values = {
+            'name': data['name'].strip(),
+            'description': data.get('description', '').strip() or None,
+            'image': data.get('image') or None,
+            'last_order_date': data.get('last_order_date') or None
+        }
+        history_id = log_supply_history(
+            conn, supply_id, 'CREATE', old_values, new_values, current_user_id
+        )
+        
+        # Log team and category changes
+        old_teams = []
+        new_teams = [t.capitalize() if t.lower() in ['software', 'electrical', 'mechanical'] else t.capitalize() 
+                     for t in (data.get('teams') or [])]
+        # Normalize team names properly
+        normalized_teams = []
+        for team in (data.get('teams') or []):
+            if team.lower() == 'software':
+                normalized_teams.append('Software')
+            elif team.lower() == 'electrical':
+                normalized_teams.append('Electrical')
+            elif team.lower() == 'mechanical':
+                normalized_teams.append('Mechanical')
+            else:
+                normalized_teams.append(team.capitalize())
+        
+        log_team_changes(conn, history_id, old_teams, normalized_teams)
+        log_category_changes(conn, history_id, [], data.get('categories') or [])
+        
         conn.commit()
         
         # Fetch the created supply with teams and categories
@@ -398,12 +435,29 @@ def update_supply(supply_id, current_user_id=None):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Check if supply exists
-        cur.execute("SELECT id FROM supplies WHERE id = %s", (supply_id,))
-        if not cur.fetchone():
+        # Check if supply exists (with conflict detection)
+        cur.execute("SELECT id, name FROM supplies WHERE id = %s", (supply_id,))
+        supply_check = cur.fetchone()
+        if not supply_check:
             cur.close()
             conn.close()
-            return jsonify({'error': 'Supply not found'}), 404
+            return jsonify({
+                'error': 'Supply not found',
+                'error_type': 'SUPPLY_DELETED',
+                'supply_id': supply_id,
+                'message': 'This item was deleted by another user. Please refresh the page to see the latest data.'
+            }), 404
+        
+        # Get current state before update for history
+        current_state = get_supply_current_state(conn, supply_id)
+        old_values = {
+            'name': current_state['name'],
+            'description': current_state['description'],
+            'image': current_state['image'],
+            'last_order_date': current_state['last_order_date']
+        }
+        old_teams = current_state['teams']
+        old_categories = current_state['categories']
         
         # Check if name is being changed and new name already exists
         if 'name' in data and data['name']:
@@ -477,6 +531,37 @@ def update_supply(supply_id, current_user_id=None):
                         )
                     except (ValueError, TypeError):
                         continue
+        
+        # Log history for UPDATE action
+        new_values = {
+            'name': data.get('name', old_values['name']).strip() if 'name' in data else old_values['name'],
+            'description': (data.get('description', '').strip() or None) if 'description' in data else old_values['description'],
+            'image': data.get('image') if 'image' in data else old_values['image'],
+            'last_order_date': data.get('last_order_date') if 'last_order_date' in data else old_values['last_order_date']
+        }
+        history_id = log_supply_history(
+            conn, supply_id, 'UPDATE', old_values, new_values, current_user_id
+        )
+        
+        # Log team and category changes
+        new_teams = []
+        if 'teams' in data:
+            for team in (data.get('teams') or []):
+                if team.lower() == 'software':
+                    new_teams.append('Software')
+                elif team.lower() == 'electrical':
+                    new_teams.append('Electrical')
+                elif team.lower() == 'mechanical':
+                    new_teams.append('Mechanical')
+                else:
+                    new_teams.append(team.capitalize())
+        else:
+            new_teams = old_teams
+        
+        new_categories = data.get('categories', old_categories) if 'categories' in data else old_categories
+        
+        log_team_changes(conn, history_id, old_teams, new_teams)
+        log_category_changes(conn, history_id, old_categories, new_categories)
         
         conn.commit()
         
@@ -570,15 +655,42 @@ def delete_supply(supply_id, current_user_id=None):
     """
     try:
         conn = get_db()
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
-        # Check if supply exists
-        cur.execute("SELECT id FROM supplies WHERE id = %s", (supply_id,))
-        if not cur.fetchone():
+        # Check if supply exists (with conflict detection)
+        cur.execute("SELECT id, name FROM supplies WHERE id = %s", (supply_id,))
+        supply_check = cur.fetchone()
+        if not supply_check:
             cur.close()
             conn.close()
-            return jsonify({'error': 'Supply not found'}), 404
+            return jsonify({
+                'error': 'Supply not found',
+                'error_type': 'SUPPLY_DELETED',
+                'supply_id': supply_id,
+                'message': 'This item was already deleted by another user. Please refresh the page to see the latest data.'
+            }), 404
         
+        # Get current state before delete for history
+        current_state = get_supply_current_state(conn, supply_id)
+        old_values = {
+            'name': current_state['name'],
+            'description': current_state['description'],
+            'image': current_state['image'],
+            'last_order_date': current_state['last_order_date']
+        }
+        old_teams = current_state['teams']
+        old_categories = current_state['categories']
+        
+        # Log history for DELETE action (before actual delete)
+        history_id = log_supply_history(
+            conn, supply_id, 'DELETE', old_values, {}, current_user_id
+        )
+        
+        # Log all teams and categories as REMOVED
+        log_team_changes(conn, history_id, old_teams, [])
+        log_category_changes(conn, history_id, old_categories, [])
+        
+        # Now delete the supply (CASCADE will handle related tables)
         cur.execute("DELETE FROM supplies WHERE id = %s", (supply_id,))
         conn.commit()
         cur.close()
@@ -586,4 +698,324 @@ def delete_supply(supply_id, current_user_id=None):
         
         return '', 204
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@supplies_bp.route('/history', methods=['GET'])
+@require_auth
+def get_supply_history(current_user_id=None):
+    """
+    GET /api/supplies/history
+    Get history of all supply changes.
+    
+    Query Parameters:
+        supply_id (optional): Filter by specific supply
+        action_type (optional): Filter by action type (CREATE, UPDATE, DELETE)
+        limit (optional): Limit results (default: 100)
+        offset (optional): Pagination offset
+    
+    Returns:
+        JSON object with history array and total count
+    """
+    try:
+        supply_id_filter = request.args.get('supply_id', type=int)
+        action_type_filter = request.args.get('action_type')
+        limit = request.args.get('limit', 100, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+        
+        # Build query
+        query = """
+            SELECT 
+                h.id,
+                h.supply_id,
+                h.action_type,
+                h.old_name,
+                h.new_name,
+                h.old_description,
+                h.new_description,
+                h.old_image,
+                h.new_image,
+                h.old_last_order_date,
+                h.new_last_order_date,
+                h.changed_by,
+                h.changed_at,
+                h.undo_action_id,
+                COALESCE(s.name, h.old_name, h.new_name) as supply_name
+            FROM supplies_history h
+            LEFT JOIN supplies s ON h.supply_id = s.id
+            WHERE 1=1
+        """
+        params = []
+        
+        if supply_id_filter:
+            query += " AND h.supply_id = %s"
+            params.append(supply_id_filter)
+        
+        if action_type_filter:
+            query += " AND h.action_type = %s"
+            params.append(action_type_filter)
+        
+        # Get total count
+        count_query = f"SELECT COUNT(*) as total FROM ({query}) as filtered"
+        cur.execute(count_query, params)
+        total = cur.fetchone()['total']
+        
+        # Get paginated results
+        query += " ORDER BY h.changed_at DESC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        cur.execute(query, params)
+        
+        history_entries = []
+        for row in cur.fetchall():
+            # Get user info
+            cur.execute("""
+                SELECT first_name, last_name, uf_email
+                FROM members WHERE uf_id = %s
+            """, (row['changed_by'],))
+            user = cur.fetchone()
+            
+            # Get team changes
+            cur.execute("""
+                SELECT team_name, action
+                FROM supplies_history_teams
+                WHERE history_id = %s
+            """, (row['id'],))
+            team_changes = [{'team_name': t['team_name'], 'action': t['action']} 
+                           for t in cur.fetchall()]
+            
+            # Get category changes
+            cur.execute("""
+                SELECT category_id, action
+                FROM supplies_history_categories
+                WHERE history_id = %s
+            """, (row['id'],))
+            category_changes = [{'category_id': c['category_id'], 'action': c['action']} 
+                               for c in cur.fetchall()]
+            
+            # Check if can be undone (not already undone and supply still exists or was deleted)
+            can_undo = row['undo_action_id'] is None
+            if can_undo and row['action_type'] == 'DELETE':
+                # DELETE can always be undone (recreate)
+                can_undo = True
+            elif can_undo and row['action_type'] == 'CREATE':
+                # CREATE can be undone if supply still exists
+                can_undo = row['supply_id'] is not None
+            elif can_undo and row['action_type'] == 'UPDATE':
+                # UPDATE can be undone if supply still exists
+                can_undo = row['supply_id'] is not None
+            
+            history_entry = {
+                'id': row['id'],
+                'supply_id': row['supply_id'],
+                'supply_name': row['supply_name'],
+                'action_type': row['action_type'],
+                'old_name': row['old_name'],
+                'new_name': row['new_name'],
+                'old_description': row['old_description'],
+                'new_description': row['new_description'],
+                'old_image': row['old_image'],
+                'new_image': row['new_image'],
+                'old_last_order_date': row['old_last_order_date'].isoformat() if row['old_last_order_date'] else None,
+                'new_last_order_date': row['new_last_order_date'].isoformat() if row['new_last_order_date'] else None,
+                'changed_by': row['changed_by'],
+                'changed_by_name': f"{user['first_name']} {user['last_name']}" if user else None,
+                'changed_by_email': user['uf_email'] if user else None,
+                'changed_at': row['changed_at'].isoformat() if row['changed_at'] else None,
+                'can_undo': can_undo,
+                'is_undone': row['undo_action_id'] is not None,
+                'team_changes': team_changes,
+                'category_changes': category_changes
+            }
+            history_entries.append(history_entry)
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'history': history_entries,
+            'total': total
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@supplies_bp.route('/history/<int:history_id>/undo', methods=['POST'])
+@require_auth
+def undo_supply_history(history_id, current_user_id=None):
+    """
+    POST /api/supplies/history/<id>/undo
+    Undo a specific history entry.
+    
+    Args:
+        history_id: History entry ID to undo
+    
+    Returns:
+        JSON object with success message and updated history entry
+    """
+    try:
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+        
+        # Get history entry
+        cur.execute("""
+            SELECT * FROM supplies_history WHERE id = %s
+        """, (history_id,))
+        history = cur.fetchone()
+        
+        if not history:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'History entry not found'}), 404
+        
+        if history['undo_action_id'] is not None:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'This action has already been undone'}), 400
+        
+        # Get team and category changes
+        cur.execute("""
+            SELECT team_name, action FROM supplies_history_teams WHERE history_id = %s
+        """, (history_id,))
+        team_changes = cur.fetchall()
+        
+        cur.execute("""
+            SELECT category_id, action FROM supplies_history_categories WHERE history_id = %s
+        """, (history_id,))
+        category_changes = cur.fetchall()
+        
+        # Perform undo based on action type
+        if history['action_type'] == 'CREATE':
+            # Undo CREATE: Delete the supply
+            if history['supply_id']:
+                cur.execute("DELETE FROM supplies WHERE id = %s", (history['supply_id'],))
+        
+        elif history['action_type'] == 'UPDATE':
+            # Undo UPDATE: Restore old values
+            if not history['supply_id']:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Cannot undo: supply no longer exists'}), 400
+            
+            # Check supply still exists
+            cur.execute("SELECT id FROM supplies WHERE id = %s", (history['supply_id'],))
+            if not cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Cannot undo: supply no longer exists'}), 400
+            
+            # Restore old values
+            updates = []
+            values = []
+            
+            if history['old_name']:
+                updates.append("name = %s")
+                values.append(history['old_name'])
+            if history['old_description'] is not None:
+                updates.append("description = %s")
+                values.append(history['old_description'])
+            if history['old_image'] is not None:
+                updates.append("image = %s")
+                values.append(history['old_image'])
+            if history['old_last_order_date'] is not None:
+                updates.append("last_order_date = %s")
+                values.append(history['old_last_order_date'])
+            
+            updates.append("last_modified_by = %s")
+            values.append(current_user_id)
+            values.append(history['supply_id'])
+            
+            if updates:
+                query = f"UPDATE supplies SET {', '.join(updates)} WHERE id = %s"
+                cur.execute(query, values)
+            
+            # Restore teams: Remove current, add back old teams
+            cur.execute("DELETE FROM supplies_teams WHERE supply_id = %s", (history['supply_id'],))
+            for team_change in team_changes:
+                if team_change['action'] == 'REMOVED':
+                    # This team was removed in the update, so restore it
+                    cur.execute("""
+                        INSERT IGNORE INTO supplies_teams (supply_id, team_name)
+                        VALUES (%s, %s)
+                    """, (history['supply_id'], team_change['team_name']))
+            
+            # Restore categories: Remove current, add back old categories
+            cur.execute("DELETE FROM supplies_categories WHERE supply_id = %s", (history['supply_id'],))
+            for cat_change in category_changes:
+                if cat_change['action'] == 'REMOVED':
+                    # This category was removed in the update, so restore it
+                    cur.execute("""
+                        INSERT IGNORE INTO supplies_categories (supply_id, category_id)
+                        VALUES (%s, %s)
+                    """, (history['supply_id'], cat_change['category_id']))
+        
+        elif history['action_type'] == 'DELETE':
+            # Undo DELETE: Recreate the supply
+            if not history['supply_id']:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Cannot undo: supply ID not available'}), 400
+            
+            # Recreate supply
+            cur.execute("""
+                INSERT INTO supplies (id, name, description, image, last_order_date, last_modified_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                history['supply_id'],
+                history['old_name'],
+                history['old_description'],
+                history['old_image'],
+                history['old_last_order_date'],
+                current_user_id
+            ))
+            
+            # Recreate teams (all that were REMOVED in delete)
+            for team_change in team_changes:
+                if team_change['action'] == 'REMOVED':
+                    cur.execute("""
+                        INSERT IGNORE INTO supplies_teams (supply_id, team_name)
+                        VALUES (%s, %s)
+                    """, (history['supply_id'], team_change['team_name']))
+            
+            # Recreate categories (all that were REMOVED in delete)
+            for cat_change in category_changes:
+                if cat_change['action'] == 'REMOVED':
+                    cur.execute("""
+                        INSERT IGNORE INTO supplies_categories (supply_id, category_id)
+                        VALUES (%s, %s)
+                    """, (history['supply_id'], cat_change['category_id']))
+        
+        # Create undo history entry
+        undo_history_id = log_supply_history(
+            conn,
+            history['supply_id'],
+            history['action_type'],  # Same action type for undo
+            history['new_name'] and {'name': history['new_name'], 'description': history['new_description'],
+                                     'image': history['new_image'], 'last_order_date': history['new_last_order_date']} or {},
+            history['old_name'] and {'name': history['old_name'], 'description': history['old_description'],
+                                     'image': history['old_image'], 'last_order_date': history['old_last_order_date']} or {},
+            current_user_id
+        )
+        
+        # Mark original history as undone
+        cur.execute("""
+            UPDATE supplies_history SET undo_action_id = %s WHERE id = %s
+        """, (undo_history_id, history_id))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully undid {history["action_type"]} action',
+            'undo_history_id': undo_history_id
+        }), 200
+    except mysql.connector.IntegrityError as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        conn.rollback()
         return jsonify({'error': str(e)}), 500

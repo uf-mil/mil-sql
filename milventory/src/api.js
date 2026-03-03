@@ -76,6 +76,43 @@ const authHeaders = () => ({
   'Content-Type': 'application/json',
 });
 
+// Helper to detect and handle conflict errors
+export const handleApiError = async (error) => {
+  if (error.response) {
+    const { status } = error.response;
+    
+    // Try to get error data from response
+    try {
+      const data = await error.response.json();
+      if (status === 404 && data.error_type === 'SUPPLY_DELETED') {
+        return {
+          isConflict: true,
+          type: 'SUPPLY_DELETED',
+          message: data.message || 'This item was deleted by another user. Please refresh the page to see the latest data.',
+          supplyName: data.supply_name,
+          supplyId: data.supply_id
+        };
+      }
+      
+      return {
+        isConflict: false,
+        message: data.error || error.message || 'An error occurred'
+      };
+    } catch (jsonError) {
+      // If JSON parsing fails, return basic error
+      return {
+        isConflict: false,
+        message: error.message || 'An error occurred'
+      };
+    }
+  }
+  
+  return {
+    isConflict: false,
+    message: error.message || 'An error occurred'
+  };
+};
+
 // API functions
 export const api = {
   // Supplies (catalog/reference)
@@ -174,6 +211,58 @@ export const api = {
       }
       if (r.status === 204) {
         return null;
+      }
+      return r.json();
+    }),
+
+  // History
+  getSupplyHistory: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.supply_id) params.append('supply_id', filters.supply_id);
+    if (filters.action_type) params.append('action_type', filters.action_type);
+    if (filters.limit) params.append('limit', filters.limit);
+    if (filters.offset) params.append('offset', filters.offset);
+    
+    const queryString = params.toString();
+    const url = queryString ? `${API_BASE}/supplies/history?${queryString}` : `${API_BASE}/supplies/history`;
+    
+    return fetch(url, { 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    });
+  },
+
+  undoSupplyHistory: (historyId) => 
+    fetch(`${API_BASE}/supplies/history/${historyId}/undo`, { 
+      method: 'POST', 
+      credentials: 'include', 
+      headers: authHeaders() 
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
       }
       return r.json();
     }),

@@ -1,0 +1,135 @@
+.history-row {
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+
+.history-row:hover {
+  background-color: rgba(255,255,255,.05);
+}
+
+.history-row-undone {
+  opacity: 0.6;
+  background-color: rgba(0,0,0,.2);
+}
+
+.history-timestamp {
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--muted, #9aa8c2);
+  white-space: nowrap;
+  width: 150px;
+}
+
+.history-action {
+  padding: 0.75rem;
+  width: 100px;
+}
+
+.history-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.history-badge-create {
+  background-color: #4caf50;
+  color: white;
+}
+
+.history-badge-update {
+  background-color: #2196f3;
+  color: white;
+}
+
+.history-badge-delete {
+  background-color: #f44336;
+  color: white;
+}
+
+.history-badge-default {
+  background-color: var(--table, #e0e0e0);
+  color: var(--text, #333);
+}
+
+.history-item-name {
+  padding: 0.75rem;
+  font-weight: 500;
+  width: 200px;
+  color: var(--text, #e6ebf4);
+}
+
+.history-changes {
+  padding: 0.75rem;
+  flex: 1;
+  color: var(--muted, #9aa8c2);
+  font-size: 0.9rem;
+}
+
+.history-changed-by {
+  padding: 0.75rem;
+  width: 200px;
+  color: var(--muted, #9aa8c2);
+}
+
+.history-actions {
+  padding: 0.75rem;
+  width: 100px;
+  text-align: center;
+}
+
+.history-undo-btn {
+  padding: 0.4rem 0.8rem;
+  background: rgba(0,0,0,.3);
+  color: var(--text, #e6ebf4);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background-color 0.2s;
+}
+
+.history-undo-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,.1);
+}
+
+.history-undo-btn:disabled {
+  background: rgba(0,0,0,.2);
+  color: var(--muted, #9aa8c2);
+  border-color: rgba(255,255,255,.05);
+  cursor: not-allowed;
+}
+
+.history-undo-confirm {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.history-undo-confirm-btn {
+  padding: 0.4rem 0.8rem;
+  background: #1e8a4a;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.history-undo-confirm-btn:hover {
+  background: #1a7a3f;
+}
+
+.history-undo-cancel-btn {
+  padding: 0.4rem 0.8rem;
+  background: rgba(0,0,0,.3);
+  color: var(--text, #e6ebf4);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.history-undo-cancel-btn:hover {
+  background: rgba(255,255,255,.1);
+}

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import * as d3 from 'd3';
-import { api, admin } from '../api';
+import { api, admin, handleApiError } from '../api';
 
 const InventoryContext = createContext(null);
 
@@ -35,6 +35,7 @@ export const InventoryProvider = ({ children }) => {
   // Loading and error states
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [conflictError, setConflictError] = useState(null);
   
   // Supply name to ID mapping (for API calls)
   const [supplyNameToId, setSupplyNameToId] = useState(new Map());
@@ -544,7 +545,12 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error finishing add mode:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
-        setError(error.message || 'Failed to add items');
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) {
+          setConflictError(errorInfo);
+        } else {
+          setError(errorInfo.message);
+        }
       }
     }
   }, [inventoryData, supplyNameToId, reloadSupplyLocations]);
@@ -1054,7 +1060,12 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error adding Master item:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
-        setError(error.message || 'Failed to add item');
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) {
+          setConflictError(errorInfo);
+        } else {
+          setError(errorInfo.message);
+        }
       }
       throw error;
     }
@@ -1120,7 +1131,12 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error updating Master item:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
-        setError(error.message || 'Failed to update item');
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) {
+          setConflictError(errorInfo);
+        } else {
+          setError(errorInfo.message);
+        }
       }
       throw error;
     }
@@ -1167,7 +1183,12 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error deleting Master item:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
-        setError(error.message || 'Failed to delete item');
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) {
+          setConflictError(errorInfo);
+        } else {
+          setError(errorInfo.message);
+        }
       }
       throw error;
     }
@@ -1199,6 +1220,8 @@ export const InventoryProvider = ({ children }) => {
     isLoading,
     error,
     setError,
+    conflictError,
+    setConflictError,
     // Setters
     setInventoryData,
     setSelectedBox,

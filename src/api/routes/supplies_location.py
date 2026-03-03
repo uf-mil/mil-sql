@@ -205,8 +205,23 @@ def add_supply_location(current_user_id=None):
             return jsonify({'error': 'Amount must be positive'}), 400
         
         conn = get_db()
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
+        # Check if supply exists (conflict detection)
+        cur.execute("SELECT id, name FROM supplies WHERE id = %s", (data['supply_id'],))
+        supply = cur.fetchone()
+        if not supply:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'error': 'Supply not found',
+                'error_type': 'SUPPLY_DELETED',
+                'supply_id': data['supply_id'],
+                'supply_name': data.get('supply_name', 'Unknown'),
+                'message': 'This item was deleted by another user. Please refresh the page to see the latest data.'
+            }), 404
+        
+        cur = conn.cursor()  # Switch back to regular cursor for rest of function
         shelf = data.get('shelf')
         location_name = data['location']
         supply_id = data['supply_id']

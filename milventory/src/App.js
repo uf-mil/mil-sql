@@ -9,6 +9,8 @@ import EditModal from './components/EditForm';
 import AddModePreview from './components/AddModePreview';
 import Login from './components/Login';
 import ErrorToast from './components/ErrorToast';
+import ConflictErrorModal from './components/ConflictErrorModal';
+import HistoryModal from './components/HistoryModal';
 import AdminDashboard from './components/AdminDashboard';
 import { auth } from './api';
 
@@ -124,8 +126,9 @@ function ProtectedRoute({ children, requireLeader = false }) {
 }
 
 function AppContent({ user, onLogout }) {
-  const { wrapRef, svgRef, isLoading, error, setError } = useInventory();
+  const { wrapRef, svgRef, isLoading, error, setError, conflictError, setConflictError } = useInventory();
   const navigate = useNavigate();
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Handle 401 errors by logging out
   useEffect(() => {
@@ -178,6 +181,27 @@ function AppContent({ user, onLogout }) {
                 </button>
               )}
               <button
+                onClick={() => setShowHistoryModal(true)}
+                style={{
+                  marginLeft: '1rem',
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  background: 'rgba(0,0,0,.3)',
+                  color: 'var(--text, #e6ebf4)',
+                  border: '1px solid rgba(255,255,255,.15)',
+                  borderRadius: '4px',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(0,0,0,.3)';
+                }}
+              >
+                View History
+              </button>
+              <button
                 onClick={onLogout}
                 style={{
                   marginLeft: '1rem',
@@ -198,6 +222,15 @@ function AppContent({ user, onLogout }) {
       <EditModal />
       <AddModePreview />
       <ErrorToast error={error} onClose={() => setError(null)} />
+      <ConflictErrorModal
+        visible={conflictError !== null}
+        errorType={conflictError?.type}
+        message={conflictError?.message}
+        supplyName={conflictError?.supplyName}
+        onClose={() => setConflictError(null)}
+        onRefresh={() => window.location.reload()}
+      />
+      <HistoryModal isOpen={showHistoryModal} onClose={() => setShowHistoryModal(false)} />
     </>
   );
 }
