@@ -84,14 +84,19 @@ def derive_location_type(title):
 
 
 def ensure_all_tables_exist(conn, cur):
-    """Ensure all tables exist by creating missing ones."""
+    """Ensure all tables exist by creating missing ones.
+    
+    Returns:
+        tuple: (success_count, failed_tables_list) where failed_tables_list is a list of table names that failed to create
+    """
+    failed_tables = []
     try:
         sql_base_path = get_sql_base_path(__file__)
         table_files = discover_table_files(sql_base_path)
         
         if not table_files:
             print("⚠ No table_*.sql files found")
-            return
+            return 0, []
         
         sorted_tables = topological_sort_tables(table_files)
         missing_tables = []
@@ -102,18 +107,32 @@ def ensure_all_tables_exist(conn, cur):
         
         if missing_tables:
             print(f"📋 Creating {len(missing_tables)} missing table(s)...")
+            success_count = 0
             for table_name, sql_file in missing_tables:
                 description = f"{table_name} table"
                 print(f"  🔨 Creating {table_name} from {sql_file.name}...")
                 if execute_sql_file(cur, sql_file, description):
                     print(f"  ✓ {table_name} created")
+                    success_count += 1
                 else:
                     print(f"  ✗ Failed to create {table_name}")
+                    failed_tables.append(table_name)
             conn.commit()
+            
+            if failed_tables:
+                print(f"\n❌ TABLE CREATION FAILED: {success_count}/{len(missing_tables)} tables created successfully")
+                print(f"❌ FAILED TABLES ({len(failed_tables)}): {', '.join(failed_tables)}")
+            else:
+                print(f"✓ All {success_count} missing table(s) created successfully")
+            
+            return success_count, failed_tables
+        else:
+            return 0, []
     except Exception as e:
         print(f"⚠ Warning while ensuring tables exist: {e}")
         import traceback
         traceback.print_exc()
+        return 0, failed_tables
 
 
 def get_db_connection():
@@ -168,11 +187,14 @@ def seed_categories():
         cur = conn.cursor()
         
         # Ensure all tables exist (including categories)
-        ensure_all_tables_exist(conn, cur)
+        success_count, failed_tables = ensure_all_tables_exist(conn, cur)
         
         # Verify categories table exists
         if not table_exists(cur, 'categories'):
-            print("✗ Categories table still does not exist after creation attempt")
+            if 'categories' in failed_tables:
+                print("✗ Categories table failed to be created (see errors above)")
+            else:
+                print("✗ Categories table still does not exist after creation attempt")
             cur.close()
             conn.close()
             return
@@ -227,11 +249,14 @@ def seed_locations():
         cur = conn.cursor()
         
         # Ensure all tables exist (including locations)
-        ensure_all_tables_exist(conn, cur)
+        success_count, failed_tables = ensure_all_tables_exist(conn, cur)
         
         # Verify locations table exists
         if not table_exists(cur, 'locations'):
-            print("✗ Locations table still does not exist after creation attempt")
+            if 'locations' in failed_tables:
+                print("✗ Locations table failed to be created (see errors above)")
+            else:
+                print("✗ Locations table still does not exist after creation attempt")
             cur.close()
             conn.close()
             return
@@ -292,15 +317,15 @@ def seed_locations():
                                 update_count += 1
                         except mysql.connector.Error as e2:
                             if 'Unknown column' in str(e2):
-                        cur.execute(
-                            "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
-                            (location_type, shelf_count, name)
-                        )
-                        if cur.rowcount > 0:
-                            update_count += 1
+                                cur.execute(
+                                    "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
+                                    (location_type, shelf_count, name)
+                                )
+                                if cur.rowcount > 0:
+                                    update_count += 1
+                            else:
+                                raise
                     else:
-                        raise
-            else:
                         raise
             else:
                 # Insert new location with coordinates - set protected=True for locations from JSON
@@ -322,10 +347,10 @@ def seed_locations():
                             except mysql.connector.Error as e2:
                                 # If coordinate columns don't exist, insert without them
                                 if 'Unknown column' in str(e2):
-                            cur.execute(
-                                "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
-                                (name, location_type, shelf_count)
-                            )
+                                    cur.execute(
+                                        "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
+                                        (name, location_type, shelf_count)
+                                    )
                                 else:
                                     raise
                         else:
@@ -366,7 +391,7 @@ def seed_teams():
         cur = conn.cursor()
         
         # Ensure all tables exist (including teams)
-        ensure_all_tables_exist(conn, cur)
+        success_count, failed_tables = ensure_all_tables_exist(conn, cur)
         
         # Check if teams exist
         cur.execute("SELECT COUNT(*) FROM teams")
@@ -412,7 +437,7 @@ def seed_test_user():
         cur = conn.cursor(dictionary=True)
         
         # Ensure all tables exist (including members)
-        ensure_all_tables_exist(conn, cur)
+        success_count, failed_tables = ensure_all_tables_exist(conn, cur)
         
         # Check if test user exists
         cur.execute("SELECT uf_id FROM members WHERE uf_email = %s", ("test@ufl.edu",))

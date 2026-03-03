@@ -97,8 +97,9 @@ def initialize_schema():
         
         conn.commit()
         if failed_tables:
-            print(f"⚠ Schema initialization incomplete: {success_count}/{len(missing_tables)} tables created")
-            print(f"  Failed tables: {', '.join(failed_tables)}")
+            print(f"\n❌ SCHEMA INITIALIZATION FAILED: {success_count}/{len(missing_tables)} tables created successfully")
+            print(f"❌ FAILED TABLES ({len(failed_tables)}): {', '.join(failed_tables)}")
+            print("⚠️  The API will continue, but some endpoints may not work until these tables are created")
         else:
             print(f"✓ Schema initialization complete ({success_count}/{len(missing_tables)} tables created)")
         

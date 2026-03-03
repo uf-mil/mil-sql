@@ -19,7 +19,7 @@ CREATE TABLE supplies_history (
     
     -- Foreign keys
     CONSTRAINT fk_history_supply FOREIGN KEY (supply_id) REFERENCES supplies(id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
+        ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_history_changed_by FOREIGN KEY (changed_by) REFERENCES members(uf_id)
         ON UPDATE CASCADE ON DELETE SET NULL,
     
