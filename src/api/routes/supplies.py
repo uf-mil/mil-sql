@@ -742,7 +742,6 @@ def get_supply_history(current_user_id=None):
                 h.new_last_order_date,
                 h.changed_by,
                 h.changed_at,
-                h.undo_action_id,
                 COALESCE(s.name, h.old_name, h.new_name) as supply_name
             FROM supplies_history h
             LEFT JOIN supplies s ON h.supply_id = s.id
@@ -795,15 +794,15 @@ def get_supply_history(current_user_id=None):
             category_changes = [{'category_id': c['category_id'], 'action': c['action']} 
                                for c in cur.fetchall()]
             
-            # Check if can be undone (not already undone and supply still exists or was deleted)
-            can_undo = row['undo_action_id'] is None
-            if can_undo and row['action_type'] == 'DELETE':
+            # Check if can be undone (supply still exists or was deleted)
+            can_undo = False
+            if row['action_type'] == 'DELETE':
                 # DELETE can always be undone (recreate)
                 can_undo = True
-            elif can_undo and row['action_type'] == 'CREATE':
+            elif row['action_type'] == 'CREATE':
                 # CREATE can be undone if supply still exists
                 can_undo = row['supply_id'] is not None
-            elif can_undo and row['action_type'] == 'UPDATE':
+            elif row['action_type'] == 'UPDATE':
                 # UPDATE can be undone if supply still exists
                 can_undo = row['supply_id'] is not None
             
@@ -825,7 +824,6 @@ def get_supply_history(current_user_id=None):
                 'changed_by_email': user['uf_email'] if user else None,
                 'changed_at': row['changed_at'].isoformat() if row['changed_at'] else None,
                 'can_undo': can_undo,
-                'is_undone': row['undo_action_id'] is not None,
                 'team_changes': team_changes,
                 'category_changes': category_changes
             }
@@ -869,11 +867,6 @@ def undo_supply_history(history_id, current_user_id=None):
             cur.close()
             conn.close()
             return jsonify({'error': 'History entry not found'}), 404
-        
-        if history['undo_action_id'] is not None:
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'This action has already been undone'}), 400
         
         # Get team and category changes
         cur.execute("""
@@ -987,22 +980,8 @@ def undo_supply_history(history_id, current_user_id=None):
                         VALUES (%s, %s)
                     """, (history['supply_id'], cat_change['category_id']))
         
-        # Create undo history entry
-        undo_history_id = log_supply_history(
-            conn,
-            history['supply_id'],
-            history['action_type'],  # Same action type for undo
-            history['new_name'] and {'name': history['new_name'], 'description': history['new_description'],
-                                     'image': history['new_image'], 'last_order_date': history['new_last_order_date']} or {},
-            history['old_name'] and {'name': history['old_name'], 'description': history['old_description'],
-                                     'image': history['old_image'], 'last_order_date': history['old_last_order_date']} or {},
-            current_user_id
-        )
-        
-        # Mark original history as undone
-        cur.execute("""
-            UPDATE supplies_history SET undo_action_id = %s WHERE id = %s
-        """, (undo_history_id, history_id))
+        # Delete the history entry and all related data (CASCADE will handle teams/categories)
+        cur.execute("DELETE FROM supplies_history WHERE id = %s", (history_id,))
         
         conn.commit()
         cur.close()
@@ -1010,8 +989,7 @@ def undo_supply_history(history_id, current_user_id=None):
         
         return jsonify({
             'success': True,
-            'message': f'Successfully undid {history["action_type"]} action',
-            'undo_history_id': undo_history_id
+            'message': f'Successfully undid {history["action_type"]} action'
         }), 200
     except mysql.connector.IntegrityError as e:
         conn.rollback()

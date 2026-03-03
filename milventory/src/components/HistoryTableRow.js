@@ -81,7 +81,7 @@ const HistoryTableRow = ({ entry, onUndo }) => {
   };
 
   return (
-    <tr className={`history-row ${entry.is_undone ? 'history-row-undone' : ''}`}>
+    <tr className="history-row">
       <td className="history-timestamp">{formatDate(entry.changed_at)}</td>
       <td className="history-action">
         <span className={`history-badge ${getActionBadgeClass(entry.action_type)}`}>
@@ -115,8 +115,8 @@ const HistoryTableRow = ({ entry, onUndo }) => {
           <button
             className="history-undo-btn"
             onClick={handleUndoClick}
-            disabled={!entry.can_undo || entry.is_undone}
-            title={entry.is_undone ? 'Already undone' : !entry.can_undo ? 'Cannot undo' : 'Undo this action'}
+            disabled={!entry.can_undo}
+            title={!entry.can_undo ? 'Cannot undo' : 'Undo this action'}
           >
             Undo
           </button>

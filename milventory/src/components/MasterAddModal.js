@@ -166,7 +166,6 @@ const MasterAddModal = ({ isOpen, onClose }) => {
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
-  const [teamSearchQuery, setTeamSearchQuery] = useState('');
   const [availableCategories, setAvailableCategories] = useState([]);
   const [availableTeams, setAvailableTeams] = useState([]);
   const [categoryNameToId, setCategoryNameToId] = useState(new Map());
@@ -197,10 +196,8 @@ const MasterAddModal = ({ isOpen, onClose }) => {
         });
       getTeams()
         .then(teams => {
-          console.log('Fetched teams from API:', teams);
           // Normalize to lowercase for frontend consistency
           const normalized = teams.map(t => t.toLowerCase());
-          console.log('Normalized teams:', normalized);
           setAvailableTeams(normalized);
         })
         .catch(err => {
@@ -316,52 +313,6 @@ const MasterAddModal = ({ isOpen, onClose }) => {
     >
       <div className="modal">
         <h3>Add Master Item</h3>
-        {teamSearchQuery.trim() && (() => {
-          const query = teamSearchQuery.toLowerCase();
-          const unselected = availableTeams.filter(t => !selectedTeams.includes(t));
-          const scored = unselected.map(item => {
-            const itemLower = item.toLowerCase();
-            const distance = levenshteinDistance(query, itemLower);
-            const isSubstring = itemLower.includes(query);
-            return { item, score: isSubstring ? distance - 10 : distance, distance };
-          });
-          scored.sort((a, b) => a.score !== b.score ? a.score - b.score : a.distance - b.distance);
-          const matches = scored.slice(0, 5);
-          
-          return (
-            <div style={{
-              padding: '0.75rem', background: 'rgba(0,0,0,.3)',
-              border: '1px solid rgba(255,255,255,.1)', borderRadius: '4px',
-              fontSize: '0.85rem', color: 'var(--muted)', marginBottom: '1rem'
-            }}>
-              <div style={{ fontWeight: '600', marginBottom: '0.5rem', color: 'var(--text)' }}>
-                Team Search Debug:
-              </div>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <strong>Query:</strong> "{teamSearchQuery}"
-              </div>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <strong>Selected:</strong> {selectedTeams.length > 0 ? selectedTeams.join(', ') : 'None'}
-              </div>
-              <div style={{ marginBottom: '0.5rem' }}>
-                <strong>Available:</strong> {unselected.length} team{unselected.length !== 1 ? 's' : ''} remaining
-              </div>
-              {matches.length > 0 && (
-                <div>
-                  <strong>Top Matches:</strong>
-                  {matches.map(({ item, distance }, index) => (
-                    <div key={item} style={{ marginLeft: '1rem', marginTop: '0.25rem' }}>
-                      {index + 1}. {item} (distance: {distance})
-                    </div>
-                  ))}
-                </div>
-              )}
-              {matches.length === 0 && unselected.length > 0 && (
-                <div style={{ color: 'var(--muted)' }}>No fuzzy matches found.</div>
-              )}
-            </div>
-          );
-        })()}
         <input
           ref={nameInputRef}
           type="text"
@@ -383,7 +334,6 @@ const MasterAddModal = ({ isOpen, onClose }) => {
           onSelect={(team) => setSelectedTeams(prev => [...prev, team])}
           onRemove={(team) => setSelectedTeams(prev => prev.filter(t => t !== team))}
           capitalize
-          onSearchChange={setTeamSearchQuery}
         />
 
         <TagDropdown

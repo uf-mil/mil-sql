@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.api.db import get_db
 
 
-def log_supply_history(conn, supply_id, action_type, old_values, new_values, changed_by, undo_action_id=None):
+def log_supply_history(conn, supply_id, action_type, old_values, new_values, changed_by):
     """
     Log a history entry for a supply change.
     
@@ -21,7 +21,6 @@ def log_supply_history(conn, supply_id, action_type, old_values, new_values, cha
         old_values: Dict with old_name, old_description, old_image, old_last_order_date
         new_values: Dict with new_name, new_description, new_image, new_last_order_date
         changed_by: UF ID of user making the change
-        undo_action_id: Optional ID of history entry that undid this action
     
     Returns:
         History entry ID
@@ -36,8 +35,8 @@ def log_supply_history(conn, supply_id, action_type, old_values, new_values, cha
                 old_description, new_description,
                 old_image, new_image,
                 old_last_order_date, new_last_order_date,
-                changed_by, undo_action_id
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                changed_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             supply_id,
             action_type,
@@ -49,8 +48,7 @@ def log_supply_history(conn, supply_id, action_type, old_values, new_values, cha
             new_values.get('image'),
             old_values.get('last_order_date'),
             new_values.get('last_order_date'),
-            changed_by,
-            undo_action_id
+            changed_by
         ))
         
         history_id = cur.lastrowid

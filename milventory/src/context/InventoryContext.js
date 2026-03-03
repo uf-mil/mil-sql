@@ -1198,6 +1198,46 @@ export const InventoryProvider = ({ children }) => {
     setSelectedMasterItem(null);
   }, []);
 
+  const reloadMasterItems = useCallback(async () => {
+    try {
+      const supplies = await api.getSupplies();
+      
+      const newMasterItems = new Map();
+      const nameToIdMap = new Map();
+      
+      supplies.forEach(supply => {
+        // Build name to ID mapping
+        nameToIdMap.set(supply.name, supply.id);
+        
+        // Convert API response to Master item format
+        const locations = (supply.locations || []).map(loc => {
+          if (loc.shelf !== null && loc.shelf !== undefined) {
+            return `${loc.location} (Shelf ${loc.shelf})`;
+          }
+          return loc.location;
+        });
+        
+        newMasterItems.set(supply.name, {
+          name: supply.name,
+          description: supply.description || '',
+          image: supply.image || null,
+          locations: locations,
+          teams: supply.teams || [],
+          categories: supply.categories || [],
+          lastModified: supply.lastModified || null,
+          last_modified_by: supply.last_modified_by || null,
+          last_modified_by_name: supply.last_modified_by_name || null,
+          id: supply.id
+        });
+      });
+      
+      setMasterInventoryItems(newMasterItems);
+      setSupplyNameToId(nameToIdMap);
+    } catch (error) {
+      console.error('Error reloading Master inventory items:', error);
+    }
+  }, []);
+
   const value = {
     // State
     inventoryData,
@@ -1256,6 +1296,7 @@ export const InventoryProvider = ({ children }) => {
     updateMasterItem,
     deleteMasterItem,
     clearSelectedMasterItem,
+    reloadMasterItems,
     // Add Mode
     addModeItem,
     addModeQtyPerClick,
