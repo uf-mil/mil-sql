@@ -13,7 +13,7 @@ const MasterItemPreview = () => {
     deleteMasterItem,
     startAddMode,
     startMoveMode,
-    startDeleteMode,
+    startSubtractMode,
     cancelMoveMode,
     moveModeItem,
     leftPaneWidth,
@@ -95,8 +95,8 @@ const MasterItemPreview = () => {
     startMoveMode(selectedMasterItem);
   };
 
-  const handleDelete = () => {
-    startDeleteMode(selectedMasterItem);
+  const handleSubtract = () => {
+    startSubtractMode(selectedMasterItem);
   };
 
   const handleEdit = () => {
@@ -231,8 +231,8 @@ const MasterItemPreview = () => {
                   <button className="master-action-button add-button" onClick={handleAddToBoxes} title="Add to boxes on map">
                     Add
                   </button>
-                  <button className="master-action-button delete-button" onClick={handleDelete} title="Delete items from boxes">
-                    Delete Some
+                  <button className="master-action-button delete-button" onClick={handleSubtract} title="Subtract items from boxes">
+                    Subtract
                   </button>
                   <button className="master-action-button move-button" onClick={handleMove} title="Move items between boxes">
                     Move

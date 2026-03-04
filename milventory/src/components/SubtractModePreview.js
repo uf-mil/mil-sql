@@ -1,21 +1,21 @@
 import React from 'react';
 import { useInventory } from '../context/InventoryContext';
 
-const DeleteModePreview = () => {
+const SubtractModePreview = () => {
   const {
-    deleteModeItem,
-    deleteModeQtyPerClick,
-    setDeleteModeQtyPerClick,
-    deleteModePending,
-    finishDeleteMode,
-    cancelDeleteMode,
+    subtractModeItem,
+    subtractModeQtyPerClick,
+    setSubtractModeQtyPerClick,
+    subtractModePending,
+    finishSubtractMode,
+    cancelSubtractMode,
     leftPaneWidth,
     leftPaneCollapsed,
     resolveMasterItem,
-    deleteModePreviewRef
+    subtractModePreviewRef
   } = useInventory();
 
-  const item = deleteModeItem ? resolveMasterItem(deleteModeItem) : null;
+  const item = subtractModeItem ? resolveMasterItem(subtractModeItem) : null;
 
   // Calculate position to the right of left pane
   const leftPaneActualWidth = leftPaneCollapsed ? 40 : leftPaneWidth;
@@ -23,18 +23,18 @@ const DeleteModePreview = () => {
   const positionY = 20;
 
   const handleQtyChange = (delta) => {
-    setDeleteModeQtyPerClick(prev => Math.max(1, prev + delta));
+    setSubtractModeQtyPerClick(prev => Math.max(1, prev + delta));
   };
 
   const handleFinish = () => {
-    finishDeleteMode();
+    finishSubtractMode();
   };
 
   const handleCancel = () => {
-    cancelDeleteMode();
+    cancelSubtractMode();
   };
 
-  if (!deleteModeItem || !item) return null;
+  if (!subtractModeItem || !item) return null;
 
   const SHELF_NAMES = [
     'Shelf 6 (Top)',
@@ -45,8 +45,8 @@ const DeleteModePreview = () => {
     'Shelf 1 (Bottom)'
   ];
 
-  const pendingCount = Array.from(deleteModePending.values()).reduce((sum, qty) => sum + qty, 0);
-  const pendingEntries = Array.from(deleteModePending.entries());
+  const pendingCount = Array.from(subtractModePending.values()).reduce((sum, qty) => sum + qty, 0);
+  const pendingEntries = Array.from(subtractModePending.entries());
 
   // Format a pending key for display
   const formatPendingKey = (key) => {
@@ -60,7 +60,7 @@ const DeleteModePreview = () => {
 
   return (
     <div
-      ref={deleteModePreviewRef}
+      ref={subtractModePreviewRef}
       className="master-preview-pane-overlay"
       style={{
         position: 'fixed',
@@ -71,7 +71,7 @@ const DeleteModePreview = () => {
     >
       <div className="master-preview-pane add-mode-pane">
         <div className="master-preview-pane-header">
-          <h3>Delete: {item.name}</h3>
+          <h3>Subtract: {item.name}</h3>
           <button
             className="master-preview-pane-close"
             onClick={handleCancel}
@@ -82,7 +82,7 @@ const DeleteModePreview = () => {
         </div>
         
         <div className="add-mode-qty-field">
-          <label>Qty deleted per click:</label>
+          <label>Qty subtracted per click:</label>
           <div className="number-input-wrapper">
             <button
               className="number-input-btn"
@@ -94,10 +94,10 @@ const DeleteModePreview = () => {
             <input
               type="number"
               className="number-input"
-              value={deleteModeQtyPerClick}
+              value={subtractModeQtyPerClick}
               onChange={(e) => {
                 const val = parseInt(e.target.value) || 1;
-                setDeleteModeQtyPerClick(Math.max(1, val));
+                setSubtractModeQtyPerClick(Math.max(1, val));
               }}
               min="1"
             />
@@ -113,7 +113,7 @@ const DeleteModePreview = () => {
 
         {pendingEntries.length > 0 && (
           <div className="add-mode-pending">
-            <strong>Pending deletions:</strong>
+            <strong>Pending subtractions:</strong>
             <ul>
               {pendingEntries.map(([key, qty]) => (
                 <li key={key}>
@@ -132,7 +132,7 @@ const DeleteModePreview = () => {
             Cancel
           </button>
           <button type="button" className="save" onClick={handleFinish}>
-            Finish Delete
+            Finish Subtract
           </button>
         </div>
       </div>
@@ -140,7 +140,5 @@ const DeleteModePreview = () => {
   );
 };
 
-export default DeleteModePreview;
-
-
+export default SubtractModePreview;
 

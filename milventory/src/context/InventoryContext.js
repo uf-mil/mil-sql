@@ -49,14 +49,14 @@ export const InventoryProvider = ({ children }) => {
   const addModePendingRef = useRef(new Map());
   const addModeQtyPerClickRef = useRef(1);
   
-  // Delete Mode state
-  const [deleteModeItem, setDeleteModeItem] = useState(null);
-  const [deleteModeQtyPerClick, setDeleteModeQtyPerClick] = useState(1);
-  const [deleteModePending, setDeleteModePending] = useState(new Map()); // Map<boxTitle, qty>
-  const deleteModePreviewRef = useRef(null);
-  const deleteModeItemRef = useRef(null);
-  const deleteModePendingRef = useRef(new Map());
-  const deleteModeQtyPerClickRef = useRef(1);
+  // Subtract Mode state (removes items from boxes, not the master entry)
+  const [subtractModeItem, setSubtractModeItem] = useState(null);
+  const [subtractModeQtyPerClick, setSubtractModeQtyPerClick] = useState(1);
+  const [subtractModePending, setSubtractModePending] = useState(new Map()); // Map<boxTitle, qty>
+  const subtractModePreviewRef = useRef(null);
+  const subtractModeItemRef = useRef(null);
+  const subtractModePendingRef = useRef(new Map());
+  const subtractModeQtyPerClickRef = useRef(1);
   
   // Move Mode state
   const [moveModeItem, setMoveModeItem] = useState(null);
@@ -78,16 +78,16 @@ export const InventoryProvider = ({ children }) => {
   }, [addModeQtyPerClick]);
 
   useEffect(() => {
-    deleteModeItemRef.current = deleteModeItem;
-  }, [deleteModeItem]);
+    subtractModeItemRef.current = subtractModeItem;
+  }, [subtractModeItem]);
   
   useEffect(() => {
-    deleteModePendingRef.current = deleteModePending;
-  }, [deleteModePending]);
+    subtractModePendingRef.current = subtractModePending;
+  }, [subtractModePending]);
 
   useEffect(() => {
-    deleteModeQtyPerClickRef.current = deleteModeQtyPerClick;
-  }, [deleteModeQtyPerClick]);
+    subtractModeQtyPerClickRef.current = subtractModeQtyPerClick;
+  }, [subtractModeQtyPerClick]);
   
   useEffect(() => {
     moveModeItemRef.current = moveModeItem;
@@ -512,18 +512,18 @@ export const InventoryProvider = ({ children }) => {
     setAddModePending(new Map());
   }, []);
 
-  // Delete Mode functions
-  const startDeleteMode = useCallback((itemName) => {
-    setDeleteModeItem(itemName);
-    setDeleteModeQtyPerClick(1);
-    setDeleteModePending(new Map());
-    setSelectedBox(null); // Clear box selection when entering delete mode
-    setSelectedMasterItem(null); // Clear Master preview when entering delete mode
+  // Subtract Mode functions (removes items from boxes, not the master entry)
+  const startSubtractMode = useCallback((itemName) => {
+    setSubtractModeItem(itemName);
+    setSubtractModeQtyPerClick(1);
+    setSubtractModePending(new Map());
+    setSelectedBox(null); // Clear box selection when entering subtract mode
+    setSelectedMasterItem(null); // Clear Master preview when entering subtract mode
   }, []);
 
   // shelf is optional — undefined for non-shelf boxes, number for Tall Cabinet shelves
-  const handleBoxClickDeleteMode = useCallback((boxTitle, shelf) => {
-    const qty = deleteModeQtyPerClickRef.current;
+  const handleBoxClickSubtractMode = useCallback((boxTitle, shelf) => {
+    const qty = subtractModeQtyPerClickRef.current;
     const key = shelf !== undefined ? `${boxTitle}||${shelf}` : boxTitle;
     
     // Get current quantity in this location
@@ -531,44 +531,44 @@ export const InventoryProvider = ({ children }) => {
         if (!boxData) return;
 
     const matchingItems = boxData.inventory.filter(item => {
-      if (item.name !== deleteModeItemRef.current) return false;
+      if (item.name !== subtractModeItemRef.current) return false;
             if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
       return item.shelf === undefined;
           });
 
     const currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
-    const existingPending = deleteModePendingRef.current.get(key) || 0;
+    const existingPending = subtractModePendingRef.current.get(key) || 0;
     
-    // Don't allow deleting more than what's available
-    const maxDeletable = currentQty - existingPending;
-    const toDelete = Math.min(qty, maxDeletable);
+    // Don't allow subtracting more than what's available
+    const maxSubtractable = currentQty - existingPending;
+    const toSubtract = Math.min(qty, maxSubtractable);
     
-    if (toDelete <= 0) return; // Nothing to delete
+    if (toSubtract <= 0) return; // Nothing to subtract
     
-    setDeleteModePending(prev => {
+    setSubtractModePending(prev => {
       const next = new Map(prev);
       const existing = next.get(key) || 0;
-      next.set(key, existing + toDelete);
+      next.set(key, existing + toSubtract);
       return next;
     });
   }, [inventoryData]);
 
-  // Check if any pending deletion belongs to a given box (handles compound keys)
-  const boxHasAnyDeletePending = useCallback((boxTitle) => {
-    for (const key of deleteModePending.keys()) {
+  // Check if any pending subtraction belongs to a given box (handles compound keys)
+  const boxHasAnySubtractPending = useCallback((boxTitle) => {
+    for (const key of subtractModePending.keys()) {
       if (key === boxTitle || key.startsWith(boxTitle + '||')) return true;
     }
     return false;
-  }, [deleteModePending]);
+  }, [subtractModePending]);
 
-  const finishDeleteMode = useCallback(async () => {
-    const currentItem = deleteModeItemRef.current;
-    const pending = deleteModePendingRef.current;
+  const finishSubtractMode = useCallback(async () => {
+    const currentItem = subtractModeItemRef.current;
+    const pending = subtractModePendingRef.current;
     
     if (!currentItem) {
-      setDeleteModeItem(null);
-      setDeleteModeQtyPerClick(1);
-      setDeleteModePending(new Map());
+      setSubtractModeItem(null);
+      setSubtractModeQtyPerClick(1);
+      setSubtractModePending(new Map());
       return;
     }
 
@@ -580,9 +580,9 @@ export const InventoryProvider = ({ children }) => {
       return;
     }
 
-    // Convert pending map to deletions
+    // Convert pending map to subtractions
     // Use functional update to get latest inventoryData
-    const deletions = [];
+    const subtractions = [];
     let currentInventoryData = inventoryData;
     
     pending.forEach((pendingQty, key) => {
@@ -600,72 +600,72 @@ export const InventoryProvider = ({ children }) => {
         return item.shelf === undefined;
       });
       
-      // For each matching item, we need to delete or reduce it
-      let remainingToDelete = pendingQty;
+      // For each matching item, we need to subtract or reduce it
+      let remainingToSubtract = pendingQty;
       matchingItems.forEach(item => {
-        if (item.id && remainingToDelete > 0) {
-          const deleteQty = Math.min(remainingToDelete, item.qty);
-          deletions.push({
+        if (item.id && remainingToSubtract > 0) {
+          const subtractQty = Math.min(remainingToSubtract, item.qty);
+          subtractions.push({
             id: item.id,
             location: boxTitle,
             shelf: shelf,
-            amount: deleteQty
+            amount: subtractQty
           });
-          remainingToDelete -= deleteQty;
+          remainingToSubtract -= subtractQty;
         }
         });
       });
 
-    if (deletions.length === 0) {
-      setDeleteModeItem(null);
-      setDeleteModeQtyPerClick(1);
-      setDeleteModePending(new Map());
+    if (subtractions.length === 0) {
+      setSubtractModeItem(null);
+      setSubtractModeQtyPerClick(1);
+      setSubtractModePending(new Map());
       return;
     }
 
     try {
-      // Delete items via API
-      for (const deletion of deletions) {
+      // Subtract items via API
+      for (const subtraction of subtractions) {
         // Get the item from current state to check quantity
-        const boxData = currentInventoryData.get(deletion.location);
-        const item = boxData?.inventory.find(i => i.id === deletion.id);
+        const boxData = currentInventoryData.get(subtraction.location);
+        const item = boxData?.inventory.find(i => i.id === subtraction.id);
         
         if (!item) continue;
         
-        if (item.qty <= deletion.amount) {
-          // Delete the entire entry
-          await api.deleteSupplyLocation(deletion.id);
+        if (item.qty <= subtraction.amount) {
+          // Delete the entire entry (no items left in this box)
+          await api.deleteSupplyLocation(subtraction.id);
         } else {
           // Reduce the quantity
-          await api.updateSupplyLocation(deletion.id, { amount: item.qty - deletion.amount });
+          await api.updateSupplyLocation(subtraction.id, { amount: item.qty - subtraction.amount });
         }
       }
 
       // Reload supply locations to ensure UI reflects actual server state
       await reloadSupplyLocations();
 
-      // Clear delete mode
-      setDeleteModeItem(null);
-      setDeleteModeQtyPerClick(1);
-      setDeleteModePending(new Map());
+      // Clear subtract mode
+      setSubtractModeItem(null);
+      setSubtractModeQtyPerClick(1);
+      setSubtractModePending(new Map());
     } catch (error) {
-      console.error('Error finishing delete mode:', error);
+      console.error('Error finishing subtract mode:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
         const errorInfo = await handleApiError(error);
         if (errorInfo.isConflict) {
           setConflictError(errorInfo);
         } else {
-          setError(errorInfo.message || 'Failed to delete items');
+          setError(errorInfo.message || 'Failed to subtract items');
         }
       }
     }
   }, [inventoryData, supplyNameToId, reloadSupplyLocations]);
 
-  const cancelDeleteMode = useCallback(() => {
-    setDeleteModeItem(null);
-    setDeleteModeQtyPerClick(1);
-    setDeleteModePending(new Map());
+  const cancelSubtractMode = useCallback(() => {
+    setSubtractModeItem(null);
+    setSubtractModeQtyPerClick(1);
+    setSubtractModePending(new Map());
   }, []);
 
   // Move Mode functions
@@ -1136,17 +1136,17 @@ export const InventoryProvider = ({ children }) => {
     cancelAddMode,
     handleBoxClickAddMode,
     boxHasAnyPending,
-    // Delete Mode
-    deleteModeItem,
-    deleteModeQtyPerClick,
-    setDeleteModeQtyPerClick,
-    deleteModePending,
-    deleteModePreviewRef,
-    startDeleteMode,
-    finishDeleteMode,
-    cancelDeleteMode,
-    handleBoxClickDeleteMode,
-    boxHasAnyDeletePending,
+    // Subtract Mode (removes items from boxes, not the master entry)
+    subtractModeItem,
+    subtractModeQtyPerClick,
+    setSubtractModeQtyPerClick,
+    subtractModePending,
+    subtractModePreviewRef,
+    startSubtractMode,
+    finishSubtractMode,
+    cancelSubtractMode,
+    handleBoxClickSubtractMode,
+    boxHasAnySubtractPending,
     // Move Mode
     moveModeItem,
     moveModeDragging,
