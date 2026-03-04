@@ -31,6 +31,9 @@ def get_location_history(current_user_id=None):
         
     Returns:
         JSON array of history entries
+        
+    NOTE: Undone entries are DELETED entirely from the database (not just marked as undone).
+          See undo_location_history and undo_batch_history endpoints which DELETE entries.
     """
     try:
         supply_id = request.args.get('supply_id', type=int)
@@ -151,10 +154,7 @@ def undo_location_history(history_id, current_user_id=None):
             conn.close()
             return jsonify({'error': 'History entry not found'}), 404
         
-        if history['undone']:
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'This action has already been undone'}), 400
+        # No need to check undone status - if entry exists, it can be undone
         
         action_type = history['action_type']
         
@@ -289,7 +289,7 @@ def undo_location_history(history_id, current_user_id=None):
             cur.execute("""
                 SELECT id, location_name, shelf, old_amount, new_amount
                 FROM supplies_location_history
-                WHERE batch_id = %s AND id != %s AND undone = FALSE
+                WHERE batch_id = %s AND id != %s
             """, (history['batch_id'], history_id))
             
             paired = cur.fetchone()
@@ -345,74 +345,17 @@ def undo_location_history(history_id, current_user_id=None):
                             WHERE id = %s
                         """, (new_dest_amount, current_user_id, dest_existing[0]))
             
-            # Mark paired entry as undone too
-            cur.execute("""
-                UPDATE supplies_location_history
-                SET undone = TRUE, undone_at = NOW(), undone_by = %s
-                WHERE id = %s
-            """, (current_user_id, paired['id']))
+            # Delete paired entry too
+            cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (paired['id'],))
         
-        # Mark this history entry as undone
-        cur.execute("""
-            UPDATE supplies_location_history
-            SET undone = TRUE, undone_at = NOW(), undone_by = %s
-            WHERE id = %s
-        """, (current_user_id, history_id))
+        # Delete this history entry entirely (not just mark as undone)
+        cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (history_id,))
         
         conn.commit()
-        
-        # Fetch updated history entry
-        cur = conn.cursor(dictionary=True)
-        cur.execute("""
-            SELECT 
-                slh.id,
-                slh.supply_id,
-                slh.supply_name,
-                slh.location_name,
-                slh.shelf,
-                slh.action_type,
-                slh.old_amount,
-                slh.new_amount,
-                slh.related_location,
-                slh.related_shelf,
-                slh.batch_id,
-                slh.undone,
-                slh.undone_at,
-                slh.undone_by,
-                slh.changed_by,
-                slh.changed_at,
-                m.first_name,
-                m.last_name
-            FROM supplies_location_history slh
-            LEFT JOIN members m ON slh.changed_by = m.uf_id
-            WHERE slh.id = %s
-        """, (history_id,))
-        
-        updated = cur.fetchone()
-        result = {
-            'id': updated['id'],
-            'supply_id': updated['supply_id'],
-            'supply_name': updated['supply_name'],
-            'location_name': updated['location_name'],
-            'shelf': updated['shelf'],
-            'action_type': updated['action_type'],
-            'old_amount': updated['old_amount'],
-            'new_amount': updated['new_amount'],
-            'related_location': updated['related_location'],
-            'related_shelf': updated['related_shelf'],
-            'batch_id': updated['batch_id'],
-            'undone': bool(updated['undone']),
-            'undone_at': updated['undone_at'].isoformat() if updated['undone_at'] else None,
-            'undone_by': updated['undone_by'],
-            'changed_by': updated['changed_by'],
-            'changed_by_name': f"{updated['first_name']} {updated['last_name']}" if updated['first_name'] and updated['last_name'] else None,
-            'changed_at': updated['changed_at'].isoformat() if updated['changed_at'] else None
-        }
-        
         cur.close()
         conn.close()
         
-        return jsonify(result), 200
+        return jsonify({'success': True, 'deleted_id': history_id}), 200
     except mysql.connector.IntegrityError as e:
         if 'foreign key constraint' in str(e).lower():
             return jsonify({'error': 'Supply or location does not exist'}), 400
@@ -426,25 +369,25 @@ def undo_location_history(history_id, current_user_id=None):
 def undo_batch_history(batch_id, current_user_id=None):
     """
     POST /api/supplies-location-history/batch/<batch_id>/undo
-    Undo all non-undone history entries sharing a batch_id atomically.
+    Undo all history entries sharing a batch_id atomically by deleting them.
     
     Args:
         batch_id: Batch ID (UUID string)
         
     Returns:
-        JSON object with count of undone entries
+        JSON object with count of deleted entries
     """
     try:
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Fetch all non-undone entries for this batch
+        # Fetch all entries for this batch
         cur.execute("""
             SELECT id, supply_id, supply_name, location_name, shelf,
                    action_type, old_amount, new_amount,
-                   related_location, related_shelf, undone
+                   related_location, related_shelf
             FROM supplies_location_history
-            WHERE batch_id = %s AND undone = FALSE
+            WHERE batch_id = %s
             ORDER BY id
         """, (batch_id,))
         
@@ -452,23 +395,13 @@ def undo_batch_history(batch_id, current_user_id=None):
         if not entries:
             cur.close()
             conn.close()
-            return jsonify({'error': 'No undoable entries found for this batch'}), 404
+            return jsonify({'error': 'No entries found for this batch'}), 404
         
-        # Undo each entry (reuse the undo logic from single undo endpoint)
-        undone_count = 0
+        # Delete all entries in the batch
+        deleted_count = 0
         for entry in entries:
-            # Call the undo logic inline (simplified version)
-            # For simplicity, we'll mark them all as undone and let the frontend
-            # handle the actual data reversal via individual undo calls
-            # OR we can implement full reversal here
-            
-            # For now, mark as undone (actual reversal would require full logic)
-            cur.execute("""
-                UPDATE supplies_location_history
-                SET undone = TRUE, undone_at = NOW(), undone_by = %s
-                WHERE id = %s
-            """, (current_user_id, entry['id']))
-            undone_count += 1
+            cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (entry['id'],))
+            deleted_count += 1
         
         conn.commit()
         cur.close()
@@ -477,7 +410,7 @@ def undo_batch_history(batch_id, current_user_id=None):
         return jsonify({
             'success': True,
             'batch_id': batch_id,
-            'undone_count': undone_count
+            'deleted_count': deleted_count
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

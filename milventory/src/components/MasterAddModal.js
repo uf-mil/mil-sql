@@ -157,7 +157,7 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
 };
 
 const MasterAddModal = ({ isOpen, onClose }) => {
-  const { addMasterItem, masterInventoryItems } = useInventory();
+  const { createMasterItem, masterInventoryItems } = useInventory();
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -279,7 +279,7 @@ const MasterAddModal = ({ isOpen, onClose }) => {
         locations: []
       };
       
-      addMasterItem(newItem);
+      createMasterItem(newItem);
       onClose();
     }
   };
@@ -312,7 +312,7 @@ const MasterAddModal = ({ isOpen, onClose }) => {
       onKeyDown={handleKeyDown}
     >
       <div className="modal">
-        <h3>Add Master Item</h3>
+        <h3>Create Item</h3>
         <input
           ref={nameInputRef}
           type="text"

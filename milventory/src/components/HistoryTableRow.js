@@ -18,12 +18,60 @@ const HistoryTableRow = ({ entry, onUndo }) => {
         return 'history-badge-update';
       case 'DELETE':
         return 'history-badge-delete';
+      case 'ADD':
+        return 'history-badge-create';
+      case 'REMOVE':
+        return 'history-badge-delete';
+      case 'MOVE':
+        return 'history-badge-update';
+      case 'SUPPLY_DELETE_SNAPSHOT':
+        return 'history-badge-default';
       default:
         return 'history-badge-default';
     }
   };
 
+  const formatActionType = (actionType) => {
+    switch (actionType) {
+      case 'REMOVE':
+        return 'SUBTRACT';
+      default:
+        return actionType;
+    }
+  };
+
   const formatChangesSummary = () => {
+    // Handle location history entries
+    if (entry.historyType === 'location') {
+      const changes = [];
+      
+      if (entry.location_name) {
+        let location = entry.location_name;
+        if (entry.shelf !== null && entry.shelf !== undefined) {
+          location += ` (Shelf ${entry.shelf})`;
+        }
+        changes.push(`Location: ${location}`);
+      }
+      
+      if (entry.action_type === 'ADD') {
+        const added = entry.new_amount - (entry.old_amount || 0);
+        changes.push(`Added: +${added}`);
+      } else if (entry.action_type === 'REMOVE') {
+        const removed = entry.old_amount - (entry.new_amount || 0);
+        changes.push(`Subtracted: -${removed}`);
+      } else if (entry.action_type === 'UPDATE') {
+        const diff = entry.new_amount - entry.old_amount;
+        changes.push(`Amount: ${entry.old_amount || 0} → ${entry.new_amount || 0} (${diff >= 0 ? '+' : ''}${diff})`);
+      } else if (entry.action_type === 'MOVE') {
+        if (entry.related_location) {
+          changes.push(`Moved to: ${entry.related_location}`);
+        }
+      }
+      
+      return changes.join('; ') || 'Location change';
+    }
+    
+    // Handle supply history entries
     const changes = [];
     
     if (entry.old_name !== entry.new_name) {
@@ -80,15 +128,28 @@ const HistoryTableRow = ({ entry, onUndo }) => {
     }
   };
 
+  // Determine if entry can be undone
+  // Note: Undone entries are deleted entirely from the database, so we don't need to check undone status
+  const canUndo = entry.historyType === 'location' 
+    ? entry.action_type !== 'SUPPLY_DELETE_SNAPSHOT'
+    : entry.can_undo !== false;
+
   return (
     <tr className="history-row">
       <td className="history-timestamp">{formatDate(entry.changed_at)}</td>
       <td className="history-action">
         <span className={`history-badge ${getActionBadgeClass(entry.action_type)}`}>
-          {entry.action_type}
+          {formatActionType(entry.action_type)}
         </span>
       </td>
-      <td className="history-item-name">{entry.supply_name || 'N/A'}</td>
+      <td className="history-item-name">
+        {entry.supply_name || 'N/A'}
+        {entry.historyType === 'location' && entry.location_name && (
+          <span style={{ fontSize: '0.85rem', color: 'var(--muted)', marginLeft: '0.5rem' }}>
+            @ {entry.location_name}
+          </span>
+        )}
+      </td>
       <td className="history-changes">{formatChangesSummary()}</td>
       <td className="history-changed-by">
         <span title={entry.changed_by_email || ''}>
@@ -96,7 +157,9 @@ const HistoryTableRow = ({ entry, onUndo }) => {
         </span>
       </td>
       <td className="history-actions">
-        {showConfirm ? (
+        {entry.action_type === 'SUPPLY_DELETE_SNAPSHOT' ? (
+          <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Use restore</span>
+        ) : showConfirm ? (
           <div className="history-undo-confirm">
             <button
               className="history-undo-confirm-btn"
@@ -115,8 +178,8 @@ const HistoryTableRow = ({ entry, onUndo }) => {
           <button
             className="history-undo-btn"
             onClick={handleUndoClick}
-            disabled={!entry.can_undo}
-            title={!entry.can_undo ? 'Cannot undo' : 'Undo this action'}
+            disabled={!canUndo}
+            title={!canUndo ? 'Cannot undo' : 'Undo this action'}
           >
             Undo
           </button>
@@ -127,3 +190,4 @@ const HistoryTableRow = ({ entry, onUndo }) => {
 };
 
 export default HistoryTableRow;
+

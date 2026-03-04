@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../api';
+import { api, locationHistory } from '../api';
 import { useInventory } from '../context/InventoryContext';
 import HistoryTableRow from './HistoryTableRow';
 import './HistoryModal.css';
@@ -12,7 +12,7 @@ const HistoryModal = ({ isOpen, onClose }) => {
   const [filters, setFilters] = useState({
     action_type: '',
     search: '',
-    limit: 100,
+    limit: 200,
     offset: 0
   });
   const [total, setTotal] = useState(0);
@@ -27,24 +27,71 @@ const HistoryModal = ({ isOpen, onClose }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await api.getSupplyHistory({
-        action_type: filters.action_type || undefined,
-        limit: filters.limit,
-        offset: filters.offset
+      // Fetch both supply history and location history in parallel
+      const [supplyResponse, locationData] = await Promise.all([
+        api.getSupplyHistory({
+          action_type: filters.action_type || undefined,
+          limit: filters.limit,
+          offset: filters.offset
+        }),
+        locationHistory.getAll({
+          limit: filters.limit,
+          offset: filters.offset
+        })
+      ]);
+      
+      // Mark supply history entries
+      const supplyHistory = supplyResponse.history.map(entry => ({
+        ...entry,
+        historyType: 'supply'
+      }));
+      
+      // Mark location history entries
+      const locHistory = Array.isArray(locationData) ? locationData.map(entry => ({
+        ...entry,
+        historyType: 'location'
+      })) : [];
+      
+      // Combine and sort by timestamp (newest first)
+      let combined = [...supplyHistory, ...locHistory].sort((a, b) => {
+        const dateA = new Date(a.changed_at || 0);
+        const dateB = new Date(b.changed_at || 0);
+        return dateB - dateA;
       });
       
-      let filtered = response.history;
+      // No need to filter undone entries - undone actions are deleted entirely from the database
+      // See undo_location_history and undo_batch_history endpoints which DELETE entries instead of marking them undone
+        
+        // Filter by action type if specified
+      if (filters.action_type) {
+        combined = combined.filter(entry => {
+          if (entry.historyType === 'location') {
+            // Map location history action types
+            if (filters.action_type === 'ADD') return entry.action_type === 'ADD';
+            if (filters.action_type === 'SUBTRACT') return entry.action_type === 'REMOVE';
+            if (filters.action_type === 'UPDATE') return entry.action_type === 'UPDATE';
+            if (filters.action_type === 'MOVE') return entry.action_type === 'MOVE';
+            return false;
+          } else {
+            return entry.action_type === filters.action_type;
+          }
+        });
+      }
       
       // Client-side search filter
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
-        filtered = filtered.filter(entry => 
-          entry.supply_name?.toLowerCase().includes(searchLower)
+        combined = combined.filter(entry => 
+          entry.supply_name?.toLowerCase().includes(searchLower) ||
+          entry.location_name?.toLowerCase().includes(searchLower)
         );
       }
       
-      setHistory(filtered);
-      setTotal(response.total);
+      // Apply pagination
+      const paginated = combined.slice(filters.offset, filters.offset + filters.limit);
+      
+      setHistory(paginated);
+      setTotal(combined.length);
     } catch (err) {
       setError(err.message || 'Failed to load history');
     } finally {
@@ -52,18 +99,22 @@ const HistoryModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleUndo = async (historyId) => {
+  const handleUndo = async (historyId, historyType) => {
     try {
-      const response = await api.undoSupplyHistory(historyId);
-      // Reload history after undo (the undone entry will disappear)
-      await loadHistory();
-      // Reload master inventory to reflect changes
-      await reloadMasterItems();
-      // Reload supply locations to update quantities on the map
-      // This is especially important when restoring a deleted supply (DELETE undo)
-      if (reloadSupplyLocations) {
-        await reloadSupplyLocations();
+      if (historyType === 'location') {
+        await locationHistory.undo(historyId);
+        if (reloadSupplyLocations) {
+          await reloadSupplyLocations();
+        }
+      } else {
+        await api.undoSupplyHistory(historyId);
+        await reloadMasterItems();
+        if (reloadSupplyLocations) {
+          await reloadSupplyLocations();
+        }
       }
+      // Reload history after undo
+      await loadHistory();
     } catch (err) {
       setError(err.message || 'Failed to undo action');
     }
@@ -104,11 +155,14 @@ const HistoryModal = ({ isOpen, onClose }) => {
             <option value="CREATE">Create</option>
             <option value="UPDATE">Update</option>
             <option value="DELETE">Delete</option>
+            <option value="ADD">Add</option>
+            <option value="SUBTRACT">Subtract</option>
+            <option value="MOVE">Move</option>
           </select>
           
-          <input
+            <input
             type="text"
-            placeholder="Search by item name..."
+            placeholder="Search by item name or location..."
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value, offset: 0 })}
             className="history-filter-search"
@@ -141,9 +195,9 @@ const HistoryModal = ({ isOpen, onClose }) => {
               <tbody>
                 {history.map(entry => (
                   <HistoryTableRow
-                    key={entry.id}
+                    key={`${entry.historyType || 'supply'}-${entry.id}`}
                     entry={entry}
-                    onUndo={handleUndo}
+                    onUndo={(id) => handleUndo(id, entry.historyType)}
                   />
                 ))}
               </tbody>

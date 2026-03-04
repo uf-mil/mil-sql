@@ -722,6 +722,9 @@ def get_supply_history(current_user_id=None):
     
     Returns:
         JSON object with history array and total count
+        
+    NOTE: Undone entries are DELETED entirely from the database (not just marked as undone).
+          See undo_supply_history endpoint which handles supply history undo.
     """
     try:
         supply_id_filter = request.args.get('supply_id', type=int)
@@ -1019,14 +1022,14 @@ def undo_supply_history(history_id, current_user_id=None):
                     """, (restored_supply_id, cat_change['category_id']))
             
             # Restore locations from SUPPLY_DELETE_SNAPSHOT entries
-            # Find the most recent snapshot batch for this supply_name that hasn't been undone
+            # Find the most recent snapshot batch for this supply_name
             # The snapshot was created right before the DELETE, so match by supply_name and timestamp
+            # NOTE: No need to check undone=FALSE since undone entries are deleted entirely
             cur.execute("""
                 SELECT batch_id, MAX(changed_at) as max_changed_at
                 FROM supplies_location_history
                 WHERE supply_name = %s
                   AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
-                  AND undone = FALSE
                   AND changed_at >= DATE_SUB(%s, INTERVAL 10 SECOND)
                   AND changed_at <= DATE_ADD(%s, INTERVAL 10 SECOND)
                 GROUP BY batch_id
@@ -1044,7 +1047,6 @@ def undo_supply_history(history_id, current_user_id=None):
                     FROM supplies_location_history
                     WHERE batch_id = %s
                       AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
-                      AND undone = FALSE
                 """, (batch_id,))
                 
                 snapshot_entries = cur.fetchall()
@@ -1062,13 +1064,12 @@ def undo_supply_history(history_id, current_user_id=None):
                         current_user_id
                     ))
                 
-                # Mark all snapshot entries as undone
+                # Delete all snapshot entries (not just mark as undone)
                 cur.execute("""
-                    UPDATE supplies_location_history
-                    SET undone = TRUE, undone_at = NOW(), undone_by = %s
+                    DELETE FROM supplies_location_history
                     WHERE batch_id = %s
                       AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
-                """, (current_user_id, batch_id))
+                """, (batch_id,))
         
         # Delete the history entry and all related data (CASCADE will handle teams/categories)
         cur.execute("DELETE FROM supplies_history WHERE id = %s", (history_id,))

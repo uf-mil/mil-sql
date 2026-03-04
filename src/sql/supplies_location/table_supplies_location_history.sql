@@ -30,7 +30,10 @@ CREATE TABLE supplies_location_history (
     -- For grouping a single logical operation (e.g. bulk-add touches multiple rows)
     batch_id        CHAR(36) DEFAULT NULL,   -- UUID generated per API call
 
-    -- Undo bookkeeping
+    -- Undo bookkeeping (DEPRECATED: Entries are now DELETED entirely when undone)
+    -- NOTE: The undone fields are kept for backward compatibility but are no longer used.
+    --       When an action is undone, the history entry is DELETED entirely from the database.
+    --       See undo_location_history and undo_batch_history endpoints which DELETE entries.
     undone          BOOLEAN NOT NULL DEFAULT FALSE,
     undone_at       DATETIME DEFAULT NULL,
     undone_by       CHAR(8) DEFAULT NULL,

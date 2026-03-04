@@ -862,7 +862,7 @@ export const InventoryProvider = ({ children }) => {
     return locations;
   }, [inventoryData]);
 
-  const addMasterItem = useCallback(async (item) => {
+  const createMasterItem = useCallback(async (item) => {
     try {
       const created = await api.createSupply({
         name: item.name,
@@ -897,7 +897,7 @@ export const InventoryProvider = ({ children }) => {
         return next;
       });
     } catch (error) {
-      console.error('Error adding Master item:', error);
+      console.error('Error creating Master item:', error);
       // Only set error if not panning (to avoid breaking pan)
       if (!isPanningRef.current) {
         const errorInfo = await handleApiError(error);
@@ -1119,7 +1119,7 @@ export const InventoryProvider = ({ children }) => {
     resolveMasterItem,
     computeMasterQuantities,
     getItemLocations,
-    addMasterItem,
+    createMasterItem,
     updateMasterItem,
     deleteMasterItem,
     clearSelectedMasterItem,

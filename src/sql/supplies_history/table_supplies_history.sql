@@ -1,3 +1,7 @@
+-- History of all supply (master item) operations (CREATE, UPDATE, DELETE)
+-- NOTE: This table does not track "undone" status. Instead, the API determines
+--       if an entry can be undone based on whether the supply still exists.
+--       See supplies_location_history table for undone tracking.
 CREATE TABLE supplies_history (
     id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
     supply_id           BIGINT NULL,  -- Nullable to allow history entries for deleted supplies
