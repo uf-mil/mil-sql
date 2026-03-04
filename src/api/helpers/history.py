@@ -2,6 +2,7 @@
 History tracking helper functions for supplies.
 """
 import sys
+import uuid
 from pathlib import Path
 
 # Add src to path for imports
@@ -171,5 +172,96 @@ def get_supply_current_state(conn, supply_id):
             'teams': teams,
             'categories': categories
         }
+    finally:
+        cur.close()
+
+
+def log_location_history(conn, action_type, supply_id, supply_name,
+                         location_name, shelf,
+                         old_amount, new_amount,
+                         changed_by,
+                         related_location=None, related_shelf=None,
+                         batch_id=None):
+    """
+    Insert one row into supplies_location_history.
+    Pass batch_id from the caller to group related rows.
+    Returns the inserted row id.
+    
+    Args:
+        conn: Database connection
+        action_type: 'ADD', 'REMOVE', 'UPDATE', 'MOVE', or 'SUPPLY_DELETE_SNAPSHOT'
+        supply_id: Supply ID (can be None)
+        supply_name: Supply name (denormalized, required)
+        location_name: Location name
+        shelf: Shelf number (can be None)
+        old_amount: Amount before change (None for ADD)
+        new_amount: Amount after change (None for REMOVE/SNAPSHOT)
+        changed_by: UF ID of user making the change
+        related_location: For MOVE actions, the other location
+        related_shelf: For MOVE actions, the other shelf
+        batch_id: UUID string to group related operations
+    
+    Returns:
+        History entry ID
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO supplies_location_history
+                (supply_id, supply_name, location_name, shelf,
+                 action_type, old_amount, new_amount,
+                 related_location, related_shelf,
+                 batch_id, changed_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            supply_id, supply_name, location_name, shelf,
+            action_type, old_amount, new_amount,
+            related_location, related_shelf,
+            batch_id, changed_by
+        ))
+        return cur.lastrowid
+    finally:
+        cur.close()
+
+
+def snapshot_supply_locations_before_delete(conn, supply_id, supply_name, changed_by):
+    """
+    Called BEFORE deleting a supply. Reads all current supplies_location rows
+    for this supply and writes SUPPLY_DELETE_SNAPSHOT history entries.
+    These are later used to restore the supply's full location state.
+    batch_id ties all snapshots from the same delete together.
+    
+    Args:
+        conn: Database connection
+        supply_id: Supply ID to snapshot
+        supply_name: Supply name (denormalized)
+        changed_by: UF ID of user making the change
+    
+    Returns:
+        batch_id (UUID string) that groups all snapshot rows
+    """
+    cur = conn.cursor(dictionary=True)
+    batch_id = str(uuid.uuid4())
+    try:
+        cur.execute("""
+            SELECT location_name, shelf, amount
+            FROM supplies_location
+            WHERE supply_id = %s
+        """, (supply_id,))
+        rows = cur.fetchall()
+        for row in rows:
+            log_location_history(
+                conn,
+                action_type='SUPPLY_DELETE_SNAPSHOT',
+                supply_id=supply_id,
+                supply_name=supply_name,
+                location_name=row['location_name'],
+                shelf=row['shelf'],
+                old_amount=row['amount'],
+                new_amount=None,
+                changed_by=changed_by,
+                batch_id=batch_id
+            )
+        return batch_id   # return so caller can attach to the supplies_history row too
     finally:
         cur.close()

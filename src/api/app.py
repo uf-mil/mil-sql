@@ -13,6 +13,7 @@ from flask_cors import CORS
 from src.api.routes.locations import locations_bp
 from src.api.routes.supplies import supplies_bp
 from src.api.routes.supplies_location import supplies_location_bp
+from src.api.routes.supplies_location_history import supplies_location_history_bp
 from src.api.routes.auth import auth_bp
 from src.api.routes.categories import categories_bp
 from src.api.routes.teams import teams_bp
@@ -31,12 +32,13 @@ app = Flask(__name__)
 # Set secret key for sessions
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 # Configure CORS to allow credentials (cookies)
-CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'http://localhost:5000'])
+CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'http://localhost:5000', 'http://localhost:6001'])
 
 # Register blueprints
 app.register_blueprint(locations_bp, url_prefix='/api/locations')
 app.register_blueprint(supplies_bp, url_prefix='/api/supplies')
 app.register_blueprint(supplies_location_bp, url_prefix='/api/supplies-location')
+app.register_blueprint(supplies_location_history_bp, url_prefix='/api/supplies-location-history')
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(categories_bp, url_prefix='/api')
 app.register_blueprint(teams_bp, url_prefix='/api')

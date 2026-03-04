@@ -6,13 +6,16 @@ COMPOSE=docker-compose -p $(PROJECT_NAME)
 check-docker:
 	@docker info >nul 2>&1 || (echo. && echo ERROR: Docker is not running. Please start Docker Desktop and try again. && echo. && exit /b 1)
 
-## up:          Start the mysql, api (port 5000), and api-test (port 5001) containers and seed default locations
+## up:          Start the mysql, api (port 5000), and api-test (port 5001) containers and seed default locations. Provides detailed error messages if anything fails
 .PHONY: up
 up: check-docker
 	$(COMPOSE) up -d
 	@echo "Waiting for services to be ready..."
 	@timeout /t 5 /nobreak >nul 2>&1 || sleep 5 2>/dev/null || true
-	@$(COMPOSE) exec api python src/scripts/seed_locations.py
+	@echo Checking API container status...
+	@docker inspect mysql_api --format "{{.State.Status}}" 2>nul >nul || (echo. && echo ======================================== && echo ERROR: API container 'mysql_api' does not exist! && echo ======================================== && echo. && echo Try running: make build && echo. && exit /b 1)
+	@docker inspect mysql_api --format "{{.State.Status}}" 2>nul | findstr /C:"running" >nul 2>&1 || (echo. && echo ======================================== && echo ERROR: API container is not running! && echo ======================================== && echo. && echo Container status: && docker inspect mysql_api --format "Status: {{.State.Status}} (Exit Code: {{.State.ExitCode}})" 2>nul && echo. && echo Container logs: && echo. && docker logs mysql_api 2>&1 && echo. && echo ======================================== && echo. && exit /b 1)
+	@docker exec mysql_api python src/scripts/seed_locations.py || (echo. && echo ======================================== && echo ERROR: seed_locations.py failed! && echo ======================================== && echo. && echo Recent container logs: && echo. && docker logs --tail 50 mysql_api 2>&1 && echo. && echo ======================================== && echo. && exit /b 1)
 
 ## up-empty:    Start the mysql, api (port 5000), and api-test (port 5001) containers without seeding data
 .PHONY: up-empty

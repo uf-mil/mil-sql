@@ -17,14 +17,14 @@ const AdminActionsPanel = ({ onAddLocation, drawMode, onCancelDraw, onStartMove,
           </button>
         ) : (
           <>
-            <button 
-              className="admin-action-button"
-              onClick={onAddLocation}
+          <button 
+            className="admin-action-button"
+            onClick={onAddLocation}
               disabled={isInMoveMode}
               style={isInMoveMode ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-            >
-              Add Location
-            </button>
+          >
+            Add Location
+          </button>
             <button 
               className="admin-action-button"
               onClick={onStartMove}

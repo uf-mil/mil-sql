@@ -91,17 +91,17 @@ const InventoryBoxesTable = ({ selectedLocation, onLocationSelect }) => {
                   }}
                   style={{ cursor: 'pointer' }}
                 >
-                  <td>{location.name}</td>
-                  <td style={{ textTransform: 'capitalize', color: 'var(--muted)' }}>
-                    {location.type.replace('_', ' ')}
-                  </td>
-                  <td style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-                    ({location.x}, {location.y})
-                  </td>
-                  <td style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-                    {location.width}×{location.height}
-                  </td>
-                </tr>
+                <td>{location.name}</td>
+                <td style={{ textTransform: 'capitalize', color: 'var(--muted)' }}>
+                  {location.type.replace('_', ' ')}
+                </td>
+                <td style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                  ({location.x}, {location.y})
+                </td>
+                <td style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+                  {location.width}×{location.height}
+                </td>
+              </tr>
               );
             })}
           </tbody>

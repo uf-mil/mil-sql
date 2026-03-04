@@ -5,7 +5,7 @@ import HistoryTableRow from './HistoryTableRow';
 import './HistoryModal.css';
 
 const HistoryModal = ({ isOpen, onClose }) => {
-  const { reloadMasterItems } = useInventory();
+  const { reloadMasterItems, reloadSupplyLocations } = useInventory();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -54,11 +54,16 @@ const HistoryModal = ({ isOpen, onClose }) => {
 
   const handleUndo = async (historyId) => {
     try {
-      await api.undoSupplyHistory(historyId);
+      const response = await api.undoSupplyHistory(historyId);
       // Reload history after undo (the undone entry will disappear)
       await loadHistory();
       // Reload master inventory to reflect changes
       await reloadMasterItems();
+      // Reload supply locations to update quantities on the map
+      // This is especially important when restoring a deleted supply (DELETE undo)
+      if (reloadSupplyLocations) {
+        await reloadSupplyLocations();
+      }
     } catch (err) {
       setError(err.message || 'Failed to undo action');
     }

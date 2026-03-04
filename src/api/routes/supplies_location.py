@@ -9,9 +9,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from flask import Blueprint, request, jsonify
 import mysql.connector
+import uuid
 from src.api.db import get_db
 from src.api.models.supply_location import SupplyLocation
 from src.api.middleware.auth import require_auth
+from src.api.helpers.history import log_location_history
 
 supplies_location_bp = Blueprint('supplies_location', __name__)
 
@@ -235,15 +237,29 @@ def add_supply_location(current_user_id=None):
         
         existing = cur.fetchone()
         
+        batch_id = str(uuid.uuid4())
         if existing:
             # Update existing entry (increment amount)
-            new_amount = existing[1] + amount
+            old_amount = existing[1]
+            new_amount = old_amount + amount
             cur.execute("""
                 UPDATE supplies_location
                 SET amount = %s, last_modified_by = %s
                 WHERE id = %s
             """, (new_amount, current_user_id, existing[0]))
             location_id = existing[0]
+            # Log history: ADD action (incrementing existing)
+            log_location_history(
+                conn, 'ADD',
+                supply_id=supply_id,
+                supply_name=supply['name'],
+                location_name=location_name,
+                shelf=shelf,
+                old_amount=old_amount,
+                new_amount=new_amount,
+                changed_by=current_user_id,
+                batch_id=batch_id
+            )
         else:
             # Insert new entry
             cur.execute("""
@@ -251,6 +267,18 @@ def add_supply_location(current_user_id=None):
                 VALUES (%s, %s, %s, %s, %s)
             """, (supply_id, location_name, shelf, amount, current_user_id))
             location_id = cur.lastrowid
+            # Log history: ADD action (new entry)
+            log_location_history(
+                conn, 'ADD',
+                supply_id=supply_id,
+                supply_name=supply['name'],
+                location_name=location_name,
+                shelf=shelf,
+                old_amount=None,
+                new_amount=amount,
+                changed_by=current_user_id,
+                batch_id=batch_id
+            )
         
         conn.commit()
         
@@ -303,18 +331,31 @@ def update_supply_location(location_id, current_user_id=None):
             return jsonify({'error': 'Request body is required'}), 400
         
         conn = get_db()
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
-        # Check if location exists
-        cur.execute("SELECT id FROM supplies_location WHERE id = %s", (location_id,))
-        if not cur.fetchone():
+        # Fetch current location data (for history)
+        cur.execute("""
+            SELECT sl.id, sl.supply_id, sl.location_name, sl.shelf, sl.amount,
+                   s.name as supply_name
+            FROM supplies_location sl
+            JOIN supplies s ON sl.supply_id = s.id
+            WHERE sl.id = %s
+        """, (location_id,))
+        old_location = cur.fetchone()
+        if not old_location:
             cur.close()
             conn.close()
             return jsonify({'error': 'Supply location not found'}), 404
         
+        cur = conn.cursor()  # Switch to regular cursor for updates
+        
         # Build update query
         updates = []
         values = []
+        
+        old_amount = old_location['amount']
+        old_location_name = old_location['location_name']
+        old_shelf = old_location['shelf']
         
         if 'amount' in data:
             if data['amount'] < 0:
@@ -341,6 +382,22 @@ def update_supply_location(location_id, current_user_id=None):
         if updates:
             query = f"UPDATE supplies_location SET {', '.join(updates)} WHERE id = %s"
             cur.execute(query, values)
+            
+            # Log history: UPDATE action (only if amount changed)
+            if 'amount' in data:
+                new_amount = data['amount']
+                log_location_history(
+                    conn, 'UPDATE',
+                    supply_id=old_location['supply_id'],
+                    supply_name=old_location['supply_name'],
+                    location_name=old_location_name,
+                    shelf=old_shelf,
+                    old_amount=old_amount,
+                    new_amount=new_amount,
+                    changed_by=current_user_id,
+                    batch_id=str(uuid.uuid4())
+                )
+            
             conn.commit()
         
         # Fetch updated location
@@ -381,15 +438,36 @@ def delete_supply_location(location_id, current_user_id=None):
     """
     try:
         conn = get_db()
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
-        # Check if location exists
-        cur.execute("SELECT id FROM supplies_location WHERE id = %s", (location_id,))
-        if not cur.fetchone():
+        # Fetch location details before deleting (for history)
+        cur.execute("""
+            SELECT sl.id, sl.supply_id, sl.location_name, sl.shelf, sl.amount,
+                   s.name as supply_name
+            FROM supplies_location sl
+            JOIN supplies s ON sl.supply_id = s.id
+            WHERE sl.id = %s
+        """, (location_id,))
+        location_data = cur.fetchone()
+        if not location_data:
             cur.close()
             conn.close()
             return jsonify({'error': 'Supply location not found'}), 404
         
+        # Log history: REMOVE action
+        log_location_history(
+            conn, 'REMOVE',
+            supply_id=location_data['supply_id'],
+            supply_name=location_data['supply_name'],
+            location_name=location_data['location_name'],
+            shelf=location_data['shelf'],
+            old_amount=location_data['amount'],
+            new_amount=None,
+            changed_by=current_user_id,
+            batch_id=str(uuid.uuid4())
+        )
+        
+        cur = conn.cursor()  # Switch back to regular cursor
         cur.execute("DELETE FROM supplies_location WHERE id = %s", (location_id,))
         conn.commit()
         cur.close()
@@ -437,12 +515,22 @@ def move_supply_locations(current_user_id=None):
             return jsonify({'error': 'Amount must be positive'}), 400
         
         conn = get_db()
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
         supply_id = data['supply_id']
         shelf_from = data.get('shelf_from')
         shelf_to = data.get('shelf_to')
         amount = data['amount']
+        
+        # Get supply name for history
+        cur.execute("SELECT name FROM supplies WHERE id = %s", (supply_id,))
+        supply = cur.fetchone()
+        if not supply:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Supply not found'}), 404
+        
+        supply_name = supply['name']
         
         # Get source location
         cur.execute("""
@@ -456,7 +544,8 @@ def move_supply_locations(current_user_id=None):
             conn.close()
             return jsonify({'error': 'Source supply location not found'}), 404
         
-        source_id, source_amount = source
+        source_id = source['id']
+        source_amount = source['amount']
         
         if amount > source_amount:
             cur.close()
@@ -474,8 +563,13 @@ def move_supply_locations(current_user_id=None):
         # Calculate new amounts
         new_source_amount = source_amount - amount
         
+        batch_id = str(uuid.uuid4())
+        
+        cur = conn.cursor()  # Switch to regular cursor for updates
+        
         if dest:
-            dest_id, dest_amount = dest
+            dest_id = dest['id']
+            dest_amount = dest['amount']
             new_dest_amount = dest_amount + amount
             cur.execute("""
                 UPDATE supplies_location
@@ -498,6 +592,34 @@ def move_supply_locations(current_user_id=None):
             """, (new_source_amount, current_user_id, source_id))
         else:
             cur.execute("DELETE FROM supplies_location WHERE id = %s", (source_id,))
+        
+        # Log history: MOVE action (two rows: REMOVE from source, ADD to dest)
+        log_location_history(
+            conn, 'REMOVE',
+            supply_id=supply_id,
+            supply_name=supply_name,
+            location_name=data['from_location'],
+            shelf=shelf_from,
+            old_amount=source_amount,
+            new_amount=new_source_amount if new_source_amount > 0 else None,
+            changed_by=current_user_id,
+            related_location=data['to_location'],
+            related_shelf=shelf_to,
+            batch_id=batch_id
+        )
+        log_location_history(
+            conn, 'ADD',
+            supply_id=supply_id,
+            supply_name=supply_name,
+            location_name=data['to_location'],
+            shelf=shelf_to,
+            old_amount=dest['amount'] if dest else None,
+            new_amount=new_dest_amount,
+            changed_by=current_user_id,
+            related_location=data['from_location'],
+            related_shelf=shelf_from,
+            batch_id=batch_id
+        )
         
         conn.commit()
         
@@ -554,10 +676,20 @@ def bulk_add_supply_locations(current_user_id=None):
             return jsonify({'error': 'additions must be a non-empty array'}), 400
         
         conn = get_db()
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
         
         supply_id = data['supply_id']
         additions = data['additions']
+        
+        # Get supply name for history
+        cur.execute("SELECT name FROM supplies WHERE id = %s", (supply_id,))
+        supply = cur.fetchone()
+        if not supply:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Supply not found'}), 404
+        
+        supply_name = supply['name']
         
         # Validate all additions
         for addition in additions:
@@ -569,6 +701,11 @@ def bulk_add_supply_locations(current_user_id=None):
                 cur.close()
                 conn.close()
                 return jsonify({'error': 'Amount must be positive'}), 400
+        
+        # Generate batch_id for all additions
+        batch_id = str(uuid.uuid4())
+        
+        cur = conn.cursor()  # Switch to regular cursor for updates
         
         # Process all additions in a transaction
         results = []
@@ -587,7 +724,8 @@ def bulk_add_supply_locations(current_user_id=None):
             
             if existing:
                 # Increment existing
-                new_amount = existing[1] + amount
+                old_amount = existing[1]
+                new_amount = old_amount + amount
                 cur.execute("""
                     UPDATE supplies_location
                     SET amount = %s, last_modified_by = %s
@@ -599,6 +737,18 @@ def bulk_add_supply_locations(current_user_id=None):
                     'action': 'updated',
                     'new_amount': new_amount
                 })
+                # Log history: ADD action (incrementing existing)
+                log_location_history(
+                    conn, 'ADD',
+                    supply_id=supply_id,
+                    supply_name=supply_name,
+                    location_name=location_name,
+                    shelf=shelf,
+                    old_amount=old_amount,
+                    new_amount=new_amount,
+                    changed_by=current_user_id,
+                    batch_id=batch_id
+                )
             else:
                 # Insert new
                 cur.execute("""
@@ -611,6 +761,18 @@ def bulk_add_supply_locations(current_user_id=None):
                     'action': 'created',
                     'new_amount': amount
                 })
+                # Log history: ADD action (new entry)
+                log_location_history(
+                    conn, 'ADD',
+                    supply_id=supply_id,
+                    supply_name=supply_name,
+                    location_name=location_name,
+                    shelf=shelf,
+                    old_amount=None,
+                    new_amount=amount,
+                    changed_by=current_user_id,
+                    batch_id=batch_id
+                )
         
         conn.commit()
         

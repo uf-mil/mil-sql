@@ -100,12 +100,12 @@ export const InventoryProvider = ({ children }) => {
   const isPanningRef = useRef(false);
 
   // Helper function to get fill color for location type
-  const getFillForType = (type) => {
-    const typeFills = {
-      'drawer': 'var(--drawer)',
-      'cabinet': 'var(--table)',
+          const getFillForType = (type) => {
+            const typeFills = {
+              'drawer': 'var(--drawer)',
+              'cabinet': 'var(--table)',
       'tall_cabinet': 'var(--files)', // Tall cabinets use files color
-      'table': 'var(--table)',
+              'table': 'var(--table)',
       'other': '#e7ebf3', // Other category (includes workbench) has special color
       'special': '#ff69b4', // Special category - pink
       'external': '#ff9800', // External category - orange
@@ -115,38 +115,38 @@ export const InventoryProvider = ({ children }) => {
 
   // Function to reload supply locations from API
   const reloadSupplyLocations = useCallback(async () => {
-    try {
-      const supplyLocations = await api.getAllSupplyLocations();
-      
-      // Group by location_name and merge into inventoryData
-      const locationMap = new Map();
-      supplyLocations.forEach(sl => {
-        const key = sl.location;
-        if (!locationMap.has(key)) {
-          locationMap.set(key, []);
-        }
-        locationMap.get(key).push({
+        try {
+          const supplyLocations = await api.getAllSupplyLocations();
+          
+          // Group by location_name and merge into inventoryData
+          const locationMap = new Map();
+          supplyLocations.forEach(sl => {
+            const key = sl.location;
+            if (!locationMap.has(key)) {
+              locationMap.set(key, []);
+            }
+            locationMap.get(key).push({
           id: sl.id, // supply_location_id from API
-          name: sl.supply_name || '', // From JOIN in API
-          qty: sl.qty, // API maps amount to qty
-          shelf: sl.shelf !== null ? sl.shelf : undefined
-        });
-      });
-      
+              name: sl.supply_name || '', // From JOIN in API
+              qty: sl.qty, // API maps amount to qty
+              shelf: sl.shelf !== null ? sl.shelf : undefined
+            });
+          });
+          
       // Merge into inventoryData - update ALL boxes, even if they're now empty
-      setInventoryData(prev => {
-        const next = new Map(prev);
+          setInventoryData(prev => {
+            const next = new Map(prev);
         // Update all existing boxes - set inventory to empty array if not in locationMap
         prev.forEach((boxData, locationName) => {
           const items = locationMap.get(locationName) || [];
-          next.set(locationName, {
-            ...boxData,
-            inventory: items
+                next.set(locationName, {
+                  ...boxData,
+                  inventory: items
+                });
+            });
+            return next;
           });
-        });
-        return next;
-      });
-    } catch (apiError) {
+        } catch (apiError) {
       console.error('Error reloading supply locations from API:', apiError);
     }
   }, []);
@@ -527,15 +527,15 @@ export const InventoryProvider = ({ children }) => {
     const key = shelf !== undefined ? `${boxTitle}||${shelf}` : boxTitle;
     
     // Get current quantity in this location
-    const boxData = inventoryData.get(boxTitle);
-    if (!boxData) return;
-    
+        const boxData = inventoryData.get(boxTitle);
+        if (!boxData) return;
+
     const matchingItems = boxData.inventory.filter(item => {
       if (item.name !== deleteModeItemRef.current) return false;
-      if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
+            if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
       return item.shelf === undefined;
-    });
-    
+          });
+
     const currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
     const existingPending = deleteModePendingRef.current.get(key) || 0;
     
@@ -613,8 +613,8 @@ export const InventoryProvider = ({ children }) => {
           });
           remainingToDelete -= deleteQty;
         }
+        });
       });
-    });
 
     if (deletions.length === 0) {
       setDeleteModeItem(null);
@@ -1124,6 +1124,7 @@ export const InventoryProvider = ({ children }) => {
     deleteMasterItem,
     clearSelectedMasterItem,
     reloadMasterItems,
+    reloadSupplyLocations,
     // Add Mode
     addModeItem,
     addModeQtyPerClick,

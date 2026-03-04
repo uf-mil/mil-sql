@@ -636,3 +636,116 @@ export const admin = {
     }),
 };
 
+// Location History API
+export const locationHistory = {
+  /**
+   * Get location history with optional filters.
+   * @param {Object} params - Query parameters (supply_id, supply_name, location_name, limit, offset)
+   * @returns {Promise<Array>} Array of history entries
+   */
+  getAll: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    if (params.supply_id) queryParams.append('supply_id', params.supply_id);
+    if (params.supply_name) queryParams.append('supply_name', params.supply_name);
+    if (params.location_name) queryParams.append('location_name', params.location_name);
+    if (params.limit) queryParams.append('limit', params.limit);
+    if (params.offset) queryParams.append('offset', params.offset);
+    
+    const queryString = queryParams.toString();
+    const url = `${API_BASE}/supplies-location-history${queryString ? `?${queryString}` : ''}`;
+    
+    return fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }).catch(err => {
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        const networkError = new Error('Network error: Unable to connect to server. Please check if the server is running.');
+        networkError.response = { status: 0 };
+        throw networkError;
+      }
+      throw err;
+    });
+  },
+
+  /**
+   * Undo a single history entry.
+   * @param {number} historyId - History entry ID
+   * @returns {Promise<Object>} Updated history entry
+   */
+  undo: (historyId) =>
+    fetch(`${API_BASE}/supplies-location-history/${historyId}/undo`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }).catch(err => {
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        const networkError = new Error('Network error: Unable to connect to server. Please check if the server is running.');
+        networkError.response = { status: 0 };
+        throw networkError;
+      }
+      throw err;
+    }),
+
+  /**
+   * Undo all entries in a batch.
+   * @param {string} batchId - Batch ID (UUID)
+   * @returns {Promise<Object>} Result with undone_count
+   */
+  undoBatch: (batchId) =>
+    fetch(`${API_BASE}/supplies-location-history/batch/${batchId}/undo`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }).catch(err => {
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        const networkError = new Error('Network error: Unable to connect to server. Please check if the server is running.');
+        networkError.response = { status: 0 };
+        throw networkError;
+      }
+      throw err;
+    }),
+};
+

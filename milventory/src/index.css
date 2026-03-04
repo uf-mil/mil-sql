@@ -733,6 +733,34 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   font-weight: 600;
 }
 
+.master-subtabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  flex-shrink: 0;
+}
+
+.master-subtab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.master-subtab:hover {
+  color: var(--text);
+}
+
+.master-subtab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 .master-table-search {
   flex-shrink: 0;
   margin-bottom: 1rem;

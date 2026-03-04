@@ -16,7 +16,8 @@ from src.api.helpers.history import (
     log_supply_history,
     log_team_changes,
     log_category_changes,
-    get_supply_current_state
+    get_supply_current_state,
+    snapshot_supply_locations_before_delete
 )
 
 supplies_bp = Blueprint('supplies', __name__)
@@ -690,6 +691,11 @@ def delete_supply(supply_id, current_user_id=None):
         log_team_changes(conn, history_id, old_teams, [])
         log_category_changes(conn, history_id, old_categories, [])
         
+        # Snapshot all location data BEFORE delete (CASCADE will remove supplies_location rows)
+        snapshot_supply_locations_before_delete(
+            conn, supply_id, supply_check['name'], current_user_id
+        )
+        
         # Now delete the supply (CASCADE will handle related tables)
         cur.execute("DELETE FROM supplies WHERE id = %s", (supply_id,))
         conn.commit()
@@ -1011,6 +1017,58 @@ def undo_supply_history(history_id, current_user_id=None):
                         INSERT IGNORE INTO supplies_categories (supply_id, category_id)
                         VALUES (%s, %s)
                     """, (restored_supply_id, cat_change['category_id']))
+            
+            # Restore locations from SUPPLY_DELETE_SNAPSHOT entries
+            # Find the most recent snapshot batch for this supply_name that hasn't been undone
+            # The snapshot was created right before the DELETE, so match by supply_name and timestamp
+            cur.execute("""
+                SELECT batch_id, MAX(changed_at) as max_changed_at
+                FROM supplies_location_history
+                WHERE supply_name = %s
+                  AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
+                  AND undone = FALSE
+                  AND changed_at >= DATE_SUB(%s, INTERVAL 10 SECOND)
+                  AND changed_at <= DATE_ADD(%s, INTERVAL 10 SECOND)
+                GROUP BY batch_id
+                ORDER BY max_changed_at DESC
+                LIMIT 1
+            """, (history['old_name'], history['changed_at'], history['changed_at']))
+            
+            snapshot_batch = cur.fetchone()
+            if snapshot_batch and snapshot_batch['batch_id']:
+                batch_id = snapshot_batch['batch_id']
+                
+                # Get all snapshot entries for this batch
+                cur.execute("""
+                    SELECT location_name, shelf, old_amount
+                    FROM supplies_location_history
+                    WHERE batch_id = %s
+                      AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
+                      AND undone = FALSE
+                """, (batch_id,))
+                
+                snapshot_entries = cur.fetchall()
+                
+                # Re-insert all location rows from the snapshot
+                for entry in snapshot_entries:
+                    cur.execute("""
+                        INSERT INTO supplies_location (supply_id, location_name, shelf, amount, last_modified_by)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        restored_supply_id,
+                        entry['location_name'],
+                        entry['shelf'],
+                        entry['old_amount'],
+                        current_user_id
+                    ))
+                
+                # Mark all snapshot entries as undone
+                cur.execute("""
+                    UPDATE supplies_location_history
+                    SET undone = TRUE, undone_at = NOW(), undone_by = %s
+                    WHERE batch_id = %s
+                      AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
+                """, (current_user_id, batch_id))
         
         # Delete the history entry and all related data (CASCADE will handle teams/categories)
         cur.execute("DELETE FROM supplies_history WHERE id = %s", (history_id,))
