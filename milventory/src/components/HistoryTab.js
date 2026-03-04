@@ -156,7 +156,7 @@ const HistoryTab = () => {
             </thead>
             <tbody>
               {history.map((entry) => (
-                <tr key={entry.id} style={{ opacity: entry.undone ? 0.5 : 1 }}>
+                <tr key={entry.id}>
                   <td>{formatTime(entry.changed_at)}</td>
                   <td>{entry.supply_name}</td>
                   <td>{formatAction(entry)}</td>
@@ -167,10 +167,6 @@ const HistoryTab = () => {
                     {entry.action_type === 'SUPPLY_DELETE_SNAPSHOT' ? (
                       <span style={{ fontSize: '0.85rem', color: 'var(--text)', opacity: 0.6 }}>
                         Use restore
-                      </span>
-                    ) : entry.undone ? (
-                      <span style={{ fontSize: '0.85rem', color: 'var(--text)', opacity: 0.6 }}>
-                        Undone
                       </span>
                     ) : (
                       <button

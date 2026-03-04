@@ -718,7 +718,7 @@ export const locationHistory = {
   /**
    * Undo all entries in a batch.
    * @param {string} batchId - Batch ID (UUID)
-   * @returns {Promise<Object>} Result with undone_count
+   * @returns {Promise<Object>} Result with deleted_count (entries are deleted entirely, not marked as undone)
    */
   undoBatch: (batchId) =>
     fetch(`${API_BASE}/supplies-location-history/batch/${batchId}/undo`, {

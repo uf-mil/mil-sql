@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import MasterTableRow from './MasterTableRow';
-import MasterAddModal from './MasterAddModal';
+import MasterCreateModal from './MasterCreateModal';
 
 const MasterInventoryTable = () => {
   const {
@@ -90,7 +90,7 @@ const MasterInventoryTable = () => {
           </button>
         </div>
       </div>
-      <MasterAddModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
+      <MasterCreateModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
     </>
   );
 };

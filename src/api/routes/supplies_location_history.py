@@ -296,7 +296,7 @@ def undo_location_history(history_id, current_user_id=None):
             if not paired:
                 cur.close()
                 conn.close()
-                return jsonify({'error': 'Paired MOVE entry not found or already undone'}), 400
+                return jsonify({'error': 'Paired MOVE entry not found'}), 400
             
             # Reverse both legs: undo REMOVE by restoring source, undo ADD by removing from dest
             if history['action_type'] == 'REMOVE':

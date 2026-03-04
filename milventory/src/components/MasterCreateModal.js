@@ -156,7 +156,7 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
   );
 };
 
-const MasterAddModal = ({ isOpen, onClose }) => {
+const MasterCreateModal = ({ isOpen, onClose }) => {
   const { createMasterItem, masterInventoryItems } = useInventory();
   
   const [name, setName] = useState('');
@@ -398,7 +398,7 @@ const MasterAddModal = ({ isOpen, onClose }) => {
             Cancel
           </button>
           <button type="button" className="save" onClick={handleSave} disabled={!name.trim()}>
-            Add
+            Create
           </button>
         </div>
       </div>
@@ -406,4 +406,5 @@ const MasterAddModal = ({ isOpen, onClose }) => {
   );
 };
 
-export default MasterAddModal;
+export default MasterCreateModal;
+
