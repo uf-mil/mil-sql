@@ -1,4 +1,5 @@
 import React, { useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useInventory } from '../context/InventoryContext';
 import AdminMap from './AdminMap';
 import AdminLeftPanel from './AdminLeftPanel';
@@ -8,6 +9,7 @@ import LocationPreview from './LocationPreview';
 import MoveLocationsModal from './MoveLocationsModal';
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
   const { wrapRef, leftPaneWidth, leftPaneCollapsed } = useInventory();
   const svgRef = useRef(null);
   const [drawMode, setDrawMode] = useState(false);
@@ -129,6 +131,22 @@ const AdminDashboard = () => {
       <div className="wrap" ref={wrapRef}>
         <div className="titlebar">
           Admin Dashboard
+          <span style={{ float: 'right', marginRight: '1rem' }}>
+            <button
+              onClick={() => navigate('/')}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                background: 'var(--accent, #4a9eff)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+              }}
+            >
+              Master Inventory
+            </button>
+          </span>
           {drawMode && (
             <span style={{ 
               marginLeft: '1rem', 
