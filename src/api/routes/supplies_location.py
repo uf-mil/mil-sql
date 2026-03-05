@@ -280,6 +280,13 @@ def add_supply_location(current_user_id=None):
                 batch_id=batch_id
             )
         
+        # Update the master supply's last_modified timestamp
+        cur.execute("""
+            UPDATE supplies
+            SET last_modified = CURRENT_TIMESTAMP, last_modified_by = %s
+            WHERE id = %s
+        """, (current_user_id, supply_id))
+        
         conn.commit()
         
         # Fetch the created/updated location
@@ -398,6 +405,13 @@ def update_supply_location(location_id, current_user_id=None):
                     batch_id=str(uuid.uuid4())
                 )
             
+            # Update the master supply's last_modified timestamp
+            cur.execute("""
+                UPDATE supplies
+                SET last_modified = CURRENT_TIMESTAMP, last_modified_by = %s
+                WHERE id = %s
+            """, (current_user_id, old_location['supply_id']))
+            
             conn.commit()
         
         # Fetch updated location
@@ -469,6 +483,14 @@ def delete_supply_location(location_id, current_user_id=None):
         
         cur = conn.cursor()  # Switch back to regular cursor
         cur.execute("DELETE FROM supplies_location WHERE id = %s", (location_id,))
+        
+        # Update the master supply's last_modified timestamp
+        cur.execute("""
+            UPDATE supplies
+            SET last_modified = CURRENT_TIMESTAMP, last_modified_by = %s
+            WHERE id = %s
+        """, (current_user_id, location_data['supply_id']))
+        
         conn.commit()
         cur.close()
         conn.close()
@@ -620,6 +642,13 @@ def move_supply_locations(current_user_id=None):
             related_shelf=shelf_from,
             batch_id=batch_id
         )
+        
+        # Update the master supply's last_modified timestamp
+        cur.execute("""
+            UPDATE supplies
+            SET last_modified = CURRENT_TIMESTAMP, last_modified_by = %s
+            WHERE id = %s
+        """, (current_user_id, supply_id))
         
         conn.commit()
         
@@ -773,6 +802,13 @@ def bulk_add_supply_locations(current_user_id=None):
                     changed_by=current_user_id,
                     batch_id=batch_id
                 )
+        
+        # Update the master supply's last_modified timestamp
+        cur.execute("""
+            UPDATE supplies
+            SET last_modified = CURRENT_TIMESTAMP, last_modified_by = %s
+            WHERE id = %s
+        """, (current_user_id, supply_id))
         
         conn.commit()
         
