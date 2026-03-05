@@ -62,7 +62,9 @@ export const InventoryProvider = ({ children }) => {
   // Move Mode state
   const [moveModeItem, setMoveModeItem] = useState(null);
   const [moveModeDragging, setMoveModeDragging] = useState(null); // { boxTitle, shelf, qty, x, y }
+  const [moveModePending, setMoveModePending] = useState([]); // Array of { from, to, shelfFrom, shelfTo, qty, supplyId } for undo
   const moveModeItemRef = useRef(null);
+  const moveModePendingRef = useRef([]); // Ref version for callbacks
   const isDraggingMoveBoxRef = useRef(false); // Synchronous ref for D3 filter
   
   // Keep refs in sync with state
@@ -726,15 +728,54 @@ export const InventoryProvider = ({ children }) => {
   const startMoveMode = useCallback((itemName) => {
     setMoveModeItem(itemName);
     setMoveModeDragging(null);
+    setMoveModePending([]);
+    moveModePendingRef.current = [];
     setSelectedBox(null); // Clear box selection when entering move mode
   }, []);
 
-  const cancelMoveMode = useCallback(() => {
+  const finishMoveMode = useCallback(async () => {
+    // Apply moves - reload master items to update last_modified timestamp
+    await reloadMasterItems();
+    
     setMoveModeItem(null);
     setMoveModeDragging(null);
+    setMoveModePending([]);
+    moveModePendingRef.current = [];
     setCurrentDragOverBox(null);
     isDraggingMoveBoxRef.current = false;
-  }, []);
+  }, [reloadMasterItems]);
+
+  const cancelMoveMode = useCallback(async () => {
+    // Undo all pending moves by reversing them
+    const pending = moveModePendingRef.current;
+    if (pending.length > 0) {
+      try {
+        // Reverse each move (move items back from destination to source)
+        for (const move of pending.reverse()) { // Reverse array to undo in reverse order
+          await api.moveSupplyLocations({
+            from_location: move.to,
+            to_location: move.from,
+            supply_id: move.supplyId,
+            shelf_from: move.shelfTo,
+            shelf_to: move.shelfFrom,
+            amount: move.qty
+          });
+        }
+        // Reload supply locations after undoing
+        await reloadSupplyLocations();
+      } catch (error) {
+        console.error('Error undoing moves:', error);
+        // Still clear move mode even if undo fails
+      }
+    }
+    
+    setMoveModeItem(null);
+    setMoveModeDragging(null);
+    setMoveModePending([]);
+    moveModePendingRef.current = [];
+    setCurrentDragOverBox(null);
+    isDraggingMoveBoxRef.current = false;
+  }, [reloadSupplyLocations]);
   
   const clearMoveModeDragging = useCallback(() => {
     setMoveModeDragging(null);
@@ -781,6 +822,18 @@ export const InventoryProvider = ({ children }) => {
         shelf_to: targetShelf !== undefined ? targetShelf : null,
         amount: qty
       });
+
+      // Track this move for potential undo
+      const moveEntry = {
+        from: sourceBoxTitle,
+        to: targetBoxTitle,
+        shelfFrom: sourceShelf !== undefined ? sourceShelf : null,
+        shelfTo: targetShelf !== undefined ? targetShelf : null,
+        qty: qty,
+        supplyId: supplyId
+      };
+      setMoveModePending(prev => [...prev, moveEntry]);
+      moveModePendingRef.current = [...moveModePendingRef.current, moveEntry];
 
       // Reload supply locations to ensure UI reflects actual server state
       await reloadSupplyLocations();
@@ -1168,6 +1221,7 @@ export const InventoryProvider = ({ children }) => {
     moveModeItem,
     moveModeDragging,
     startMoveMode,
+    finishMoveMode,
     cancelMoveMode,
     clearMoveModeDragging,
     handleMoveModeDragStart,

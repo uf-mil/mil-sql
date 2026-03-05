@@ -14,6 +14,7 @@ const MasterItemPreview = () => {
     startAddMode,
     startMoveMode,
     startSubtractMode,
+    finishMoveMode,
     cancelMoveMode,
     moveModeItem,
     leftPaneWidth,
@@ -219,7 +220,7 @@ const MasterItemPreview = () => {
             <div className="master-preview-actions-buttons">
               {isInMoveMode ? (
                 <>
-                  <button className="master-action-button add-button" onClick={cancelMoveMode} title="Apply moves and exit move mode">
+                  <button className="master-action-button add-button" onClick={finishMoveMode} title="Apply moves and exit move mode">
                     Apply Move
                   </button>
                   <button className="master-action-button cancel-button" onClick={cancelMoveMode} title="Cancel move mode">
