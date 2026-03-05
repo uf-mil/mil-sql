@@ -222,6 +222,9 @@ export const InventoryProvider = ({ children }) => {
         // Don't intercept events from interactive HTML elements inside foreignObject
         // (e.g. buttons, inputs, selects inside BoxInventoryOverlay)
         if (event.target && event.target.closest && event.target.closest('button, input, select, a, textarea')) return false;
+        // Don't intercept scroll (wheel) or mousedown events inside scrollable containers —
+        // otherwise D3 steals the scroll and the native scrollbar drag never fires
+        if (event.target && event.target.closest && event.target.closest('.box-inventory-content')) return false;
         return true;
       })
       .on('start', () => {

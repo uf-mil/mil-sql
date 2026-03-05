@@ -30,9 +30,9 @@ const HistoryModal = ({ isOpen, onClose }) => {
       // Fetch both supply history and location history in parallel
       const [supplyResponse, locationData] = await Promise.all([
         api.getSupplyHistory({
-          action_type: filters.action_type || undefined,
-          limit: filters.limit,
-          offset: filters.offset
+        action_type: filters.action_type || undefined,
+        limit: filters.limit,
+        offset: filters.offset
         }),
         locationHistory.getAll({
           limit: filters.limit,
@@ -107,7 +107,7 @@ const HistoryModal = ({ isOpen, onClose }) => {
           await reloadSupplyLocations();
         }
       } else {
-        await api.undoSupplyHistory(historyId);
+      await api.undoSupplyHistory(historyId);
         await reloadMasterItems();
         if (reloadSupplyLocations) {
           await reloadSupplyLocations();
@@ -160,7 +160,7 @@ const HistoryModal = ({ isOpen, onClose }) => {
             <option value="MOVE">Move</option>
           </select>
           
-            <input
+          <input
             type="text"
             placeholder="Search by item name or location..."
             value={filters.search}
