@@ -1137,6 +1137,11 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   pointer-events: none;
 }
 
+/* Re-enable pointer events inside the foreignObject so buttons/scrolling work */
+.box-inventory-overlay foreignObject {
+  pointer-events: all;
+}
+
 .box-inventory-table {
   background: var(--panel);
   border: 1px solid rgba(255,255,255,.15);

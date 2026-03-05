@@ -31,6 +31,7 @@ export const InventoryProvider = ({ children }) => {
   const [selectedMasterItem, setSelectedMasterItem] = useState(null);
   const [leftPaneWidth, setLeftPaneWidth] = useState(300);
   const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
+  const [masterFilterLocation, setMasterFilterLocation] = useState(null); // Location to filter master table by
   
   // Loading and error states
   const [isLoading, setIsLoading] = useState(true);
@@ -218,6 +219,9 @@ export const InventoryProvider = ({ children }) => {
         if (isDraggingMoveBoxRef.current) return false;
         // Check if the event target is a move box
         if (event.target && event.target.dataset && event.target.dataset.moveBox) return false;
+        // Don't intercept events from interactive HTML elements inside foreignObject
+        // (e.g. buttons, inputs, selects inside BoxInventoryOverlay)
+        if (event.target && event.target.closest && event.target.closest('button, input, select, a, textarea')) return false;
         return true;
       })
       .on('start', () => {

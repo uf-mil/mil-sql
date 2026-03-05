@@ -11,7 +11,9 @@ const MasterInventoryTable = () => {
     getItemLocations,
     setSelectedMasterItem,
     selectedMasterItem,
-    inventoryData
+    inventoryData,
+    masterFilterLocation,
+    setMasterFilterLocation
   } = useInventory();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,6 +33,16 @@ const MasterInventoryTable = () => {
   const availableLocations = useMemo(() => {
     return Array.from(inventoryData.keys()).sort();
   }, [inventoryData]);
+
+  // Sync with context filter location
+  useEffect(() => {
+    if (masterFilterLocation) {
+      setFilterType('location');
+      setSelectedLocations(new Set([masterFilterLocation]));
+      // Clear the context filter after applying it
+      setMasterFilterLocation(null);
+    }
+  }, [masterFilterLocation, setMasterFilterLocation]);
 
   // Fetch categories when filter menu opens and category filter is selected
   useEffect(() => {

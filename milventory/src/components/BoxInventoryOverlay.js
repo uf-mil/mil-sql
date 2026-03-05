@@ -3,7 +3,7 @@ import { useInventory } from '../context/InventoryContext';
 import { escapeHtml } from '../utils';
 
 const BoxInventoryOverlay = () => {
-  const { selectedBox, inventoryData, addModeItem } = useInventory();
+  const { selectedBox, inventoryData, addModeItem, setMasterFilterLocation } = useInventory();
   
   const boxData = selectedBox ? inventoryData.get(selectedBox) : null;
   const inventory = boxData ? boxData.inventory : [];
@@ -47,6 +47,29 @@ const BoxInventoryOverlay = () => {
             <div className="box-inventory-header">
               <h4>{selectedBox}</h4>
             </div>
+            <button
+              onClick={() => setMasterFilterLocation(selectedBox)}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                marginBottom: '0.5rem',
+                fontSize: '0.85rem',
+                background: 'var(--accent)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.opacity = '0.9';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = '1';
+              }}
+            >
+              Master Filter
+            </button>
             <div className="box-inventory-content">
               {shelves.map((shelf, idx) => (
                 shelf.items.length > 0 && (
@@ -95,6 +118,29 @@ const BoxInventoryOverlay = () => {
           <div className="box-inventory-header">
             <h4>{selectedBox}</h4>
           </div>
+          <button
+            onClick={() => setMasterFilterLocation(selectedBox)}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              marginBottom: '0.5rem',
+              fontSize: '0.85rem',
+              background: 'var(--accent)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: '500'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '0.9';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '1';
+            }}
+          >
+            Master Filter
+          </button>
           <div className="box-inventory-content">
             <table className="box-inventory-mini-table">
               <thead>
