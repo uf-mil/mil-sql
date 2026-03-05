@@ -4,7 +4,7 @@ import { useInventory } from '../context/InventoryContext';
 import HistoryTableRow from './HistoryTableRow';
 import './HistoryModal.css';
 
-const HistoryModal = ({ isOpen, onClose }) => {
+const HistoryModal = ({ isOpen, onClose, isAdmin = false }) => {
   const { reloadMasterItems, reloadSupplyLocations } = useInventory();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -193,10 +193,12 @@ const HistoryModal = ({ isOpen, onClose }) => {
                 </tr>
               </thead>
               <tbody>
-                {history.map(entry => (
+                {history.map((entry, index) => (
                   <HistoryTableRow
                     key={`${entry.historyType || 'supply'}-${entry.id}`}
                     entry={entry}
+                    index={index}
+                    isAdmin={isAdmin}
                     onUndo={(id) => handleUndo(id, entry.historyType)}
                   />
                 ))}

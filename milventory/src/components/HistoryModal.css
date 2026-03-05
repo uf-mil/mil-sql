@@ -147,9 +147,14 @@
   width: 200px;
 }
 
-.history-th-changes {
-  /* flex column */
+.history-table .history-item-name {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+  max-width: 200px;
 }
+
 
 .history-th-user {
   width: 200px;

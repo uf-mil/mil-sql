@@ -7,6 +7,7 @@ import AdminActionsPanel from './AdminActionsPanel';
 import AddLocationModal from './AddLocationModal';
 import LocationPreview from './LocationPreview';
 import MoveLocationsModal from './MoveLocationsModal';
+import HistoryModal from './HistoryModal';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ const AdminDashboard = () => {
   const [selectedLocation, setSelectedLocation] = useState(null);
   const edgeDragHandlerRef = useRef(null);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Move mode state
   // 'idle' | 'selecting' | 'moving'
@@ -132,6 +134,27 @@ const AdminDashboard = () => {
         <div className="titlebar">
           Admin Dashboard
           <span style={{ float: 'right', marginRight: '1rem' }}>
+            <button
+              onClick={() => setShowHistoryModal(true)}
+              style={{
+                marginRight: '0.5rem',
+                padding: '0.25rem 0.5rem',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                background: 'rgba(0,0,0,.3)',
+                color: 'var(--text, #e6ebf4)',
+                border: '1px solid rgba(255,255,255,.15)',
+                borderRadius: '4px',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(0,0,0,.3)';
+              }}
+            >
+              View History
+            </button>
             <button
               onClick={() => navigate('/')}
               style={{
@@ -246,6 +269,11 @@ const AdminDashboard = () => {
           onEditEnd={handleEditEnd}
           onPreviewUpdate={setPreviewBox}
           onEdgeDrag={edgeDragHandlerRef}
+        />
+        <HistoryModal 
+          isOpen={showHistoryModal} 
+          onClose={() => setShowHistoryModal(false)} 
+          isAdmin={true}
         />
       </div>
     </>

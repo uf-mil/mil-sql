@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './HistoryTableRow.css';
 
-const HistoryTableRow = ({ entry, onUndo }) => {
+const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const formatDate = (dateString) => {
@@ -130,9 +130,15 @@ const HistoryTableRow = ({ entry, onUndo }) => {
 
   // Determine if entry can be undone
   // Note: Undone entries are deleted entirely from the database, so we don't need to check undone status
-  const canUndo = entry.historyType === 'location' 
+  // For users: only last 5 items can be undone
+  // For admins: all items can be undone
+  const baseCanUndo = entry.historyType === 'location' 
     ? entry.action_type !== 'CASCADED_SUBTRACT'
     : entry.can_undo !== false;
+  
+  const canUndo = isAdmin 
+    ? baseCanUndo  // Admins can undo all items
+    : baseCanUndo && index < 5;  // Users can only undo last 5 items
 
   return (
     <tr className="history-row">
