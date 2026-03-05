@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import MasterTableRow from './MasterTableRow';
 import MasterCreateModal from './MasterCreateModal';
@@ -26,6 +26,15 @@ const MasterInventoryTable = () => {
   const [categoryIdToName, setCategoryIdToName] = useState(new Map());
   const [categoryNameToId, setCategoryNameToId] = useState(new Map());
   const filterButtonRef = React.useRef(null);
+  const columnButtonRef = React.useRef(null);
+  
+  // Column visibility state - default hide category and team, show others
+  const [showQtyColumn, setShowQtyColumn] = useState(true);
+  const [showLocationColumn, setShowLocationColumn] = useState(true);
+  const [showCategoryColumn, setShowCategoryColumn] = useState(false);
+  const [showTeamColumn, setShowTeamColumn] = useState(false);
+  const [showLastModifiedColumn, setShowLastModifiedColumn] = useState(true);
+  const [showColumnMenu, setShowColumnMenu] = useState(false);
   
   // Sorting state - default to lastModified ascending (earliest first)
   const [sortColumn, setSortColumn] = useState('lastModified');
@@ -38,6 +47,30 @@ const MasterInventoryTable = () => {
     return Array.from(inventoryData.keys()).sort();
   }, [inventoryData]);
 
+  // Helper function to get item categories (convert IDs to names)
+  const getItemCategories = useCallback((itemName) => {
+    const itemData = masterInventoryItems.get(itemName);
+    if (!itemData || !itemData.categories || itemData.categories.length === 0) {
+      return [];
+    }
+    return itemData.categories
+      .map(catId => categoryIdToName.get(catId))
+      .filter(name => name !== undefined)
+      .sort(); // Sort alphabetically for consistency
+  }, [masterInventoryItems, categoryIdToName]);
+
+  // Helper function to get item teams (capitalize first letter)
+  const getItemTeams = useCallback((itemName) => {
+    const itemData = masterInventoryItems.get(itemName);
+    if (!itemData || !itemData.teams || itemData.teams.length === 0) {
+      return [];
+    }
+    // Capitalize first letter of each team name
+    return [...itemData.teams]
+      .map(team => team.charAt(0).toUpperCase() + team.slice(1).toLowerCase())
+      .sort(); // Sort alphabetically for consistency
+  }, [masterInventoryItems]);
+
   // Sync with context filter location
   useEffect(() => {
     if (masterFilterLocation) {
@@ -48,9 +81,9 @@ const MasterInventoryTable = () => {
     }
   }, [masterFilterLocation, setMasterFilterLocation]);
 
-  // Fetch categories when filter menu opens and category filter is selected
+  // Fetch categories on mount (needed for both filtering and display)
   useEffect(() => {
-    if (showFilterMenu && filterType === 'category' && availableCategories.length === 0) {
+    if (availableCategories.length === 0) {
       getCategories()
         .then(categories => {
           const categoryList = categories.map(c => typeof c === 'string' ? c : c.name);
@@ -75,7 +108,7 @@ const MasterInventoryTable = () => {
           setCategoryNameToId(new Map());
         });
     }
-  }, [showFilterMenu, filterType, availableCategories.length]);
+  }, [availableCategories.length]);
 
   const filteredItems = useMemo(() => {
     const itemsArray = Array.from(masterInventoryItems.entries());
@@ -171,6 +204,27 @@ const MasterInventoryTable = () => {
     };
   }, [showFilterMenu]);
 
+  // Close column menu when clicking outside
+  useEffect(() => {
+    if (!showColumnMenu) return;
+    
+    const handleClickOutside = (event) => {
+      if (columnButtonRef.current && !columnButtonRef.current.contains(event.target)) {
+        setShowColumnMenu(false);
+      }
+    };
+
+    // Use a small delay to avoid closing immediately when opening
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showColumnMenu]);
+
   const sortedItems = useMemo(() => {
     const items = [...filteredItems];
     
@@ -202,6 +256,34 @@ const MasterInventoryTable = () => {
             comparison = locsA[0].localeCompare(locsB[0]);
           }
           break;
+        case 'category':
+          const catsA = getItemCategories(nameA);
+          const catsB = getItemCategories(nameB);
+          // Sort by first category name, or by count if no categories
+          if (catsA.length === 0 && catsB.length === 0) {
+            comparison = 0;
+          } else if (catsA.length === 0) {
+            comparison = 1; // Items with no categories go to end
+          } else if (catsB.length === 0) {
+            comparison = -1;
+          } else {
+            comparison = catsA[0].localeCompare(catsB[0]);
+          }
+          break;
+        case 'team':
+          const teamsA = getItemTeams(nameA);
+          const teamsB = getItemTeams(nameB);
+          // Sort by first team name, or by count if no teams
+          if (teamsA.length === 0 && teamsB.length === 0) {
+            comparison = 0;
+          } else if (teamsA.length === 0) {
+            comparison = 1; // Items with no teams go to end
+          } else if (teamsB.length === 0) {
+            comparison = -1;
+          } else {
+            comparison = teamsA[0].localeCompare(teamsB[0]);
+          }
+          break;
         case 'lastModified':
           const dateA = itemDataA.lastModified ? new Date(itemDataA.lastModified).getTime() : 0;
           const dateB = itemDataB.lastModified ? new Date(itemDataB.lastModified).getTime() : 0;
@@ -213,7 +295,7 @@ const MasterInventoryTable = () => {
       
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [filteredItems, sortColumn, sortDirection, quantities, getItemLocations]);
+  }, [filteredItems, sortColumn, sortDirection, quantities, getItemLocations, getItemCategories, getItemTeams]);
 
   const handleRowClick = (itemName) => {
     setSelectedMasterItem(itemName);
@@ -233,6 +315,31 @@ const MasterInventoryTable = () => {
       setSortDirection('asc');
     }
   };
+
+  const handleShowAllColumns = () => {
+    setShowQtyColumn(true);
+    setShowLocationColumn(true);
+    setShowCategoryColumn(true);
+    setShowTeamColumn(true);
+    setShowLastModifiedColumn(true);
+  };
+
+  const handleHideAllColumns = () => {
+    setShowQtyColumn(false);
+    setShowLocationColumn(false);
+    setShowCategoryColumn(false);
+    setShowTeamColumn(false);
+    setShowLastModifiedColumn(false);
+  };
+
+  // Count visible columns (excluding Name which is always visible)
+  const visibleColumnCount = [
+    showQtyColumn,
+    showLocationColumn,
+    showCategoryColumn,
+    showTeamColumn,
+    showLastModifiedColumn
+  ].filter(Boolean).length;
 
   const SortIcon = ({ column }) => {
     if (sortColumn !== column) {
@@ -291,16 +398,17 @@ const MasterInventoryTable = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="master-search-input"
           />
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', position: 'relative' }} ref={filterButtonRef}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowFilterMenu(!showFilterMenu);
-              }}
-              style={{
-                padding: '0.4rem',
-                fontSize: '1rem',
-                background: (filterType === 'location' && selectedLocations.size > 0) || (filterType === 'category' && selectedCategories.size > 0) ? 'var(--accent)' : 'transparent',
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+            <div style={{ position: 'relative' }} ref={filterButtonRef}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowFilterMenu(!showFilterMenu);
+                }}
+                style={{
+                  padding: '0.4rem',
+                  fontSize: '1rem',
+                  background: (filterType === 'location' && selectedLocations.size > 0) || (filterType === 'category' && selectedCategories.size > 0) ? 'var(--accent)' : 'transparent',
                 border: '1px solid var(--stroke)',
                 color: (filterType === 'location' && selectedLocations.size > 0) || (filterType === 'category' && selectedCategories.size > 0) ? 'white' : 'var(--text)',
                 borderRadius: '4px',
@@ -628,6 +736,320 @@ const MasterInventoryTable = () => {
                 </div>
               </div>
             )}
+            </div>
+            {/* Column Visibility Button */}
+            <div style={{ position: 'relative' }} ref={columnButtonRef}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowColumnMenu(!showColumnMenu);
+                }}
+                style={{
+                  padding: '0.4rem',
+                  fontSize: '1rem',
+                  background: visibleColumnCount < 5 ? 'var(--accent)' : 'transparent',
+                  border: '1px solid var(--stroke)',
+                  color: visibleColumnCount < 5 ? 'white' : 'var(--text)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  position: 'relative',
+                  transition: 'all 0.2s'
+                }}
+                title="Show/hide columns"
+                onMouseEnter={(e) => {
+                  if (visibleColumnCount === 5) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (visibleColumnCount === 5) {
+                    e.currentTarget.style.background = 'transparent';
+                  }
+                }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M2 2h12M2 6h12M2 10h12M2 14h12" />
+                </svg>
+                {visibleColumnCount < 5 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    background: 'var(--accent)',
+                    color: 'white',
+                    borderRadius: '50%',
+                    width: '18px',
+                    height: '18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.7rem',
+                    fontWeight: 'bold',
+                    border: '2px solid var(--panel, #0e1116)'
+                  }}>
+                    {5 - visibleColumnCount}
+                  </span>
+                )}
+              </button>
+              
+              {/* Column Visibility Dropdown Menu */}
+              {showColumnMenu && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: '0.5rem',
+                    background: '#0a0d12',
+                    border: '1px solid var(--stroke)',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+                    zIndex: 1000,
+                    minWidth: '200px',
+                    padding: '0.75rem',
+                    animation: 'slideDown 0.15s ease-out',
+                    transformOrigin: 'top'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ marginBottom: '0.75rem', fontSize: '0.9rem', fontWeight: '600', color: 'var(--text)' }}>
+                    Show Columns
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <button
+                      onClick={handleShowAllColumns}
+                      style={{
+                        flex: 1,
+                        padding: '0.4rem 0.6rem',
+                        fontSize: '0.75rem',
+                        background: 'rgba(100, 150, 255, 0.2)',
+                        border: '1px solid var(--stroke)',
+                        color: 'var(--text)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(100, 150, 255, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(100, 150, 255, 0.2)';
+                      }}
+                    >
+                      Show All
+                    </button>
+                    <button
+                      onClick={handleHideAllColumns}
+                      style={{
+                        flex: 1,
+                        padding: '0.4rem 0.6rem',
+                        fontSize: '0.75rem',
+                        background: 'transparent',
+                        border: '1px solid var(--stroke)',
+                        color: 'var(--text)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      Hide All
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        background: showQtyColumn ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!showQtyColumn) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!showQtyColumn) {
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showQtyColumn}
+                        onChange={() => setShowQtyColumn(!showQtyColumn)}
+                        style={{
+                          marginRight: '0.75rem',
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>Qty</span>
+                    </label>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        background: showLocationColumn ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!showLocationColumn) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!showLocationColumn) {
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showLocationColumn}
+                        onChange={() => setShowLocationColumn(!showLocationColumn)}
+                        style={{
+                          marginRight: '0.75rem',
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>Location</span>
+                    </label>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        background: showCategoryColumn ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!showCategoryColumn) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!showCategoryColumn) {
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showCategoryColumn}
+                        onChange={() => setShowCategoryColumn(!showCategoryColumn)}
+                        style={{
+                          marginRight: '0.75rem',
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>Category</span>
+                    </label>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        background: showTeamColumn ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!showTeamColumn) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!showTeamColumn) {
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showTeamColumn}
+                        onChange={() => setShowTeamColumn(!showTeamColumn)}
+                        style={{
+                          marginRight: '0.75rem',
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>Team</span>
+                    </label>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        background: showLastModifiedColumn ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!showLastModifiedColumn) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!showLastModifiedColumn) {
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showLastModifiedColumn}
+                        onChange={() => setShowLastModifiedColumn(!showLastModifiedColumn)}
+                        style={{
+                          marginRight: '0.75rem',
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>Last Modified</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="master-table-content">
@@ -650,36 +1072,66 @@ const MasterInventoryTable = () => {
                       <SortIcon column="name" />
                     </span>
                   </th>
-                  <th 
-                    className="qty-cell"
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('qty')}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                      Qty
-                      <SortIcon column="qty" />
-                    </span>
-                  </th>
-                  <th 
-                    className="location-cell"
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('location')}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                      Location
-                      <SortIcon column="location" />
-                    </span>
-                  </th>
-                  <th 
-                    className="modified-cell"
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={() => handleSort('lastModified')}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                      Last Modified
-                      <SortIcon column="lastModified" />
-                    </span>
-                  </th>
+                  {showQtyColumn && (
+                    <th 
+                      className="qty-cell"
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort('qty')}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        Qty
+                        <SortIcon column="qty" />
+                      </span>
+                    </th>
+                  )}
+                  {showLocationColumn && (
+                    <th 
+                      className="location-cell"
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort('location')}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        Location
+                        <SortIcon column="location" />
+                      </span>
+                    </th>
+                  )}
+                  {showCategoryColumn && (
+                    <th 
+                      className="category-cell"
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort('category')}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        Category
+                        <SortIcon column="category" />
+                      </span>
+                    </th>
+                  )}
+                  {showTeamColumn && (
+                    <th 
+                      className="team-cell"
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort('team')}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        Team
+                        <SortIcon column="team" />
+                      </span>
+                    </th>
+                  )}
+                  {showLastModifiedColumn && (
+                    <th 
+                      className="modified-cell"
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort('lastModified')}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        Last Modified
+                        <SortIcon column="lastModified" />
+                      </span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -690,6 +1142,13 @@ const MasterInventoryTable = () => {
                     itemData={itemData}
                     quantity={quantities.get(itemName) || 0}
                     locations={getItemLocations(itemName)}
+                    categories={getItemCategories(itemName)}
+                    teams={getItemTeams(itemName)}
+                    showQty={showQtyColumn}
+                    showLocation={showLocationColumn}
+                    showCategory={showCategoryColumn}
+                    showTeam={showTeamColumn}
+                    showLastModified={showLastModifiedColumn}
                     isSelected={selectedMasterItem === itemName}
                     onClick={() => handleRowClick(itemName)}
                   />
