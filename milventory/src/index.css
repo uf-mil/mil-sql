@@ -16,6 +16,17 @@
   --files: #b72a2a;     /* red file cabinets */
 }
 
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 html, body { height: 100%; margin: 0; }
 body {
   background: radial-gradient(1200px 800px at 50% 0%, #0d0f14, #07080c);
