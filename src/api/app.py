@@ -46,10 +46,26 @@ app.register_blueprint(teams_bp, url_prefix='/api')
 
 def initialize_schema():
     """Initialize database schema if tables are missing."""
+    max_retries = 5
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print("🔍 Checking database schema...")
+            conn = get_db()
+            cur = conn.cursor()
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"⚠ Database connection attempt {attempt + 1}/{max_retries} failed: {e}")
+                print(f"  Retrying in {retry_delay} seconds...")
+                import time
+                time.sleep(retry_delay)
+            else:
+                print(f"❌ Failed to connect to database after {max_retries} attempts: {e}")
+                raise
+    
     try:
-        print("🔍 Checking database schema...")
-        conn = get_db()
-        cur = conn.cursor()
         
         # Get SQL base path
         SQL_BASE_PATH = get_sql_base_path(__file__)
@@ -107,12 +123,13 @@ def initialize_schema():
         
         cur.close()
         conn.close()
-        
+    
     except Exception as e:
         print(f"⚠ Schema initialization warning: {e}")
         import traceback
         traceback.print_exc()
         print("  API will continue, but some endpoints may not work until tables are created")
+        # Don't raise - allow the API to start even if schema init fails
 
 
 # Initialize schema on startup

@@ -24,7 +24,7 @@ const HistoryTableRow = ({ entry, onUndo }) => {
         return 'history-badge-delete';
       case 'MOVE':
         return 'history-badge-update';
-      case 'SUPPLY_DELETE_SNAPSHOT':
+      case 'CASCADED_SUBTRACT':
         return 'history-badge-default';
       default:
         return 'history-badge-default';
@@ -131,7 +131,7 @@ const HistoryTableRow = ({ entry, onUndo }) => {
   // Determine if entry can be undone
   // Note: Undone entries are deleted entirely from the database, so we don't need to check undone status
   const canUndo = entry.historyType === 'location' 
-    ? entry.action_type !== 'SUPPLY_DELETE_SNAPSHOT'
+    ? entry.action_type !== 'CASCADED_SUBTRACT'
     : entry.can_undo !== false;
 
   return (
@@ -157,7 +157,7 @@ const HistoryTableRow = ({ entry, onUndo }) => {
         </span>
       </td>
       <td className="history-actions">
-        {entry.action_type === 'SUPPLY_DELETE_SNAPSHOT' ? (
+        {entry.action_type === 'CASCADED_SUBTRACT' ? (
           <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Use restore</span>
         ) : showConfirm ? (
           <div className="history-undo-confirm">

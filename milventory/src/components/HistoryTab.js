@@ -61,8 +61,8 @@ const HistoryTab = () => {
         return 'Updated';
       case 'MOVE':
         return 'Moved';
-      case 'SUPPLY_DELETE_SNAPSHOT':
-        return 'Snapshot';
+      case 'CASCADED_SUBTRACT':
+        return 'Cascaded Subtract';
       default:
         return entry.action_type;
     }
@@ -164,7 +164,7 @@ const HistoryTab = () => {
                   <td>{formatAmount(entry)}</td>
                   <td>{entry.changed_by_name || entry.changed_by || 'Unknown'}</td>
                   <td>
-                    {entry.action_type === 'SUPPLY_DELETE_SNAPSHOT' ? (
+                    {entry.action_type === 'CASCADED_SUBTRACT' ? (
                       <span style={{ fontSize: '0.85rem', color: 'var(--text)', opacity: 0.6 }}>
                         Use restore
                       </span>

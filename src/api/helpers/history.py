@@ -189,7 +189,7 @@ def log_location_history(conn, action_type, supply_id, supply_name,
     
     Args:
         conn: Database connection
-        action_type: 'ADD', 'REMOVE', 'UPDATE', 'MOVE', or 'SUPPLY_DELETE_SNAPSHOT'
+        action_type: 'ADD', 'REMOVE', 'UPDATE', 'MOVE', or 'CASCADED_SUBTRACT'
         supply_id: Supply ID (can be None)
         supply_name: Supply name (denormalized, required)
         location_name: Location name
@@ -227,7 +227,7 @@ def log_location_history(conn, action_type, supply_id, supply_name,
 def snapshot_supply_locations_before_delete(conn, supply_id, supply_name, changed_by):
     """
     Called BEFORE deleting a supply. Reads all current supplies_location rows
-    for this supply and writes SUPPLY_DELETE_SNAPSHOT history entries.
+    for this supply and writes CASCADED_SUBTRACT history entries.
     These are later used to restore the supply's full location state.
     batch_id ties all snapshots from the same delete together.
     
@@ -252,7 +252,7 @@ def snapshot_supply_locations_before_delete(conn, supply_id, supply_name, change
         for row in rows:
             log_location_history(
                 conn,
-                action_type='SUPPLY_DELETE_SNAPSHOT',
+                action_type='CASCADED_SUBTRACT',
                 supply_id=supply_id,
                 supply_name=supply_name,
                 location_name=row['location_name'],

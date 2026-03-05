@@ -1,4 +1,4 @@
--- History of all location operations (ADD, REMOVE, UPDATE, MOVE, SUPPLY_DELETE_SNAPSHOT)
+-- History of all location operations (ADD, REMOVE, UPDATE, MOVE, CASCADED_SUBTRACT)
 CREATE TABLE supplies_location_history (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
 
@@ -12,16 +12,16 @@ CREATE TABLE supplies_location_history (
     shelf           INT DEFAULT NULL,
 
     -- Action
-    action_type     ENUM('ADD', 'REMOVE', 'UPDATE', 'MOVE', 'SUPPLY_DELETE_SNAPSHOT') NOT NULL,
+    action_type     ENUM('ADD', 'REMOVE', 'UPDATE', 'MOVE', 'CASCADED_SUBTRACT') NOT NULL,
     --   ADD    = units placed into this location
     --   REMOVE = units removed from this location
     --   UPDATE = amount changed directly (e.g. edit qty field)
     --   MOVE   = units moved between locations (generates two rows: one REMOVE, one ADD)
-    --   SUPPLY_DELETE_SNAPSHOT = snapshot of location state at moment supply was deleted
+    --   CASCADED_SUBTRACT = items subtracted from location when master item is deleted (CASCADE)
 
     -- Amounts (NULL means "not applicable" for that side)
     old_amount      INT DEFAULT NULL,   -- amount before change (NULL for ADD)
-    new_amount      INT DEFAULT NULL,   -- amount after change  (NULL for REMOVE/SNAPSHOT)
+    new_amount      INT DEFAULT NULL,   -- amount after change  (NULL for REMOVE/CASCADED_SUBTRACT)
 
     -- For MOVE actions: where the units came from / went to
     related_location  VARCHAR(100) DEFAULT NULL,  -- the other location in a MOVE

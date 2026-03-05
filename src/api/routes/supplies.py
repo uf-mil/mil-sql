@@ -1021,7 +1021,7 @@ def undo_supply_history(history_id, current_user_id=None):
                         VALUES (%s, %s)
                     """, (restored_supply_id, cat_change['category_id']))
             
-            # Restore locations from SUPPLY_DELETE_SNAPSHOT entries
+            # Restore locations from CASCADED_SUBTRACT entries
             # Find the most recent snapshot batch for this supply_name
             # The snapshot was created right before the DELETE, so match by supply_name and timestamp
             # NOTE: No need to check undone=FALSE since undone entries are deleted entirely
@@ -1029,7 +1029,7 @@ def undo_supply_history(history_id, current_user_id=None):
                 SELECT batch_id, MAX(changed_at) as max_changed_at
                 FROM supplies_location_history
                 WHERE supply_name = %s
-                  AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
+                  AND action_type = 'CASCADED_SUBTRACT'
                   AND changed_at >= DATE_SUB(%s, INTERVAL 10 SECOND)
                   AND changed_at <= DATE_ADD(%s, INTERVAL 10 SECOND)
                 GROUP BY batch_id
@@ -1046,7 +1046,7 @@ def undo_supply_history(history_id, current_user_id=None):
                     SELECT location_name, shelf, old_amount
                     FROM supplies_location_history
                     WHERE batch_id = %s
-                      AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
+                      AND action_type = 'CASCADED_SUBTRACT'
                 """, (batch_id,))
                 
                 snapshot_entries = cur.fetchall()
@@ -1068,7 +1068,7 @@ def undo_supply_history(history_id, current_user_id=None):
                 cur.execute("""
                     DELETE FROM supplies_location_history
                     WHERE batch_id = %s
-                      AND action_type = 'SUPPLY_DELETE_SNAPSHOT'
+                      AND action_type = 'CASCADED_SUBTRACT'
                 """, (batch_id,))
         
         # Delete the history entry and all related data (CASCADE will handle teams/categories)

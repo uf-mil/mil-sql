@@ -158,13 +158,13 @@ def undo_location_history(history_id, current_user_id=None):
         
         action_type = history['action_type']
         
-        # Handle SUPPLY_DELETE_SNAPSHOT separately (cannot undo individual snapshots)
-        if action_type == 'SUPPLY_DELETE_SNAPSHOT':
+        # Handle CASCADED_SUBTRACT separately (cannot undo individual cascaded subtractions)
+        if action_type == 'CASCADED_SUBTRACT':
             cur.close()
             conn.close()
             return jsonify({
-                'error': 'Cannot undo individual snapshot entries. Use batch restore endpoint instead.',
-                'error_type': 'SNAPSHOT_ENTRY'
+                'error': 'Cannot undo individual cascaded subtract entries. Use batch restore endpoint instead.',
+                'error_type': 'CASCADED_SUBTRACT_ENTRY'
             }), 400
         
         cur = conn.cursor()  # Switch to regular cursor for updates
