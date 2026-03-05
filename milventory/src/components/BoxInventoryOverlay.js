@@ -59,7 +59,8 @@ const BoxInventoryOverlay = () => {
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                fontWeight: '500'
+                fontWeight: '500',
+                flexShrink: 0
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.opacity = '0.9';
@@ -130,7 +131,8 @@ const BoxInventoryOverlay = () => {
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',
-              fontWeight: '500'
+              fontWeight: '500',
+              flexShrink: 0
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.opacity = '0.9';
