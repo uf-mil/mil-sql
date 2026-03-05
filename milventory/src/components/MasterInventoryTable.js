@@ -26,6 +26,10 @@ const MasterInventoryTable = () => {
   const [categoryIdToName, setCategoryIdToName] = useState(new Map());
   const [categoryNameToId, setCategoryNameToId] = useState(new Map());
   const filterButtonRef = React.useRef(null);
+  
+  // Sorting state - default to lastModified ascending (earliest first)
+  const [sortColumn, setSortColumn] = useState('lastModified');
+  const [sortDirection, setSortDirection] = useState('asc');
 
   const quantities = computeMasterQuantities();
 
@@ -168,8 +172,48 @@ const MasterInventoryTable = () => {
   }, [showFilterMenu]);
 
   const sortedItems = useMemo(() => {
-    return [...filteredItems].sort(([nameA], [nameB]) => nameA.localeCompare(nameB));
-  }, [filteredItems]);
+    const items = [...filteredItems];
+    
+    if (items.length === 0) return items;
+    
+    return items.sort(([nameA, itemDataA], [nameB, itemDataB]) => {
+      let comparison = 0;
+      
+      switch (sortColumn) {
+        case 'name':
+          comparison = nameA.localeCompare(nameB);
+          break;
+        case 'qty':
+          const qtyA = quantities.get(nameA) || 0;
+          const qtyB = quantities.get(nameB) || 0;
+          comparison = qtyA - qtyB;
+          break;
+        case 'location':
+          const locsA = getItemLocations(nameA);
+          const locsB = getItemLocations(nameB);
+          // Sort by first location name, or by count if no locations
+          if (locsA.length === 0 && locsB.length === 0) {
+            comparison = 0;
+          } else if (locsA.length === 0) {
+            comparison = 1; // Items with no locations go to end
+          } else if (locsB.length === 0) {
+            comparison = -1;
+          } else {
+            comparison = locsA[0].localeCompare(locsB[0]);
+          }
+          break;
+        case 'lastModified':
+          const dateA = itemDataA.lastModified ? new Date(itemDataA.lastModified).getTime() : 0;
+          const dateB = itemDataB.lastModified ? new Date(itemDataB.lastModified).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
+        default:
+          comparison = 0;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredItems, sortColumn, sortDirection, quantities, getItemLocations]);
 
   const handleRowClick = (itemName) => {
     setSelectedMasterItem(itemName);
@@ -177,6 +221,60 @@ const MasterInventoryTable = () => {
 
   const handleAddItem = () => {
     setShowAddModal(true);
+  };
+
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      // Toggle direction if clicking the same column
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new column and default to ascending
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const SortIcon = ({ column }) => {
+    if (sortColumn !== column) {
+      // Show neutral sort icon when not active
+      return (
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ opacity: 0.3, marginLeft: '0.25rem' }}
+        >
+          <path d="M3 4.5L6 1.5L9 4.5" />
+          <path d="M3 7.5L6 10.5L9 7.5" />
+        </svg>
+      );
+    }
+    
+    // Show active sort icon
+    return (
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 12 12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ marginLeft: '0.25rem' }}
+      >
+        {sortDirection === 'asc' ? (
+          <path d="M3 4.5L6 1.5L9 4.5" />
+        ) : (
+          <path d="M3 7.5L6 10.5L9 7.5" />
+        )}
+      </svg>
+    );
   };
 
   return (
@@ -543,10 +641,45 @@ const MasterInventoryTable = () => {
             <table className="master-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th className="qty-cell">Qty</th>
-                  <th className="location-cell">Location</th>
-                  <th className="modified-cell">Last Modified</th>
+                  <th 
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('name')}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      Name
+                      <SortIcon column="name" />
+                    </span>
+                  </th>
+                  <th 
+                    className="qty-cell"
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('qty')}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      Qty
+                      <SortIcon column="qty" />
+                    </span>
+                  </th>
+                  <th 
+                    className="location-cell"
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('location')}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      Location
+                      <SortIcon column="location" />
+                    </span>
+                  </th>
+                  <th 
+                    className="modified-cell"
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('lastModified')}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      Last Modified
+                      <SortIcon column="lastModified" />
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
