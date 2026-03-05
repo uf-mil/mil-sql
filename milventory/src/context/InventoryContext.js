@@ -1129,6 +1129,9 @@ export const InventoryProvider = ({ children }) => {
     clearSelectedMasterItem,
     reloadMasterItems,
     reloadSupplyLocations,
+    // Master Table Filter
+    masterFilterLocation,
+    setMasterFilterLocation,
     // Add Mode
     addModeItem,
     addModeQtyPerClick,
