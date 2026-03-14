@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCategories, admin } from '../api';
+import { getCategories, admin } from '../../api';
 
 const CategoriesTable = () => {
   const [categories, setCategories] = useState([]);

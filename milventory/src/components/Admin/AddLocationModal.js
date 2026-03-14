@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { admin } from '../api';
+import { admin } from '../../api';
 
 const LOCATION_TYPES = [
   { value: 'drawer', label: 'Drawer' },

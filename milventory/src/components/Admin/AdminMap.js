@@ -1,7 +1,7 @@
 import React, { forwardRef, useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
-import { useInventory } from '../context/InventoryContext';
-import { admin } from '../api';
+import { useInventory } from '../../context/InventoryContext';
+import { admin } from '../../api';
 
 const AdminMap = forwardRef((props, ref) => {
   const { 

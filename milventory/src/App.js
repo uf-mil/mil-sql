@@ -11,7 +11,7 @@ import Login from './components/Login';
 import ErrorToast from './components/ErrorToast';
 import ConflictErrorModal from './components/ConflictErrorModal';
 import HistoryModal from './components/HistoryModal';
-import AdminDashboard from './components/AdminDashboard';
+import AdminDashboard from './components/Admin/AdminDashboard';
 import { auth } from './api';
 
 function App() {

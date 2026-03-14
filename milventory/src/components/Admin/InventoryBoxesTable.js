@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { admin } from '../api';
+import { admin } from '../../api';
 
 const InventoryBoxesTable = ({ selectedLocation, onLocationSelect }) => {
   const [locations, setLocations] = useState([]);

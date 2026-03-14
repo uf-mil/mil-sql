@@ -1,13 +1,13 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useInventory } from '../context/InventoryContext';
+import { useInventory } from '../../context/InventoryContext';
 import AdminMap from './AdminMap';
 import AdminLeftPanel from './AdminLeftPanel';
 import AdminActionsPanel from './AdminActionsPanel';
 import AddLocationModal from './AddLocationModal';
 import LocationPreview from './LocationPreview';
 import MoveLocationsModal from './MoveLocationsModal';
-import HistoryModal from './HistoryModal';
+import HistoryModal from '../HistoryModal';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();

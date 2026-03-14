@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { admin } from '../api';
+import { admin } from '../../api';
 
 const MoveLocationsModal = ({ 
   moveMode, 

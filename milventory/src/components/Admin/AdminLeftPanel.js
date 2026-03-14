@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useInventory } from '../context/InventoryContext';
+import { useInventory } from '../../context/InventoryContext';
 import InventoryBoxesTable from './InventoryBoxesTable';
 import CategoriesTable from './CategoriesTable';
 
