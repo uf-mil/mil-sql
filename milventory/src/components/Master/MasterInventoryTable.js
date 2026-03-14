@@ -399,7 +399,7 @@ const MasterInventoryTable = () => {
             className="master-search-input"
           />
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
-            <div style={{ position: 'relative' }} ref={filterButtonRef}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem' }} ref={filterButtonRef}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
