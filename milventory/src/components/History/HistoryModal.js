@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, locationHistory } from '../../api';
 import { useInventory } from '../../context/InventoryContext';
 import HistoryTableRow from './HistoryTableRow';
@@ -40,11 +40,13 @@ const HistoryModal = ({ isOpen, onClose, isAdmin = false }) => {
         })
       ]);
       
-      // Mark supply history entries
-      const supplyHistory = supplyResponse.history.map(entry => ({
-        ...entry,
-        historyType: 'supply'
-      }));
+      // Mark supply history entries (guard against missing or non-array response)
+      const supplyHistory = Array.isArray(supplyResponse?.history)
+        ? supplyResponse.history.map(entry => ({
+          ...entry,
+          historyType: 'supply'
+        }))
+        : [];
       
       // Mark location history entries
       const locHistory = Array.isArray(locationData) ? locationData.map(entry => ({
@@ -120,11 +122,11 @@ const HistoryModal = ({ isOpen, onClose, isAdmin = false }) => {
     }
   };
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {
       onClose();
     }
-  };
+  }, [onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -133,7 +135,7 @@ const HistoryModal = ({ isOpen, onClose, isAdmin = false }) => {
         document.removeEventListener('keydown', handleKeyDown);
       };
     }
-  }, [isOpen]);
+  }, [isOpen, handleKeyDown]);
 
   if (!isOpen) return null;
 
