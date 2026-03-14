@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useInventory } from '../context/InventoryContext';
+import { useInventory } from '../../context/InventoryContext';
 import MasterTableRow from './MasterTableRow';
 import MasterCreateModal from './MasterCreateModal';
-import { getCategories } from '../api';
+import { getCategories } from '../../api';
 
 const MasterInventoryTable = () => {
   const {

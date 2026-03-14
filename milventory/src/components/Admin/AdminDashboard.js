@@ -7,7 +7,7 @@ import AdminActionsPanel from './AdminActionsPanel';
 import AddLocationModal from './AddLocationModal';
 import LocationPreview from './LocationPreview';
 import MoveLocationsModal from './MoveLocationsModal';
-import HistoryModal from '../HistoryModal';
+import HistoryModal from '../History/HistoryModal';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();

@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { InventoryProvider, useInventory } from './context/InventoryContext';
-import MapComponent from './components/Map';
-import LeftPanel from './components/LeftPanel';
-import Tooltip from './components/Tooltip';
-import AddModal from './components/AddModal';
-import EditModal from './components/EditForm';
-import AddModePreview from './components/AddModePreview';
-import Login from './components/Login';
-import ErrorToast from './components/ErrorToast';
-import ConflictErrorModal from './components/ConflictErrorModal';
-import HistoryModal from './components/HistoryModal';
+import MapComponent from './components/Map/Map';
+import LeftPanel from './components/Layout/LeftPanel';
+import Tooltip from './components/Map/Tooltip';
+import AddModal from './components/Box/AddModal';
+import EditModal from './components/Box/EditForm';
+import AddModePreview from './components/Map/AddModePreview';
+import Login from './components/Auth/Login';
+import ErrorToast from './components/Common/ErrorToast';
+import ConflictErrorModal from './components/Common/ConflictErrorModal';
+import HistoryModal from './components/History/HistoryModal';
 import AdminDashboard from './components/Admin/AdminDashboard';
 import { auth } from './api';
 

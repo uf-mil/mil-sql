@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useInventory } from '../context/InventoryContext';
-import MasterInventoryTable from './MasterInventoryTable';
+import { useInventory } from '../../context/InventoryContext';
+import MasterInventoryTable from '../Master/MasterInventoryTable';
 
 const LeftPanel = () => {
   const { leftPaneWidth, setLeftPaneWidth, leftPaneCollapsed, setLeftPaneCollapsed } = useInventory();

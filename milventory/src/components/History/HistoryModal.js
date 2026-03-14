@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { api, locationHistory } from '../api';
-import { useInventory } from '../context/InventoryContext';
+import { api, locationHistory } from '../../api';
+import { useInventory } from '../../context/InventoryContext';
 import HistoryTableRow from './HistoryTableRow';
 import './HistoryModal.css';
 

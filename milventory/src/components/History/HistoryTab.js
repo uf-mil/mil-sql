@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { locationHistory } from '../api';
-import { useInventory } from '../context/InventoryContext';
+import { locationHistory } from '../../api';
+import { useInventory } from '../../context/InventoryContext';
 
 const HistoryTab = () => {
   const [history, setHistory] = useState([]);

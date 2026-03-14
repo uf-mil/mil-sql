@@ -1,5 +1,5 @@
 import React from 'react';
-import { useInventory } from '../context/InventoryContext';
+import { useInventory } from '../../context/InventoryContext';
 
 const Tooltip = () => {
   const { tooltip, wrapRef } = useInventory();

@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
-import { useInventory } from '../context/InventoryContext';
-import MasterItemPreview from './MasterItemPreview';
+import { useInventory } from '../../context/InventoryContext';
+import MasterItemPreview from '../Master/MasterItemPreview';
 import ArrowConnections from './ArrowConnections';
 import BoxInventoryOverlay from './BoxInventoryOverlay';
 import AddModeArrow from './AddModeArrow';

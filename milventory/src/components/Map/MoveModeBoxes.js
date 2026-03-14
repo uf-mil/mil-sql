@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { useInventory } from '../context/InventoryContext';
+import { useInventory } from '../../context/InventoryContext';
 
 const SHELF_NAMES = [
   'Shelf 6 (Top)',

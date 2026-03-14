@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useInventory } from '../context/InventoryContext';
-import { getCategories, getTeams } from '../api';
+import { useInventory } from '../../context/InventoryContext';
+import { getCategories, getTeams } from '../../api';
 
 // Levenshtein distance for fuzzy search
 const levenshteinDistance = (str1, str2) => {

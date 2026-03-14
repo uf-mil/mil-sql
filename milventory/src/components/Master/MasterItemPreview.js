@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { useInventory } from '../context/InventoryContext';
+import { useInventory } from '../../context/InventoryContext';
 import MasterEditModal from './MasterEditModal';
-import { getCategories } from '../api';
+import { getCategories } from '../../api';
 
 const MasterItemPreview = () => {
   const {

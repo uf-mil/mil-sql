@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { useInventory } from '../context/InventoryContext';
-import { escapeHtml } from '../utils';
+import { useInventory } from '../../context/InventoryContext';
+import { escapeHtml } from '../../utils';
 
 const BoxInventoryOverlay = () => {
   const { selectedBox, inventoryData, addModeItem, setMasterFilterLocation } = useInventory();
