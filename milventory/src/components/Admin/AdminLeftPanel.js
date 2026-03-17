@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import InventoryBoxesTable from './InventoryBoxesTable';
 import CategoriesTable from './CategoriesTable';
+import CustomFieldsTable from './CustomFieldsTable';
 
 const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
   const { leftPaneWidth, setLeftPaneWidth, leftPaneCollapsed, setLeftPaneCollapsed } = useInventory();
   const [isResizing, setIsResizing] = useState(false);
-  const [activeTab, setActiveTab] = useState('boxes'); // 'boxes' or 'categories'
+  const [activeTab, setActiveTab] = useState('boxes'); // 'boxes' | 'categories' | 'customfields'
   const leftPaneRef = React.useRef(null);
   const resizeRef = React.useRef(null);
 
@@ -88,6 +89,12 @@ const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
             >
               Categories
             </button>
+            <button
+              className={`admin-subtab ${activeTab === 'customfields' ? 'active' : ''}`}
+              onClick={() => setActiveTab('customfields')}
+            >
+              Custom Fields
+            </button>
           </div>
 
           {/* Tab content */}
@@ -99,6 +106,7 @@ const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
               />
             )}
             {activeTab === 'categories' && <CategoriesTable />}
+            {activeTab === 'customfields' && <CustomFieldsTable />}
           </div>
         </div>
       </div>

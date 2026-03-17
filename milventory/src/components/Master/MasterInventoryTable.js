@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useInventory } from '../../context/InventoryContext';
 import MasterTableRow from './MasterTableRow';
 import MasterCreateModal from './MasterCreateModal';
-import { getCategories } from '../../api';
+import { getCategories, api } from '../../api';
 
 const MasterInventoryTable = () => {
   const {
@@ -35,6 +35,8 @@ const MasterInventoryTable = () => {
   const [showTeamColumn, setShowTeamColumn] = useState(false);
   const [showLastModifiedColumn, setShowLastModifiedColumn] = useState(true);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const [customFieldDefinitions, setCustomFieldDefinitions] = useState([]);
+  const [visibleCustomColumns, setVisibleCustomColumns] = useState(new Set());
   
   // Sorting state - default to lastModified ascending (earliest first)
   const [sortColumn, setSortColumn] = useState('lastModified');
@@ -109,6 +111,22 @@ const MasterInventoryTable = () => {
         });
     }
   }, [availableCategories.length]);
+
+  // Fetch custom field definitions for column options
+  useEffect(() => {
+    api.getCustomFieldDefinitions()
+      .then(setCustomFieldDefinitions)
+      .catch(() => setCustomFieldDefinitions([]));
+  }, []);
+
+  const toggleCustomColumn = useCallback((fieldName) => {
+    setVisibleCustomColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(fieldName)) next.delete(fieldName);
+      else next.add(fieldName);
+      return next;
+    });
+  }, []);
 
   const filteredItems = useMemo(() => {
     const itemsArray = Array.from(masterInventoryItems.entries());
@@ -289,13 +307,34 @@ const MasterInventoryTable = () => {
           const dateB = itemDataB.lastModified ? new Date(itemDataB.lastModified).getTime() : 0;
           comparison = dateA - dateB;
           break;
-        default:
-          comparison = 0;
+        default: {
+          const customDef = customFieldDefinitions.find(d => d.name === sortColumn);
+          if (customDef) {
+            const valA = itemDataA.custom_fields?.[sortColumn];
+            const valB = itemDataB.custom_fields?.[sortColumn];
+            if (customDef.type === 'number') {
+              const nA = valA !== undefined && valA !== null && valA !== '' ? Number(valA) : NaN;
+              const nB = valB !== undefined && valB !== null && valB !== '' ? Number(valB) : NaN;
+              comparison = (Number.isNaN(nA) ? 1 : 0) - (Number.isNaN(nB) ? 1 : 0) || nA - nB;
+            } else if (customDef.type === 'date') {
+              const tA = valA ? new Date(valA).getTime() : 0;
+              const tB = valB ? new Date(valB).getTime() : 0;
+              comparison = tA - tB;
+            } else {
+              const sA = valA != null ? String(valA) : '';
+              const sB = valB != null ? String(valB) : '';
+              comparison = sA.localeCompare(sB);
+            }
+          } else {
+            comparison = 0;
+          }
+          break;
+        }
       }
       
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [filteredItems, sortColumn, sortDirection, quantities, getItemLocations, getItemCategories, getItemTeams]);
+  }, [filteredItems, sortColumn, sortDirection, quantities, getItemLocations, getItemCategories, getItemTeams, customFieldDefinitions]);
 
   const handleRowClick = (itemName) => {
     setSelectedMasterItem(itemName);
@@ -322,6 +361,7 @@ const MasterInventoryTable = () => {
     setShowCategoryColumn(true);
     setShowTeamColumn(true);
     setShowLastModifiedColumn(true);
+    setVisibleCustomColumns(new Set(customFieldDefinitions.map(d => d.name)));
   };
 
   const handleHideAllColumns = () => {
@@ -330,6 +370,7 @@ const MasterInventoryTable = () => {
     setShowCategoryColumn(false);
     setShowTeamColumn(false);
     setShowLastModifiedColumn(false);
+    setVisibleCustomColumns(new Set());
   };
 
   // Count visible columns (excluding Name which is always visible)
@@ -339,7 +380,7 @@ const MasterInventoryTable = () => {
     showCategoryColumn,
     showTeamColumn,
     showLastModifiedColumn
-  ].filter(Boolean).length;
+  ].filter(Boolean).length + visibleCustomColumns.size;
 
   const SortIcon = ({ column }) => {
     if (sortColumn !== column) {
@@ -747,9 +788,9 @@ const MasterInventoryTable = () => {
                 style={{
                   padding: '0.4rem',
                   fontSize: '1rem',
-                  background: visibleColumnCount < 5 ? 'var(--accent)' : 'transparent',
+                  background: visibleColumnCount < (5 + customFieldDefinitions.length) ? 'var(--accent)' : 'transparent',
                   border: '1px solid var(--stroke)',
-                  color: visibleColumnCount < 5 ? 'white' : 'var(--text)',
+                  color: visibleColumnCount < (5 + customFieldDefinitions.length) ? 'white' : 'var(--text)',
                   borderRadius: '4px',
                   cursor: 'pointer',
                   display: 'flex',
@@ -762,12 +803,12 @@ const MasterInventoryTable = () => {
                 }}
                 title="Show/hide columns"
                 onMouseEnter={(e) => {
-                  if (visibleColumnCount === 5) {
+                  if (visibleColumnCount === 5 + customFieldDefinitions.length) {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (visibleColumnCount === 5) {
+                  if (visibleColumnCount === 5 + customFieldDefinitions.length) {
                     e.currentTarget.style.background = 'transparent';
                   }
                 }}
@@ -784,7 +825,7 @@ const MasterInventoryTable = () => {
                 >
                   <path d="M2 2h12M2 6h12M2 10h12M2 14h12" />
                 </svg>
-                {visibleColumnCount < 5 && (
+                {visibleColumnCount < 5 + customFieldDefinitions.length && (
                   <span style={{
                     position: 'absolute',
                     top: '-6px',
@@ -801,7 +842,7 @@ const MasterInventoryTable = () => {
                     fontWeight: 'bold',
                     border: '2px solid var(--panel, #0e1116)'
                   }}>
-                    {5 - visibleColumnCount}
+                    {5 + customFieldDefinitions.length - visibleColumnCount}
                   </span>
                 )}
               </button>
@@ -1046,6 +1087,50 @@ const MasterInventoryTable = () => {
                       />
                       <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>Last Modified</span>
                     </label>
+                    {customFieldDefinitions.length > 0 && (
+                      <>
+                        <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--stroke)', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                          Custom fields
+                        </div>
+                        {customFieldDefinitions.map(d => (
+                          <label
+                            key={d.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '0.5rem',
+                              cursor: 'pointer',
+                              borderRadius: '4px',
+                              background: visibleCustomColumns.has(d.name) ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                              transition: 'background 0.15s'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!visibleCustomColumns.has(d.name)) {
+                                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!visibleCustomColumns.has(d.name)) {
+                                e.currentTarget.style.background = 'transparent';
+                              }
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={visibleCustomColumns.has(d.name)}
+                              onChange={() => toggleCustomColumn(d.name)}
+                              style={{
+                                marginRight: '0.75rem',
+                                width: '16px',
+                                height: '16px',
+                                cursor: 'pointer'
+                              }}
+                            />
+                            <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>{d.name}</span>
+                          </label>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -1132,6 +1217,19 @@ const MasterInventoryTable = () => {
                       </span>
                     </th>
                   )}
+                  {customFieldDefinitions.filter(d => visibleCustomColumns.has(d.name)).map(d => (
+                    <th
+                      key={d.id}
+                      className="custom-field-cell"
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort(d.name)}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        {d.name}
+                        <SortIcon column={d.name} />
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -1149,6 +1247,8 @@ const MasterInventoryTable = () => {
                     showCategory={showCategoryColumn}
                     showTeam={showTeamColumn}
                     showLastModified={showLastModifiedColumn}
+                    visibleCustomColumns={visibleCustomColumns}
+                    customFieldDefinitions={customFieldDefinitions}
                     isSelected={selectedMasterItem === itemName}
                     onClick={() => handleRowClick(itemName)}
                   />

@@ -446,6 +446,7 @@ export const InventoryProvider = ({ children }) => {
           locations: locations,
           teams: supply.teams || [],
           categories: supply.categories || [],
+          custom_fields: supply.custom_fields || {},
           lastModified: supply.lastModified || null,
           last_modified_by: supply.last_modified_by || null,
           last_modified_by_name: supply.last_modified_by_name || null,
@@ -976,7 +977,8 @@ export const InventoryProvider = ({ children }) => {
         description: item.description || '',
         image: item.image || null,
         teams: item.teams || [],
-        categories: item.categories || []
+        categories: item.categories || [],
+        custom_fields: item.custom_fields && Object.keys(item.custom_fields).length > 0 ? item.custom_fields : undefined
       });
       
       // Update local state
@@ -989,6 +991,7 @@ export const InventoryProvider = ({ children }) => {
           locations: created.locations || [],
           teams: created.teams || [],
           categories: created.categories || [],
+          custom_fields: created.custom_fields || {},
           lastModified: created.lastModified || null,
           last_modified_by: created.last_modified_by || null,
           last_modified_by_name: created.last_modified_by_name || null,
@@ -1030,7 +1033,8 @@ export const InventoryProvider = ({ children }) => {
         description: newItem.description || '',
         image: newItem.image || null,
         teams: newItem.teams || [],
-        categories: newItem.categories || []
+        categories: newItem.categories || [],
+        custom_fields: newItem.custom_fields && Object.keys(newItem.custom_fields).length > 0 ? newItem.custom_fields : {}
       });
       
       // Update local state
@@ -1046,6 +1050,7 @@ export const InventoryProvider = ({ children }) => {
           locations: updated.locations || [],
           teams: updated.teams || [],
           categories: updated.categories || [],
+          custom_fields: updated.custom_fields || {},
           lastModified: updated.lastModified || null,
           last_modified_by: updated.last_modified_by || null,
           last_modified_by_name: updated.last_modified_by_name || null,

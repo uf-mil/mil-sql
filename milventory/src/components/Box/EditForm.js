@@ -77,7 +77,7 @@ const EditModal = () => {
           ref={nameInputRef}
           value={selectedItemName}
           onChange={(e) => setSelectedItemName(e.target.value)}
-          className="modal-select"
+          className="styled-select"
         >
           <option value="">Select Master item...</option>
           {Array.from(masterInventoryItems.keys()).map(itemName => (

@@ -215,6 +215,27 @@ export const api = {
       return r.json();
     }),
 
+  // Custom field definitions (for Create/Edit item modal dropdown)
+  getCustomFieldDefinitions: () =>
+    fetch(`${API_BASE}/custom-field-definitions`, {
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+
   // History
   getSupplyHistory: (filters = {}) => {
     const params = new URLSearchParams();
@@ -632,6 +653,49 @@ export const admin = {
           throw error;
         });
       }
+      return r.json();
+    }),
+
+  // Custom field definitions (admin only)
+  getCustomFieldDefinitions: () =>
+    fetch(`${API_BASE}/custom-field-definitions`, {
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (!r.ok) throw new Error('Failed to fetch custom field definitions');
+      return r.json();
+    }),
+  createCustomFieldDefinition: (data) =>
+    fetch(`${API_BASE}/custom-field-definitions`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify(data)
+    }).then(r => {
+      if (r.status === 403) throw new Error('Leader access required');
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Request failed'); });
+      return r.json();
+    }),
+  updateCustomFieldDefinition: (id, data) =>
+    fetch(`${API_BASE}/custom-field-definitions/${id}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify(data)
+    }).then(r => {
+      if (r.status === 403) throw new Error('Leader access required');
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Request failed'); });
+      return r.json();
+    }),
+  deleteCustomFieldDefinition: (id) =>
+    fetch(`${API_BASE}/custom-field-definitions/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 403) throw new Error('Leader access required');
+      if (r.status === 204) return null;
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Request failed'); });
       return r.json();
     }),
 };

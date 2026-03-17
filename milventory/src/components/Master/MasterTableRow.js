@@ -16,7 +16,20 @@ const formatDate = (isoString) => {
   return `${dateStr}, ${timeStr}`;
 };
 
-const MasterTableRow = ({ itemName, itemData, quantity, locations, categories, teams, showQty, showLocation, showCategory, showTeam, showLastModified, isSelected, onClick }) => {
+const formatCustomValue = (value, type) => {
+  if (value === undefined || value === null || value === '') return '—';
+  if (type === 'date') {
+    try {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+};
+
+const MasterTableRow = ({ itemName, itemData, quantity, locations, categories, teams, showQty, showLocation, showCategory, showTeam, showLastModified, visibleCustomColumns, customFieldDefinitions, isSelected, onClick }) => {
   // Build a truncated location string that fits the cell
   const locationText = locations.length === 0
     ? '—'
@@ -67,6 +80,11 @@ const MasterTableRow = ({ itemName, itemData, quantity, locations, categories, t
           {formatDate(itemData.lastModified)}
         </td>
       )}
+      {customFieldDefinitions?.filter(d => visibleCustomColumns?.has(d.name)).map(d => (
+        <td key={d.id} className="custom-field-cell">
+          {formatCustomValue(itemData.custom_fields?.[d.name], d.type)}
+        </td>
+      ))}
     </tr>
   );
 };

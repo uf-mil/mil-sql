@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { getCategories, getTeams } from '../../api';
+import { getCategories, getTeams, api } from '../../api';
 
 // Levenshtein distance for fuzzy search
 const levenshteinDistance = (str1, str2) => {
@@ -26,6 +26,18 @@ const levenshteinDistance = (str1, str2) => {
   }
 
   return dp[m][n];
+};
+
+// Validate that all number-type custom fields have a valid number (or are empty)
+const areNumberCustomFieldsValid = (customFields, customFieldDefinitions) => {
+  const numberDefs = customFieldDefinitions.filter(d => d.type === 'number');
+  for (const d of numberDefs) {
+    const value = customFields[d.name];
+    if (value === undefined || value === null || value === '') continue;
+    const n = Number(value);
+    if (Number.isNaN(n) || !Number.isFinite(n)) return false;
+  }
+  return true;
 };
 
 // Reusable tag dropdown with fuzzy search
@@ -72,8 +84,8 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: '0.5rem', minHeight: '2rem',
-        padding: '0.5rem', border: '1px solid rgba(255,255,255,.1)',
+        display: 'flex', flexWrap: 'wrap', gap: '0.42rem', minHeight: '1.5rem',
+        padding: '0.42rem', border: '1px solid rgba(255,255,255,.1)',
         borderRadius: '4px', background: 'rgba(0,0,0,.2)', alignItems: 'center'
       }}>
         {selectedItems.length === 0 && (
@@ -83,9 +95,9 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
         )}
         {selectedItems.map(item => (
           <span key={item} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-            padding: '0.25rem 0.5rem', background: 'var(--accent)', color: 'white',
-            borderRadius: '4px', fontSize: '0.85rem',
+            display: 'inline-flex', alignItems: 'center', gap: '0.24rem',
+            padding: '0.18rem 0.42rem', background: 'var(--accent)', color: 'white',
+            borderRadius: '4px', fontSize: '0.8rem',
             ...(capitalize ? { textTransform: 'capitalize' } : {})
           }}>
             {item}
@@ -99,11 +111,12 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
       </div>
 
       <div
+        className="tag-dropdown-trigger"
         onClick={() => { setIsOpen(true); inputRef.current?.focus(); }}
         style={{
-          width: '100%', padding: '0.5rem', background: 'rgba(0,0,0,.3)',
-          border: '1px solid rgba(255,255,255,.1)', borderRadius: '4px',
-          color: 'var(--text)', fontSize: '0.9rem', cursor: 'pointer',
+          width: '100%', padding: '0.615rem 0.879rem', minHeight: '2.2rem',
+          background: 'rgba(0,0,0,.3)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '4px',
+          color: 'var(--text)', fontSize: '0.85rem', cursor: 'pointer',
           display: 'flex', alignItems: 'center', boxSizing: 'border-box'
         }}
       >
@@ -117,10 +130,10 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
           onClick={(e) => e.stopPropagation()}
           style={{
             background: 'transparent', border: 'none', color: 'var(--text)',
-            fontSize: '0.9rem', outline: 'none', width: '100%', cursor: 'pointer'
+            fontSize: '0.85rem', outline: 'none', width: '100%', cursor: 'pointer', lineHeight: 1.35, padding: 0, margin: 0
           }}
         />
-        <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--muted)', flexShrink: 0 }}>▼</span>
+        <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--muted)', flexShrink: 0 }}>▼</span>
       </div>
 
       {isOpen && displayItems.length > 0 && (
@@ -164,13 +177,30 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   const [availableTeams, setAvailableTeams] = useState([]);
   const [categoryNameToId, setCategoryNameToId] = useState(new Map());
   const [categoryIdToName, setCategoryIdToName] = useState(new Map());
+  const [customFields, setCustomFields] = useState({});
+  const [customFieldDefinitions, setCustomFieldDefinitions] = useState([]);
+  const [addFieldDropdownOpen, setAddFieldDropdownOpen] = useState(false);
+  const addFieldDropdownRef = useRef(null);
   const nameInputRef = useRef(null);
 
   const originalItem = itemName ? resolveMasterItem(itemName) : null;
 
-  // Fetch categories and teams when modal opens
+  useEffect(() => {
+    const handler = (e) => {
+      if (addFieldDropdownRef.current && !addFieldDropdownRef.current.contains(e.target)) {
+        setAddFieldDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Fetch categories, teams, and custom field definitions when modal opens
   useEffect(() => {
     if (isOpen) {
+      api.getCustomFieldDefinitions()
+        .then(setCustomFieldDefinitions)
+        .catch(() => setCustomFieldDefinitions([]));
       getCategories()
         .then(categories => {
           const categoryList = categories.map(c => typeof c === 'string' ? c : c.name);
@@ -210,10 +240,10 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
       setDescription(originalItem.description || '');
       setImage(originalItem.image || null);
       setImagePreview(originalItem.image || null);
-      
+      setCustomFields(originalItem.custom_fields || {});
+      setAddFieldDropdownOpen(false);
       // Load teams (already lowercase from API)
       setSelectedTeams(originalItem.teams || []);
-      
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
   }, [isOpen, originalItem]);
@@ -280,6 +310,10 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
         alert('An item with this name already exists. Please use a different name.');
         return;
       }
+      if (!areNumberCustomFieldsValid(customFields, customFieldDefinitions)) {
+        alert('Please enter a valid number in all number fields (or leave them empty).');
+        return;
+      }
 
       // Convert category names to IDs
       const categoryIds = selectedCategories
@@ -292,6 +326,7 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
         image: image || null,
         teams: selectedTeams.length > 0 ? selectedTeams : [],
         categories: categoryIds.length > 0 ? categoryIds : [],
+        custom_fields: customFields,
         locations: originalItem?.locations || []
       };
       
@@ -361,6 +396,105 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
           maxResults={5}
         />
 
+        {/* Custom fields: dropdown to add; each added field is a full-width row with gray X to remove */}
+        <div style={{ marginTop: '0.5rem' }}>
+          {Object.entries(customFields).map(([key, value]) => {
+            const def = customFieldDefinitions.find(d => d.name === key);
+            const fieldType = def ? def.type : 'text';
+            const displayValue = value === undefined || value === null ? '' : String(value);
+            return (
+              <div
+                key={key}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', marginBottom: '0.5rem' }}
+              >
+                {fieldType === 'text' && (
+                  <input
+                    type="text"
+                    placeholder={key}
+                    value={displayValue}
+                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                )}
+                {fieldType === 'number' && (
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder={key}
+                    value={displayValue}
+                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                )}
+                {fieldType === 'date' && (
+                  <input
+                    type="date"
+                    value={displayValue}
+                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCustomFields(prev => { const n = { ...prev }; delete n[key]; return n; })}
+                  style={{
+                    flexShrink: 0, background: 'transparent', border: 'none', color: '#888', cursor: 'pointer',
+                    padding: '0.25rem', fontSize: '1.25rem', lineHeight: 1
+                  }}
+                  title="Remove field"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+          <div ref={addFieldDropdownRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setAddFieldDropdownOpen(prev => !prev)}
+              style={{
+                padding: '0.5rem', fontSize: '0.85rem', background: 'rgba(0,0,0,.2)', color: 'var(--muted)', fontWeight: 400,
+                border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', cursor: 'pointer', width: '100%', textAlign: 'left'
+              }}
+            >
+              + Add custom field
+            </button>
+            {addFieldDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, marginTop: '2px',
+                  background: 'var(--panel)', border: '1px solid rgba(255,255,255,.15)', borderRadius: '6px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,.4)', maxHeight: '200px', overflowY: 'auto'
+                }}
+              >
+                {customFieldDefinitions
+                  .filter(d => !(d.name in customFields))
+                  .map(d => (
+                    <button
+                      type="button"
+                      key={d.id}
+                      onClick={() => {
+                        setCustomFields(prev => ({ ...prev, [d.name]: d.type === 'number' ? '' : '' }));
+                        setAddFieldDropdownOpen(false);
+                      }}
+                      style={{
+                        display: 'block', width: '100%', padding: '0.5rem 0.75rem', textAlign: 'left',
+                        background: 'none', border: 'none', color: 'var(--muted)', fontWeight: 400, cursor: 'pointer', fontSize: '0.85rem'
+                      }}
+                    >
+                      {d.name} ({d.type})
+                    </button>
+                  ))}
+                {customFieldDefinitions.filter(d => !(d.name in customFields)).length === 0 && (
+                  <div style={{ padding: '0.5rem 0.75rem', color: 'var(--muted)', fontSize: '0.85rem' }}>
+                    No more fields to add
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
             Image (optional, max 10MB)
@@ -408,7 +542,7 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
           <button type="button" className="cancel" onClick={handleCancel}>
             Cancel
           </button>
-          <button type="button" className="save" onClick={handleSave} disabled={!name.trim()}>
+          <button type="button" className="save" onClick={handleSave} disabled={!name.trim() || !areNumberCustomFieldsValid(customFields, customFieldDefinitions)}>
             Save
           </button>
         </div>

@@ -120,7 +120,7 @@ const AddModal = () => {
           <select
             value={selectedShelf !== null ? selectedShelf : 0}
             onChange={(e) => setSelectedShelf(parseInt(e.target.value))}
-            className="modal-select"
+            className="styled-select"
           >
             {SHELF_NAMES.map((name, index) => (
               <option key={index} value={index}>
@@ -157,7 +157,7 @@ const AddModal = () => {
         <select
           value={selectedItemName}
           onChange={(e) => setSelectedItemName(e.target.value)}
-          className="modal-select"
+          className="styled-select"
         >
           <option value="">Select Master item...</option>
           {filteredMasterItems.map(itemName => (
