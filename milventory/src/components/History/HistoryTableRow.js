@@ -121,7 +121,7 @@ const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
 
   const handleUndoClick = () => {
     if (showConfirm) {
-      onUndo(entry.id);
+      onUndo(entry);
       setShowConfirm(false);
     } else {
       setShowConfirm(true);
@@ -139,6 +139,12 @@ const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
   const canUndo = isAdmin 
     ? baseCanUndo  // Admins can undo all items
     : baseCanUndo && index < 1;  // Users can only undo the top row
+
+  const undoButtonTitle = !canUndo
+    ? 'Cannot undo'
+    : entry.historyType === 'supply' && entry.undo_removes_log_only
+      ? 'Removes this log line only — catalog item is not linked'
+      : 'Undo this action';
 
   return (
     <tr className="history-row">
@@ -185,7 +191,7 @@ const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
             className="history-undo-btn"
             onClick={handleUndoClick}
             disabled={!canUndo}
-            title={!canUndo ? 'Cannot undo' : 'Undo this action'}
+            title={undoButtonTitle}
           >
             Undo
           </button>

@@ -103,7 +103,23 @@ const HistoryModal = ({ isOpen, onClose, isAdmin = false }) => {
     }
   };
 
-  const handleUndo = async (historyId, historyType) => {
+  const handleUndo = async (entry) => {
+    const historyId = entry.id;
+    const historyType = entry.historyType;
+
+    if (historyType === 'supply' && entry.undo_removes_log_only) {
+      const ok = await showConfirm(
+        'The catalog item for this history line is no longer linked (for example, the item was deleted). This will only remove this row from the history log. Inventory and the catalog will not be changed.',
+        {
+          title: 'Remove history entry only',
+          confirmLabel: 'Remove from history',
+          cancelLabel: 'Cancel',
+          danger: true
+        }
+      );
+      if (!ok) return;
+    }
+
     try {
       if (historyType === 'location') {
         await locationHistory.undo(historyId);
@@ -229,7 +245,7 @@ const HistoryModal = ({ isOpen, onClose, isAdmin = false }) => {
                     entry={entry}
                     index={index}
                     isAdmin={isAdmin}
-                    onUndo={(id) => handleUndo(id, entry.historyType)}
+                    onUndo={() => handleUndo(entry)}
                   />
                 ))}
               </tbody>
