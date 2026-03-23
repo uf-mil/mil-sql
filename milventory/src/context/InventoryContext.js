@@ -281,6 +281,8 @@ export const InventoryProvider = ({ children }) => {
             teams: supply.teams || [],
             categories: supply.categories || [],
             custom_fields: supply.custom_fields || {},
+            supply_type_id: supply.supply_type_id ?? null,
+            type_name: supply.type_name || null,
             lastModified: supply.lastModified || null,
             last_modified_by: supply.last_modified_by || null,
             last_modified_by_name: supply.last_modified_by_name || null,
@@ -448,6 +450,8 @@ export const InventoryProvider = ({ children }) => {
           teams: supply.teams || [],
           categories: supply.categories || [],
           custom_fields: supply.custom_fields || {},
+          supply_type_id: supply.supply_type_id ?? null,
+          type_name: supply.type_name || null,
           lastModified: supply.lastModified || null,
           last_modified_by: supply.last_modified_by || null,
           last_modified_by_name: supply.last_modified_by_name || null,
@@ -979,7 +983,8 @@ export const InventoryProvider = ({ children }) => {
         image: item.image || null,
         teams: item.teams || [],
         categories: item.categories || [],
-        custom_fields: item.custom_fields && Object.keys(item.custom_fields).length > 0 ? item.custom_fields : undefined
+        custom_fields: item.custom_fields && Object.keys(item.custom_fields).length > 0 ? item.custom_fields : undefined,
+        supply_type_id: item.supply_type_id != null ? item.supply_type_id : undefined
       });
       
       // Update local state
@@ -993,6 +998,8 @@ export const InventoryProvider = ({ children }) => {
           teams: created.teams || [],
           categories: created.categories || [],
           custom_fields: created.custom_fields || {},
+          supply_type_id: created.supply_type_id ?? null,
+          type_name: created.type_name || null,
           lastModified: created.lastModified || null,
           last_modified_by: created.last_modified_by || null,
           last_modified_by_name: created.last_modified_by_name || null,
@@ -1029,14 +1036,18 @@ export const InventoryProvider = ({ children }) => {
         throw new Error(`Item ${oldName} not found or missing ID`);
       }
       
-      const updated = await api.updateSupply(oldItem.id, {
+      const payload = {
         name: newItem.name,
         description: newItem.description || '',
         image: newItem.image || null,
         teams: newItem.teams || [],
         categories: newItem.categories || [],
         custom_fields: newItem.custom_fields && Object.keys(newItem.custom_fields).length > 0 ? newItem.custom_fields : {}
-      });
+      };
+      if (newItem.unlink_from_type) {
+        payload.unlink_from_type = true;
+      }
+      const updated = await api.updateSupply(oldItem.id, payload);
       
       // Update local state
       setMasterInventoryItems(prev => {
@@ -1052,6 +1063,8 @@ export const InventoryProvider = ({ children }) => {
           teams: updated.teams || [],
           categories: updated.categories || [],
           custom_fields: updated.custom_fields || {},
+          supply_type_id: updated.supply_type_id ?? null,
+          type_name: updated.type_name || null,
           lastModified: updated.lastModified || null,
           last_modified_by: updated.last_modified_by || null,
           last_modified_by_name: updated.last_modified_by_name || null,

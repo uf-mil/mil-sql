@@ -4,6 +4,9 @@ import MasterTableRow from './MasterTableRow';
 import MasterCreateModal from './MasterCreateModal';
 import { getCategories, api } from '../../api';
 
+/** Sentinel for filter: items with no template type */
+const TYPE_FILTER_NONE = '__NO_TYPE__';
+
 const MasterInventoryTable = () => {
   const {
     masterInventoryItems,
@@ -19,9 +22,10 @@ const MasterInventoryTable = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const [filterType, setFilterType] = useState('location'); // 'location' or 'category', default is 'location'
+  const [filterType, setFilterType] = useState('location'); // 'location' | 'category' | 'type'
   const [selectedLocations, setSelectedLocations] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
+  const [selectedTypes, setSelectedTypes] = useState(new Set());
   const [availableCategories, setAvailableCategories] = useState([]);
   const [categoryIdToName, setCategoryIdToName] = useState(new Map());
   const [categoryNameToId, setCategoryNameToId] = useState(new Map());
@@ -29,6 +33,7 @@ const MasterInventoryTable = () => {
   const columnButtonRef = React.useRef(null);
   
   // Column visibility state - default hide category and team, show others
+  const [showTypeColumn, setShowTypeColumn] = useState(false);
   const [showQtyColumn, setShowQtyColumn] = useState(true);
   const [showLocationColumn, setShowLocationColumn] = useState(true);
   const [showCategoryColumn, setShowCategoryColumn] = useState(false);
@@ -43,6 +48,18 @@ const MasterInventoryTable = () => {
   const [sortDirection, setSortDirection] = useState('asc');
 
   const quantities = computeMasterQuantities();
+
+  const filterHasSelection =
+    (filterType === 'location' && selectedLocations.size > 0) ||
+    (filterType === 'category' && selectedCategories.size > 0) ||
+    (filterType === 'type' && selectedTypes.size > 0);
+
+  const filterSelectionCount =
+    filterType === 'location'
+      ? selectedLocations.size
+      : filterType === 'category'
+        ? selectedCategories.size
+        : selectedTypes.size;
 
   // Get all available locations from inventoryData
   const availableLocations = useMemo(() => {
@@ -73,11 +90,26 @@ const MasterInventoryTable = () => {
       .sort(); // Sort alphabetically for consistency
   }, [masterInventoryItems]);
 
+  const availableTemplateTypes = useMemo(() => {
+    const names = new Set();
+    let hasUntyped = false;
+    for (const [, item] of masterInventoryItems.entries()) {
+      if (item.type_name) names.add(item.type_name);
+      else hasUntyped = true;
+    }
+    const sorted = Array.from(names).sort();
+    if (hasUntyped) sorted.unshift(TYPE_FILTER_NONE);
+    return sorted;
+  }, [masterInventoryItems]);
+
+  const typeFilterLabel = (key) => (key === TYPE_FILTER_NONE ? '(No type)' : key);
+
   // Sync with context filter location
   useEffect(() => {
     if (masterFilterLocation) {
       setFilterType('location');
       setSelectedLocations(new Set([masterFilterLocation]));
+      setSelectedTypes(new Set());
       // Clear the context filter after applying it
       setMasterFilterLocation(null);
     }
@@ -135,7 +167,11 @@ const MasterInventoryTable = () => {
     let filtered = itemsArray;
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(([name]) => name.toLowerCase().includes(query));
+      filtered = filtered.filter(([name, itemData]) => {
+        if (name.toLowerCase().includes(query)) return true;
+        const tn = (itemData?.type_name || '').toLowerCase();
+        return tn.includes(query);
+      });
     }
     
     // Filter by location OR category (not both)
@@ -157,10 +193,15 @@ const MasterInventoryTable = () => {
         // Show item if it has at least one selected category
         return itemCategoryNames.some(catName => selectedCategories.has(catName));
       });
+    } else if (filterType === 'type' && selectedTypes.size > 0) {
+      filtered = filtered.filter(([, itemData]) => {
+        const key = itemData.type_name ? itemData.type_name : TYPE_FILTER_NONE;
+        return selectedTypes.has(key);
+      });
     }
     
     return filtered;
-  }, [masterInventoryItems, searchQuery, filterType, selectedLocations, selectedCategories, getItemLocations, categoryIdToName]);
+  }, [masterInventoryItems, searchQuery, filterType, selectedLocations, selectedCategories, selectedTypes, getItemLocations, categoryIdToName]);
 
   const handleLocationToggle = (location) => {
     setSelectedLocations(prev => {
@@ -189,16 +230,30 @@ const MasterInventoryTable = () => {
   const handleClearFilters = () => {
     setSelectedLocations(new Set());
     setSelectedCategories(new Set());
+    setSelectedTypes(new Set());
   };
 
   const handleFilterTypeChange = (type) => {
     setFilterType(type);
-    // Clear the other filter type when switching
     if (type === 'location') {
       setSelectedCategories(new Set());
+      setSelectedTypes(new Set());
     } else if (type === 'category') {
       setSelectedLocations(new Set());
+      setSelectedTypes(new Set());
+    } else if (type === 'type') {
+      setSelectedLocations(new Set());
+      setSelectedCategories(new Set());
     }
+  };
+
+  const handleTypeToggle = (typeKey) => {
+    setSelectedTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(typeKey)) next.delete(typeKey);
+      else next.add(typeKey);
+      return next;
+    });
   };
 
   // Close filter menu when clicking outside
@@ -355,7 +410,10 @@ const MasterInventoryTable = () => {
     }
   };
 
+  const standardColumnCount = 6;
+
   const handleShowAllColumns = () => {
+    setShowTypeColumn(true);
     setShowQtyColumn(true);
     setShowLocationColumn(true);
     setShowCategoryColumn(true);
@@ -365,6 +423,7 @@ const MasterInventoryTable = () => {
   };
 
   const handleHideAllColumns = () => {
+    setShowTypeColumn(false);
     setShowQtyColumn(false);
     setShowLocationColumn(false);
     setShowCategoryColumn(false);
@@ -375,6 +434,7 @@ const MasterInventoryTable = () => {
 
   // Count visible columns (excluding Name which is always visible)
   const visibleColumnCount = [
+    showTypeColumn,
     showQtyColumn,
     showLocationColumn,
     showCategoryColumn,
@@ -449,9 +509,9 @@ const MasterInventoryTable = () => {
                 style={{
                   padding: '0.4rem',
                   fontSize: '1rem',
-                  background: (filterType === 'location' && selectedLocations.size > 0) || (filterType === 'category' && selectedCategories.size > 0) ? 'var(--accent)' : 'transparent',
+                  background: filterHasSelection ? 'var(--accent)' : 'transparent',
                 border: '1px solid var(--stroke)',
-                color: (filterType === 'location' && selectedLocations.size > 0) || (filterType === 'category' && selectedCategories.size > 0) ? 'white' : 'var(--text)',
+                color: filterHasSelection ? 'white' : 'var(--text)',
                 borderRadius: '4px',
                 cursor: 'pointer',
                 display: 'flex',
@@ -462,14 +522,14 @@ const MasterInventoryTable = () => {
                 position: 'relative',
                 transition: 'all 0.2s'
               }}
-              title="Filter by location"
+              title="Filter items"
               onMouseEnter={(e) => {
-                if ((filterType === 'location' && selectedLocations.size === 0) || (filterType === 'category' && selectedCategories.size === 0)) {
+                if (!filterHasSelection) {
                   e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
                 }
               }}
               onMouseLeave={(e) => {
-                if ((filterType === 'location' && selectedLocations.size === 0) || (filterType === 'category' && selectedCategories.size === 0)) {
+                if (!filterHasSelection) {
                   e.currentTarget.style.background = 'transparent';
                 }
               }}
@@ -486,7 +546,7 @@ const MasterInventoryTable = () => {
               >
                 <path d="M2 4h12M4 8h8M6 12h4" />
               </svg>
-              {((filterType === 'location' && selectedLocations.size > 0) || (filterType === 'category' && selectedCategories.size > 0)) && (
+              {filterHasSelection && (
                 <span style={{
                   position: 'absolute',
                   top: '-6px',
@@ -503,11 +563,11 @@ const MasterInventoryTable = () => {
                   fontWeight: 'bold',
                   border: '2px solid var(--panel, #0e1116)'
                 }}>
-                  {filterType === 'location' ? selectedLocations.size : selectedCategories.size}
+                  {filterSelectionCount}
                 </span>
               )}
             </button>
-            {((filterType === 'location' && selectedLocations.size > 0) || (filterType === 'category' && selectedCategories.size > 0)) && (
+            {filterHasSelection && (
               <button
                 onClick={handleClearFilters}
                 style={{
@@ -570,6 +630,7 @@ const MasterInventoryTable = () => {
                   >
                     <option value="location">Location</option>
                     <option value="category">Category</option>
+                    <option value="type">Type</option>
                   </select>
                 </div>
                 
@@ -665,7 +726,7 @@ const MasterInventoryTable = () => {
                       </>
                     )}
                   </div>
-                ) : (
+                ) : filterType === 'category' ? (
                   /* Categories Section */
                   <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
                     {availableCategories.length === 0 ? (
@@ -757,7 +818,101 @@ const MasterInventoryTable = () => {
                       </>
                     )}
                   </div>
-                )}
+                ) : filterType === 'type' ? (
+                  <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                    {availableTemplateTypes.length === 0 ? (
+                      <div style={{ padding: '0.5rem', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                        No types in inventory
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTypes(new Set(availableTemplateTypes))}
+                            style={{
+                              padding: '0.3rem 0.6rem',
+                              fontSize: '0.75rem',
+                              background: 'transparent',
+                              border: '1px solid var(--stroke)',
+                              color: 'var(--text)',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              flex: 1
+                            }}
+                          >
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTypes(new Set())}
+                            style={{
+                              padding: '0.3rem 0.6rem',
+                              fontSize: '0.75rem',
+                              background: 'transparent',
+                              border: '1px solid var(--stroke)',
+                              color: 'var(--text)',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              flex: 1
+                            }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.25rem',
+                          maxHeight: '300px',
+                          overflowY: 'auto',
+                          padding: '0.25rem',
+                          flex: 1
+                        }}>
+                          {availableTemplateTypes.map((typeKey) => (
+                            <label
+                              key={typeKey}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '0.4rem 0.6rem',
+                                cursor: 'pointer',
+                                borderRadius: '4px',
+                                background: selectedTypes.has(typeKey) ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                                transition: 'background 0.15s'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!selectedTypes.has(typeKey)) {
+                                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!selectedTypes.has(typeKey)) {
+                                  e.currentTarget.style.background = 'transparent';
+                                }
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedTypes.has(typeKey)}
+                                onChange={() => handleTypeToggle(typeKey)}
+                                style={{
+                                  marginRight: '0.75rem',
+                                  width: '16px',
+                                  height: '16px',
+                                  cursor: 'pointer'
+                                }}
+                              />
+                              <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>
+                                {typeFilterLabel(typeKey)}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : null}
                 
                 {/* Status Footer */}
                 <div style={{ 
@@ -771,9 +926,13 @@ const MasterInventoryTable = () => {
                     ? (selectedLocations.size === 0
                         ? 'No locations selected - showing all items'
                         : `${selectedLocations.size} location${selectedLocations.size === 1 ? '' : 's'} selected`)
-                    : (selectedCategories.size === 0
-                        ? 'No categories selected - showing all items'
-                        : `${selectedCategories.size} categor${selectedCategories.size === 1 ? 'y' : 'ies'} selected`)}
+                    : filterType === 'category'
+                      ? (selectedCategories.size === 0
+                          ? 'No categories selected - showing all items'
+                          : `${selectedCategories.size} categor${selectedCategories.size === 1 ? 'y' : 'ies'} selected`)
+                      : (selectedTypes.size === 0
+                          ? 'No types selected - showing all items'
+                          : `${selectedTypes.size} type${selectedTypes.size === 1 ? '' : 's'} selected`)}
                 </div>
               </div>
             )}
@@ -788,9 +947,9 @@ const MasterInventoryTable = () => {
                 style={{
                   padding: '0.4rem',
                   fontSize: '1rem',
-                  background: visibleColumnCount < (5 + customFieldDefinitions.length) ? 'var(--accent)' : 'transparent',
+                  background: visibleColumnCount < (standardColumnCount + customFieldDefinitions.length) ? 'var(--accent)' : 'transparent',
                   border: '1px solid var(--stroke)',
-                  color: visibleColumnCount < (5 + customFieldDefinitions.length) ? 'white' : 'var(--text)',
+                  color: visibleColumnCount < (standardColumnCount + customFieldDefinitions.length) ? 'white' : 'var(--text)',
                   borderRadius: '4px',
                   cursor: 'pointer',
                   display: 'flex',
@@ -803,12 +962,12 @@ const MasterInventoryTable = () => {
                 }}
                 title="Show/hide columns"
                 onMouseEnter={(e) => {
-                  if (visibleColumnCount === 5 + customFieldDefinitions.length) {
+                  if (visibleColumnCount === standardColumnCount + customFieldDefinitions.length) {
                     e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (visibleColumnCount === 5 + customFieldDefinitions.length) {
+                  if (visibleColumnCount === standardColumnCount + customFieldDefinitions.length) {
                     e.currentTarget.style.background = 'transparent';
                   }
                 }}
@@ -825,7 +984,7 @@ const MasterInventoryTable = () => {
                 >
                   <path d="M2 2h12M2 6h12M2 10h12M2 14h12" />
                 </svg>
-                {visibleColumnCount < 5 + customFieldDefinitions.length && (
+                {visibleColumnCount < standardColumnCount + customFieldDefinitions.length && (
                   <span style={{
                     position: 'absolute',
                     top: '-6px',
@@ -842,7 +1001,7 @@ const MasterInventoryTable = () => {
                     fontWeight: 'bold',
                     border: '2px solid var(--panel, #0e1116)'
                   }}>
-                    {5 + customFieldDefinitions.length - visibleColumnCount}
+                    {standardColumnCount + customFieldDefinitions.length - visibleColumnCount}
                   </span>
                 )}
               </button>
@@ -917,6 +1076,40 @@ const MasterInventoryTable = () => {
                     </button>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        background: showTypeColumn ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!showTypeColumn) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!showTypeColumn) {
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={showTypeColumn}
+                        onChange={() => setShowTypeColumn(!showTypeColumn)}
+                        style={{
+                          marginRight: '0.75rem',
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>Type</span>
+                    </label>
                     <label
                       style={{
                         display: 'flex',
@@ -1140,7 +1333,7 @@ const MasterInventoryTable = () => {
         <div className="master-table-content">
           {sortedItems.length === 0 ? (
             <div className="master-table-empty">
-              {searchQuery || (filterType === 'location' && selectedLocations.size > 0) || (filterType === 'category' && selectedCategories.size > 0)
+              {searchQuery || filterHasSelection
                 ? 'No items found matching filters' 
                 : 'No Master items. Click "+ Create Item" to create one.'}
             </div>
@@ -1148,6 +1341,17 @@ const MasterInventoryTable = () => {
             <table className="master-table">
               <thead>
                 <tr>
+                  {showTypeColumn && (
+                    <th
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort('typeName')}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        Type
+                        <SortIcon column="typeName" />
+                      </span>
+                    </th>
+                  )}
                   <th 
                     style={{ cursor: 'pointer', userSelect: 'none' }}
                     onClick={() => handleSort('name')}
@@ -1242,6 +1446,7 @@ const MasterInventoryTable = () => {
                     locations={getItemLocations(itemName)}
                     categories={getItemCategories(itemName)}
                     teams={getItemTeams(itemName)}
+                    showType={showTypeColumn}
                     showQty={showQtyColumn}
                     showLocation={showLocationColumn}
                     showCategory={showCategoryColumn}

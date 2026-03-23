@@ -29,7 +29,7 @@ export const formatCustomValue = (value, type) => {
   return String(value);
 };
 
-const MasterTableRow = ({ itemName, itemData, quantity, locations, categories, teams, showQty, showLocation, showCategory, showTeam, showLastModified, visibleCustomColumns, customFieldDefinitions, isSelected, onClick }) => {
+const MasterTableRow = ({ itemName, itemData, quantity, locations, categories, teams, showType, showQty, showLocation, showCategory, showTeam, showLastModified, visibleCustomColumns, customFieldDefinitions, isSelected, onClick }) => {
   // Build a truncated location string that fits the cell
   const locationText = locations.length === 0
     ? '—'
@@ -56,6 +56,11 @@ const MasterTableRow = ({ itemName, itemData, quantity, locations, categories, t
       className={`master-table-row ${isSelected ? 'selected' : ''}`}
       onClick={onClick}
     >
+      {showType && (
+        <td className="type-cell" title={itemData.type_name || ''}>
+          {itemData.type_name || '—'}
+        </td>
+      )}
       <td className="name-cell">{itemName}</td>
       {showQty && (
         <td className="qty-cell">{quantity}</td>

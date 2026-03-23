@@ -18,6 +18,7 @@ from src.api.routes.auth import auth_bp
 from src.api.routes.categories import categories_bp
 from src.api.routes.teams import teams_bp
 from src.api.routes.custom_field_definitions import custom_field_definitions_bp
+from src.api.routes.supply_types import supply_types_bp
 
 # Import helpers for schema initialization
 from src.scripts.helpers import (
@@ -44,6 +45,7 @@ app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(categories_bp, url_prefix='/api')
 app.register_blueprint(teams_bp, url_prefix='/api')
 app.register_blueprint(custom_field_definitions_bp, url_prefix='/api/custom-field-definitions')
+app.register_blueprint(supply_types_bp, url_prefix='/api/supply-types')
 
 
 def initialize_schema():
@@ -148,6 +150,11 @@ try:
     migrate_supplies_custom_fields()
 except Exception as e:
     print(f"⚠ Warning: Could not run supplies custom_fields migration: {e}")
+try:
+    from src.scripts.migrate_supply_types import migrate_supply_types
+    migrate_supply_types()
+except Exception as e:
+    print(f"⚠ Warning: Could not run supply_types migration: {e}")
 
 # Seed test user, teams, categories, and locations
 try:

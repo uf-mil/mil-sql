@@ -12,6 +12,7 @@ import mysql.connector
 from src.api.db import get_db
 from src.api.middleware.auth import require_auth
 from src.api.helpers.history import is_latest_global_history_timestamp
+from src.api.helpers.unique_type_qty import map_total_qty_for_supply, check_unique_type_map_qty
 
 supplies_location_history_bp = Blueprint('supplies_location_history', __name__)
 
@@ -361,6 +362,18 @@ def undo_location_history(history_id, current_user_id=None):
             # Delete paired entry too
             cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (paired['id'],))
         
+        sid = history.get('supply_id')
+        if sid:
+            cur_v = conn.cursor(dictionary=True)
+            total = map_total_qty_for_supply(cur_v, sid)
+            ok_qty, err_qty = check_unique_type_map_qty(cur_v, sid, total)
+            cur_v.close()
+            if not ok_qty:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
+
         # Delete this history entry entirely (not just mark as undone)
         cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (history_id,))
         

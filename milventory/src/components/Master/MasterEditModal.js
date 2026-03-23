@@ -29,6 +29,14 @@ const levenshteinDistance = (str1, str2) => {
   return dp[m][n];
 };
 
+const joinPrefixSuffix = (prefix, suffix) => {
+  const p = (prefix || '').trimEnd();
+  const s = (suffix || '').trim();
+  if (!p) return s;
+  if (!s) return p;
+  return `${p}${p.endsWith(' ') ? '' : ' '}${s}`;
+};
+
 // Validate that all number-type custom fields have a valid number (or are empty)
 const areNumberCustomFieldsValid = (customFields, customFieldDefinitions) => {
   const numberDefs = customFieldDefinitions.filter(d => d.type === 'number');
@@ -184,6 +192,10 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   const [addFieldDropdownOpen, setAddFieldDropdownOpen] = useState(false);
   const addFieldDropdownRef = useRef(null);
   const nameInputRef = useRef(null);
+  const [linkedType, setLinkedType] = useState(null);
+  const [unlinkFromType, setUnlinkFromType] = useState(false);
+  const [nameSuffix, setNameSuffix] = useState('');
+  const [descSuffix, setDescSuffix] = useState('');
 
   const originalItem = itemName ? resolveMasterItem(itemName) : null;
 
@@ -237,18 +249,76 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && originalItem) {
+    if (!isOpen || !originalItem) return;
+
+    setImage(originalItem.image || null);
+    setImagePreview(originalItem.image || null);
+    setCustomFields(originalItem.custom_fields || {});
+    setAddFieldDropdownOpen(false);
+    setSelectedTeams(originalItem.teams || []);
+    setUnlinkFromType(false);
+    setLinkedType(null);
+    setNameSuffix('');
+    setDescSuffix('');
+
+    if (originalItem.supply_type_id) {
       setName(originalItem.name || '');
       setDescription(originalItem.description || '');
-      setImage(originalItem.image || null);
-      setImagePreview(originalItem.image || null);
-      setCustomFields(originalItem.custom_fields || {});
-      setAddFieldDropdownOpen(false);
-      // Load teams (already lowercase from API)
-      setSelectedTeams(originalItem.teams || []);
-      setTimeout(() => nameInputRef.current?.focus(), 0);
+      api.getSupplyType(originalItem.supply_type_id)
+        .then((t) => {
+          setLinkedType(t);
+          setCustomFields((prev) => {
+            const cf = { ...prev };
+            const locked = Array.isArray(t.locked_custom_field_keys) ? t.locked_custom_field_keys : [];
+            const defs = t.default_custom_fields || {};
+            for (const k of locked) {
+              if (!(k in cf)) cf[k] = Object.prototype.hasOwnProperty.call(defs, k) ? defs[k] : '';
+            }
+            return cf;
+          });
+          const np = (t.item_name_prefix || '').trimEnd();
+          const rawName = originalItem.name || '';
+          if (np && rawName.startsWith(np)) {
+            setNameSuffix(rawName.slice(np.length).replace(/^\s+/, ''));
+          } else {
+            setNameSuffix(rawName);
+          }
+          setName('');
+          const dp = (t.item_description_prefix || '').trim();
+          const rawD = originalItem.description || '';
+          if (dp && String(rawD).startsWith(dp)) {
+            setDescSuffix(String(rawD).slice(dp.length).replace(/^\s+/, ''));
+          } else {
+            setDescSuffix(rawD || '');
+          }
+          setDescription('');
+        })
+        .catch(() => {
+          setLinkedType(null);
+          setName(originalItem.name || '');
+          setDescription(originalItem.description || '');
+        });
+    } else {
+      setName(originalItem.name || '');
+      setDescription(originalItem.description || '');
     }
+
+    setTimeout(() => nameInputRef.current?.focus(), 0);
   }, [isOpen, originalItem]);
+
+  const lockedFieldKeys =
+    linkedType && !unlinkFromType && Array.isArray(linkedType.locked_custom_field_keys)
+      ? linkedType.locked_custom_field_keys
+      : [];
+
+  const typePresetKeys =
+    linkedType && !unlinkFromType && linkedType.default_custom_fields && typeof linkedType.default_custom_fields === 'object'
+      ? new Set(Object.keys(linkedType.default_custom_fields))
+      : new Set();
+
+  const useTypePrefixUi = Boolean(
+    originalItem?.supply_type_id && linkedType && !unlinkFromType
+  );
 
   // Load categories when categoryIdToName mapping is ready
   useEffect(() => {
@@ -307,9 +377,22 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   };
 
   const handleSave = async () => {
-    if (name.trim() && itemName) {
-      // Check if name changed and new name already exists
-      if (name.trim() !== itemName && masterInventoryItems.has(name.trim())) {
+    let finalName;
+    let finalDesc;
+    if (unlinkFromType) {
+      finalName = name.trim();
+      finalDesc = description.trim() || null;
+    } else if (useTypePrefixUi && linkedType) {
+      finalName = joinPrefixSuffix(linkedType.item_name_prefix, nameSuffix).trim();
+      const d = joinPrefixSuffix(linkedType.item_description_prefix || '', descSuffix).trim();
+      finalDesc = d || null;
+    } else {
+      finalName = name.trim();
+      finalDesc = description.trim() || null;
+    }
+
+    if (finalName && itemName) {
+      if (finalName !== itemName && masterInventoryItems.has(finalName)) {
         await showAlert('An item with this name already exists. Please use a different name.');
         return;
       }
@@ -324,15 +407,18 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
         .filter(id => id !== undefined);
       
       const updatedItem = {
-        name: name.trim(),
-        description: description.trim() || null,
+        name: finalName,
+        description: finalDesc,
         image: image || null,
         teams: selectedTeams.length > 0 ? selectedTeams : [],
         categories: categoryIds.length > 0 ? categoryIds : [],
         custom_fields: customFields,
         locations: originalItem?.locations || []
       };
-      
+      if (unlinkFromType) {
+        updatedItem.unlink_from_type = true;
+      }
+
       updateMasterItem(itemName, updatedItem);
       onClose();
     }
@@ -367,19 +453,104 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     >
       <div className="modal">
         <h3>Edit Master Item</h3>
-        <input
-          ref={nameInputRef}
-          type="text"
-          placeholder="Item name (required, must be unique)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <textarea
-          placeholder="Description (optional)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows="3"
-        />
+        {originalItem?.supply_type_id && !unlinkFromType && (
+          <label style={{ display: 'block', marginBottom: '0.65rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+            <input
+              type="checkbox"
+              style={{ marginRight: '0.35rem' }}
+              onChange={(e) => {
+                if (!e.target.checked) return;
+                if (linkedType) {
+                  setName(joinPrefixSuffix(linkedType.item_name_prefix, nameSuffix).trim());
+                  setDescription(joinPrefixSuffix(linkedType.item_description_prefix || '', descSuffix).trim());
+                } else {
+                  setName(originalItem.name || '');
+                  setDescription(originalItem.description || '');
+                }
+                setUnlinkFromType(true);
+                setLinkedType(null);
+              }}
+            />
+            Unlink from type (keep current text; you can edit freely after saving)
+          </label>
+        )}
+        {useTypePrefixUi ? (
+          <>
+            <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              Name
+            </label>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.35rem', marginBottom: '0.5rem' }}>
+              <span
+                style={{
+                  padding: '0.5rem 0.65rem',
+                  background: 'rgba(0,0,0,.35)',
+                  border: '1px solid rgba(255,255,255,.12)',
+                  borderRadius: '4px',
+                  color: 'var(--muted)',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '45%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}
+                title={linkedType?.item_name_prefix || ''}
+              >
+                {linkedType?.item_name_prefix || '(no prefix)'}
+              </span>
+              <input
+                ref={nameInputRef}
+                type="text"
+                placeholder="Suffix"
+                value={nameSuffix}
+                onChange={(e) => setNameSuffix(e.target.value)}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+            </div>
+            <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              Description
+            </label>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.35rem', marginBottom: '0.5rem' }}>
+              {(linkedType?.item_description_prefix || '').trim() ? (
+                <span
+                  style={{
+                    padding: '0.5rem 0.65rem',
+                    background: 'rgba(0,0,0,.35)',
+                    border: '1px solid rgba(255,255,255,.12)',
+                    borderRadius: '4px',
+                    color: 'var(--muted)',
+                    whiteSpace: 'pre-wrap',
+                    maxWidth: '45%',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  {linkedType.item_description_prefix}
+                </span>
+              ) : null}
+              <textarea
+                placeholder="Description suffix (optional)"
+                value={descSuffix}
+                onChange={(e) => setDescSuffix(e.target.value)}
+                rows="3"
+                style={{ flex: 1, minWidth: 0 }}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <input
+              ref={nameInputRef}
+              type="text"
+              placeholder="Item name (required, must be unique)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <textarea
+              placeholder="Description (optional)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows="3"
+            />
+          </>
+        )}
 
         <TagDropdown
           placeholder="Team Tags (Optional)"
@@ -415,8 +586,9 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
                     type="text"
                     placeholder={key}
                     value={displayValue}
+                    disabled={typePresetKeys.has(key)}
                     onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0 }}
+                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
                   />
                 )}
                 {fieldType === 'number' && (
@@ -425,26 +597,29 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
                     step="any"
                     placeholder={key}
                     value={displayValue}
+                    disabled={typePresetKeys.has(key)}
                     onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    style={{ flex: 1, minWidth: 0 }}
+                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
                   />
                 )}
                 {fieldType === 'date' && (
                   <input
                     type="date"
                     value={displayValue}
+                    disabled={typePresetKeys.has(key)}
                     onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0 }}
+                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
                   />
                 )}
                 <button
                   type="button"
+                  disabled={lockedFieldKeys.includes(key)}
                   onClick={() => setCustomFields(prev => { const n = { ...prev }; delete n[key]; return n; })}
                   style={{
-                    flexShrink: 0, background: 'transparent', border: 'none', color: '#888', cursor: 'pointer',
+                    flexShrink: 0, background: 'transparent', border: 'none', color: lockedFieldKeys.includes(key) ? '#444' : '#888', cursor: lockedFieldKeys.includes(key) ? 'not-allowed' : 'pointer',
                     padding: '0.25rem', fontSize: '1.25rem', lineHeight: 1
                   }}
-                  title="Remove field"
+                  title={lockedFieldKeys.includes(key) ? 'Required by type' : 'Remove field'}
                 >
                   ×
                 </button>
@@ -545,7 +720,16 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
           <button type="button" className="cancel" onClick={handleCancel}>
             Cancel
           </button>
-          <button type="button" className="save" onClick={handleSave} disabled={!name.trim() || !areNumberCustomFieldsValid(customFields, customFieldDefinitions)}>
+          <button
+            type="button"
+            className="save"
+            onClick={handleSave}
+            disabled={
+              !(useTypePrefixUi && linkedType
+                ? joinPrefixSuffix(linkedType.item_name_prefix, nameSuffix).trim()
+                : name.trim()) || !areNumberCustomFieldsValid(customFields, customFieldDefinitions)
+            }
+          >
             Save
           </button>
         </div>

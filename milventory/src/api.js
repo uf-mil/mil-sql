@@ -253,6 +253,46 @@ export const api = {
       return r.json();
     }),
 
+  getSupplyTypes: () =>
+    fetch(`${API_BASE}/supply-types`, {
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+
+  getSupplyType: (id) =>
+    fetch(`${API_BASE}/supply-types/${id}`, {
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+
   // History
   getSupplyHistory: (filters = {}) => {
     const params = new URLSearchParams();
@@ -723,6 +763,40 @@ export const admin = {
     }),
   deleteCustomFieldDefinition: (id) =>
     fetch(`${API_BASE}/custom-field-definitions/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 403) throw new Error('Leader access required');
+      if (r.status === 204) return null;
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Request failed'); });
+      return r.json();
+    }),
+
+  createSupplyType: (body) =>
+    fetch(`${API_BASE}/supply-types`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify(body)
+    }).then(r => {
+      if (r.status === 403) throw new Error('Leader access required');
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Request failed'); });
+      return r.json();
+    }),
+  updateSupplyType: (id, body) =>
+    fetch(`${API_BASE}/supply-types/${id}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify(body)
+    }).then(r => {
+      if (r.status === 403) throw new Error('Leader access required');
+      if (!r.ok) return r.json().then(d => { throw new Error(d.error || 'Request failed'); });
+      return r.json();
+    }),
+  deleteSupplyType: (id) =>
+    fetch(`${API_BASE}/supply-types/${id}`, {
       method: 'DELETE',
       credentials: 'include',
       headers: authHeaders()

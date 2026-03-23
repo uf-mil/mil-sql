@@ -3,11 +3,12 @@ import { useInventory } from '../../context/InventoryContext';
 import InventoryBoxesTable from './InventoryBoxesTable';
 import CategoriesTable from './CategoriesTable';
 import CustomFieldsTable from './CustomFieldsTable';
+import ItemTypesTable from './ItemTypesTable';
 
 const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
   const { leftPaneWidth, setLeftPaneWidth, leftPaneCollapsed, setLeftPaneCollapsed } = useInventory();
   const [isResizing, setIsResizing] = useState(false);
-  const [activeTab, setActiveTab] = useState('boxes'); // 'boxes' | 'categories' | 'customfields'
+  const [activeTab, setActiveTab] = useState('boxes'); // 'boxes' | 'categories' | 'customfields' | 'itemtypes'
   const leftPaneRef = React.useRef(null);
   const resizeRef = React.useRef(null);
 
@@ -95,6 +96,12 @@ const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
             >
               Custom Fields
             </button>
+            <button
+              className={`admin-subtab ${activeTab === 'itemtypes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('itemtypes')}
+            >
+              Item types
+            </button>
           </div>
 
           {/* Tab content */}
@@ -107,6 +114,7 @@ const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
             )}
             {activeTab === 'categories' && <CategoriesTable />}
             {activeTab === 'customfields' && <CustomFieldsTable />}
+            {activeTab === 'itemtypes' && <ItemTypesTable />}
           </div>
         </div>
       </div>

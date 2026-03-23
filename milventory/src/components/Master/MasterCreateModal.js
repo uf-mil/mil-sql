@@ -29,6 +29,14 @@ const levenshteinDistance = (str1, str2) => {
   return dp[m][n];
 };
 
+const joinPrefixSuffix = (prefix, suffix) => {
+  const p = (prefix || '').trimEnd();
+  const s = (suffix || '').trim();
+  if (!p) return s;
+  if (!s) return p;
+  return `${p}${p.endsWith(' ') ? '' : ' '}${s}`;
+};
+
 // Validate that all number-type custom fields have a valid number (or are empty)
 const areNumberCustomFieldsValid = (customFields, customFieldDefinitions) => {
   const numberDefs = customFieldDefinitions.filter(d => d.type === 'number');
@@ -189,6 +197,11 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
   const [addFieldDropdownOpen, setAddFieldDropdownOpen] = useState(false);
   const addFieldDropdownRef = useRef(null);
   const nameInputRef = useRef(null);
+  const [supplyTypes, setSupplyTypes] = useState([]);
+  const [selectedSupplyTypeId, setSelectedSupplyTypeId] = useState('');
+  const [nameSuffix, setNameSuffix] = useState('');
+  const [descSuffix, setDescSuffix] = useState('');
+  const [lockedFieldKeys, setLockedFieldKeys] = useState([]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -206,6 +219,9 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
       api.getCustomFieldDefinitions()
         .then(setCustomFieldDefinitions)
         .catch(() => setCustomFieldDefinitions([]));
+      api.getSupplyTypes()
+        .then(setSupplyTypes)
+        .catch(() => setSupplyTypes([]));
       getCategories()
         .then(categories => {
           // Categories now come as objects with {id, name}
@@ -250,9 +266,36 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
       setCategorySearchQuery('');
       setCustomFields({});
       setAddFieldDropdownOpen(false);
+      setSelectedSupplyTypeId('');
+      setNameSuffix('');
+      setDescSuffix('');
+      setLockedFieldKeys([]);
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+    if (!selectedSupplyTypeId || !t) {
+      setLockedFieldKeys([]);
+      return;
+    }
+    const defs = t.default_custom_fields || {};
+    const locked = Array.isArray(t.locked_custom_field_keys) ? [...t.locked_custom_field_keys] : [];
+    const cf = { ...defs };
+    for (const k of locked) {
+      if (!(k in cf)) cf[k] = '';
+    }
+    setCustomFields(cf);
+    setLockedFieldKeys(locked);
+    setNameSuffix('');
+    setDescSuffix('');
+    if (t.image) {
+      setImage(t.image);
+      setImagePreview(t.image);
+    }
+  }, [selectedSupplyTypeId, supplyTypes, isOpen]);
 
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
@@ -294,8 +337,17 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
   };
 
   const handleSave = async () => {
-    if (name.trim()) {
-      if (masterInventoryItems.has(name.trim())) {
+    const selectedType = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+    const fullName = selectedSupplyTypeId && selectedType
+      ? joinPrefixSuffix(selectedType.item_name_prefix, nameSuffix)
+      : name.trim();
+    const fullDescRaw = selectedSupplyTypeId && selectedType
+      ? joinPrefixSuffix(selectedType.item_description_prefix || '', descSuffix)
+      : description.trim();
+    const fullDesc = fullDescRaw.trim() ? fullDescRaw.trim() : null;
+
+    if (fullName.trim()) {
+      if (masterInventoryItems.has(fullName.trim())) {
         await showAlert('An item with this name already exists. Please use a different name.');
         return;
       }
@@ -310,13 +362,14 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
         .filter(id => id !== undefined);
       
       const newItem = {
-        name: name.trim(),
-        description: description.trim() || null,
+        name: fullName.trim(),
+        description: fullDesc,
         image: image || null,
         teams: selectedTeams.length > 0 ? selectedTeams : undefined,
         categories: categoryIds.length > 0 ? categoryIds : undefined,
         custom_fields: Object.keys(customFields).length > 0 ? customFields : undefined,
-        locations: []
+        locations: [],
+        supply_type_id: selectedSupplyTypeId ? Number(selectedSupplyTypeId) : undefined
       };
       
       createMasterItem(newItem);
@@ -345,6 +398,12 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  const selectedType = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+  const typePresetKeys =
+    selectedType?.default_custom_fields && typeof selectedType.default_custom_fields === 'object'
+      ? new Set(Object.keys(selectedType.default_custom_fields))
+      : new Set();
+
   return (
     <div
       className="modal-overlay visible"
@@ -353,19 +412,98 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
     >
       <div className="modal">
         <h3>Create Item</h3>
-        <input
-          ref={nameInputRef}
-          type="text"
-          placeholder="Item name (required, must be unique)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <textarea
-          placeholder="Description (optional)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows="3"
-        />
+        <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+          Item type (optional)
+        </label>
+        <select
+          value={selectedSupplyTypeId}
+          onChange={(e) => setSelectedSupplyTypeId(e.target.value)}
+          style={{ marginBottom: '0.75rem', width: '100%', padding: '0.5rem' }}
+        >
+          <option value="">None</option>
+          {supplyTypes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}{t.is_unique ? ' (max 1 on map)' : ''}
+            </option>
+          ))}
+        </select>
+        {selectedSupplyTypeId ? (
+          <>
+            <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              Name
+            </label>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.35rem', marginBottom: '0.5rem' }}>
+              <span
+                style={{
+                  padding: '0.5rem 0.65rem',
+                  background: 'rgba(0,0,0,.35)',
+                  border: '1px solid rgba(255,255,255,.12)',
+                  borderRadius: '4px',
+                  color: 'var(--muted)',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '45%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}
+                title={supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_name_prefix || ''}
+              >
+                {supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_name_prefix || '(no prefix)'}
+              </span>
+              <input
+                ref={nameInputRef}
+                type="text"
+                placeholder="Your suffix (full name must stay unique)"
+                value={nameSuffix}
+                onChange={(e) => setNameSuffix(e.target.value)}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+            </div>
+            <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              Description
+            </label>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.35rem', marginBottom: '0.5rem' }}>
+              {(supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_description_prefix || '').trim() ? (
+                <span
+                  style={{
+                    padding: '0.5rem 0.65rem',
+                    background: 'rgba(0,0,0,.35)',
+                    border: '1px solid rgba(255,255,255,.12)',
+                    borderRadius: '4px',
+                    color: 'var(--muted)',
+                    whiteSpace: 'pre-wrap',
+                    maxWidth: '45%',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  {supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_description_prefix}
+                </span>
+              ) : null}
+              <textarea
+                placeholder="Description suffix (optional)"
+                value={descSuffix}
+                onChange={(e) => setDescSuffix(e.target.value)}
+                rows="3"
+                style={{ flex: 1, minWidth: 0 }}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <input
+              ref={nameInputRef}
+              type="text"
+              placeholder="Item name (required, must be unique)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <textarea
+              placeholder="Description (optional)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows="3"
+            />
+          </>
+        )}
 
         <TagDropdown
           placeholder="Team Tags (Optional)"
@@ -402,8 +540,9 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
                     type="text"
                     placeholder={key}
                     value={displayValue}
+                    disabled={typePresetKeys.has(key)}
                     onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0 }}
+                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
                   />
                 )}
                 {fieldType === 'number' && (
@@ -412,26 +551,29 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
                     step="any"
                     placeholder={key}
                     value={displayValue}
+                    disabled={typePresetKeys.has(key)}
                     onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    style={{ flex: 1, minWidth: 0 }}
+                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
                   />
                 )}
                 {fieldType === 'date' && (
                   <input
                     type="date"
                     value={displayValue}
+                    disabled={typePresetKeys.has(key)}
                     onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0 }}
+                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
                   />
                 )}
                 <button
                   type="button"
+                  disabled={lockedFieldKeys.includes(key)}
                   onClick={() => setCustomFields(prev => { const n = { ...prev }; delete n[key]; return n; })}
                   style={{
-                    flexShrink: 0, background: 'transparent', border: 'none', color: '#888', cursor: 'pointer',
+                    flexShrink: 0, background: 'transparent', border: 'none', color: lockedFieldKeys.includes(key) ? '#444' : '#888', cursor: lockedFieldKeys.includes(key) ? 'not-allowed' : 'pointer',
                     padding: '0.25rem', fontSize: '1.25rem', lineHeight: 1
                   }}
-                  title="Remove field"
+                  title={lockedFieldKeys.includes(key) ? 'Required by type' : 'Remove field'}
                 >
                   ×
                 </button>
@@ -536,7 +678,19 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
           <button type="button" className="cancel" onClick={handleCancel}>
             Cancel
           </button>
-          <button type="button" className="save" onClick={handleSave} disabled={!name.trim() || !areNumberCustomFieldsValid(customFields, customFieldDefinitions)}>
+          <button
+            type="button"
+            className="save"
+            onClick={handleSave}
+            disabled={
+              !(selectedSupplyTypeId
+                ? joinPrefixSuffix(
+                    supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_name_prefix,
+                    nameSuffix
+                  ).trim()
+                : name.trim()) || !areNumberCustomFieldsValid(customFields, customFieldDefinitions)
+            }
+          >
             Create
           </button>
         </div>

@@ -14,6 +14,10 @@ from src.api.db import get_db
 from src.api.models.supply_location import SupplyLocation
 from src.api.middleware.auth import require_auth
 from src.api.helpers.history import log_location_history
+from src.api.helpers.unique_type_qty import (
+    map_total_qty_for_supply,
+    check_unique_type_map_qty,
+)
 
 supplies_location_bp = Blueprint('supplies_location', __name__)
 
@@ -228,6 +232,13 @@ def add_supply_location(current_user_id=None):
         location_name = data['location']
         supply_id = data['supply_id']
         amount = data['amount']
+
+        total_now = map_total_qty_for_supply(cur, supply_id)
+        ok_qty, err_qty = check_unique_type_map_qty(cur, supply_id, total_now + amount)
+        if not ok_qty:
+            cur.close()
+            conn.close()
+            return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
         
         # Check if entry already exists
         cur.execute("""
@@ -387,6 +398,15 @@ def update_supply_location(location_id, current_user_id=None):
         values.append(location_id)
         
         if updates:
+            if 'amount' in data:
+                total_now = map_total_qty_for_supply(cur, old_location['supply_id'])
+                proposed = total_now - old_amount + int(data['amount'])
+                ok_qty, err_qty = check_unique_type_map_qty(cur, old_location['supply_id'], proposed)
+                if not ok_qty:
+                    cur.close()
+                    conn.close()
+                    return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
+
             query = f"UPDATE supplies_location SET {', '.join(updates)} WHERE id = %s"
             cur.execute(query, values)
             
@@ -742,6 +762,14 @@ def bulk_add_supply_locations(current_user_id=None):
             location_name = addition['location']
             shelf = addition.get('shelf')
             amount = addition['amount']
+
+            total_now = map_total_qty_for_supply(cur, supply_id)
+            ok_qty, err_qty = check_unique_type_map_qty(cur, supply_id, total_now + amount)
+            if not ok_qty:
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
             
             # Check if entry exists
             cur.execute("""

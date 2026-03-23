@@ -47,14 +47,18 @@ def get_supplies(current_user_id=None):
                 s.description,
                 s.image,
                 s.custom_fields,
+                s.supply_type_id,
+                st.name AS type_name,
                 s.last_order_date,
                 s.last_modified,
                 s.last_modified_by,
                 s.created_at,
                 COALESCE(SUM(sl.amount), 0) as totalQty
             FROM supplies s
+            LEFT JOIN supply_types st ON s.supply_type_id = st.id
             LEFT JOIN supplies_location sl ON s.id = sl.supply_id
-            GROUP BY s.id, s.name, s.description, s.image, s.custom_fields, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
+            GROUP BY s.id, s.name, s.description, s.image, s.custom_fields, s.supply_type_id,
+                     st.name, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
             ORDER BY s.name
         """)
         
@@ -108,6 +112,8 @@ def get_supplies(current_user_id=None):
                 'description': row['description'],
                 'image': row['image'],
                 'custom_fields': cf,
+                'supply_type_id': row.get('supply_type_id'),
+                'type_name': row.get('type_name'),
                 'lastModified': row['last_modified'].isoformat() if row['last_modified'] else None,
                 'last_modified_by': row['last_modified_by'],
                 'totalQty': int(row['totalQty']),
@@ -163,15 +169,19 @@ def get_supply(supply_id, current_user_id=None):
                 s.description,
                 s.image,
                 s.custom_fields,
+                s.supply_type_id,
+                st.name AS type_name,
                 s.last_order_date,
                 s.last_modified,
                 s.last_modified_by,
                 s.created_at,
                 COALESCE(SUM(sl.amount), 0) as totalQty
             FROM supplies s
+            LEFT JOIN supply_types st ON s.supply_type_id = st.id
             LEFT JOIN supplies_location sl ON s.id = sl.supply_id
             WHERE s.id = %s
-            GROUP BY s.id, s.name, s.description, s.image, s.custom_fields, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
+            GROUP BY s.id, s.name, s.description, s.image, s.custom_fields, s.supply_type_id,
+                     st.name, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
         """, (supply_id,))
         
         row = cur.fetchone()
@@ -229,6 +239,8 @@ def get_supply(supply_id, current_user_id=None):
             'description': row['description'],
             'image': row['image'],
             'custom_fields': cf,
+            'supply_type_id': row.get('supply_type_id'),
+            'type_name': row.get('type_name'),
             'lastModified': row['last_modified'].isoformat() if row['last_modified'] else None,
             'last_modified_by': row['last_modified_by'],
             'totalQty': int(row['totalQty']),
@@ -279,6 +291,69 @@ def _validate_custom_fields(custom_fields, allowed_names):
     return True, None
 
 
+def _json_load_maybe(val, default=None):
+    if default is None:
+        default = {}
+    if val is None:
+        return default
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str) and val.strip():
+        try:
+            parsed = json.loads(val)
+            return parsed if isinstance(parsed, dict) else default
+        except (TypeError, ValueError):
+            return default
+    return default
+
+
+def _fetch_supply_type_row(cur, type_id):
+    cur.execute("""
+        SELECT id, name, item_name_prefix, item_description_prefix, image,
+               default_custom_fields, locked_custom_field_keys, is_unique
+        FROM supply_types WHERE id = %s
+    """, (int(type_id),))
+    return cur.fetchone()
+
+
+def _merge_custom_fields_from_type(type_row, user_cf):
+    defaults = _json_load_maybe(type_row.get('default_custom_fields'), {})
+    if not isinstance(defaults, dict):
+        defaults = {}
+    locked = type_row.get('locked_custom_field_keys')
+    if isinstance(locked, str) and locked.strip():
+        try:
+            locked = json.loads(locked)
+        except (TypeError, ValueError):
+            locked = []
+    elif not isinstance(locked, list):
+        locked = []
+    merged = dict(defaults)
+    if isinstance(user_cf, dict):
+        merged.update(user_cf)
+    for k in locked:
+        if k in defaults:
+            merged[k] = defaults[k]
+        elif k not in merged:
+            merged[k] = ''
+    return merged
+
+
+def _validate_name_desc_prefixes(type_row, name, description):
+    np = (type_row.get('item_name_prefix') or '').strip()
+    if np:
+        nm = (name or '').strip()
+        if not nm.startswith(np):
+            return False, 'Name must begin with the type prefix.'
+    ndp_raw = type_row.get('item_description_prefix')
+    ndp = (ndp_raw or '').strip() if ndp_raw else ''
+    if ndp:
+        desc_str = (description or '').strip() if description is not None else ''
+        if desc_str and not desc_str.startswith(ndp):
+            return False, 'Description must begin with the type prefix.'
+    return True, None
+
+
 @supplies_bp.route('', methods=['POST'])
 @require_auth
 def create_supply(current_user_id=None):
@@ -317,34 +392,62 @@ def create_supply(current_user_id=None):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Validate custom_fields if provided
         custom_fields = data.get('custom_fields')
+        supply_type_id_raw = data.get('supply_type_id')
+        type_row = None
+        tid_insert = None
+        if supply_type_id_raw is not None and supply_type_id_raw != '':
+            try:
+                tid_insert = int(supply_type_id_raw)
+            except (TypeError, ValueError):
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Invalid supply_type_id'}), 400
+            type_row = _fetch_supply_type_row(cur, tid_insert)
+            if not type_row:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Supply type not found'}), 400
+            custom_fields = _merge_custom_fields_from_type(type_row, custom_fields)
+
         allowed = _get_allowed_custom_field_names(cur)
         ok, err = _validate_custom_fields(custom_fields, allowed)
         if not ok:
             cur.close()
             conn.close()
             return jsonify({'error': err}), 400
+
+        name_final = data['name'].strip()
+        desc_final = data.get('description', '').strip() or None
+        image_final = data.get('image') or None
+        if type_row:
+            okp, errp = _validate_name_desc_prefixes(type_row, name_final, desc_final)
+            if not okp:
+                cur.close()
+                conn.close()
+                return jsonify({'error': errp}), 400
+            if not image_final:
+                image_final = type_row.get('image')
         
         # Check if supply with this name already exists
-        cur.execute("SELECT id FROM supplies WHERE name = %s", (data['name'].strip(),))
+        cur.execute("SELECT id FROM supplies WHERE name = %s", (name_final,))
         if cur.fetchone():
             cur.close()
             conn.close()
             return jsonify({'error': 'Supply with this name already exists'}), 400
         
         cf_json = json.dumps(custom_fields) if custom_fields else None
-        # Insert new supply
         cur.execute("""
-            INSERT INTO supplies (name, description, image, custom_fields, last_order_date, last_modified_by)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO supplies (name, description, image, custom_fields, last_order_date, last_modified_by, supply_type_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
-            data['name'].strip(),
-            data.get('description', '').strip() or None,
-            data.get('image') or None,
+            name_final,
+            desc_final,
+            image_final,
             cf_json,
             data.get('last_order_date') or None,
-            current_user_id
+            current_user_id,
+            tid_insert,
         ))
         
         supply_id = cur.lastrowid
@@ -386,9 +489,9 @@ def create_supply(current_user_id=None):
         # Log history for CREATE action
         old_values = {}
         new_values = {
-            'name': data['name'].strip(),
-            'description': data.get('description', '').strip() or None,
-            'image': data.get('image') or None,
+            'name': name_final,
+            'description': desc_final,
+            'image': image_final,
             'last_order_date': data.get('last_order_date') or None
         }
         history_id = log_supply_history(
@@ -418,8 +521,12 @@ def create_supply(current_user_id=None):
         
         # Fetch the created supply with teams and categories
         cur.execute("""
-            SELECT id, name, description, image, custom_fields, last_order_date, last_modified, last_modified_by, created_at
-            FROM supplies WHERE id = %s
+            SELECT s.id, s.name, s.description, s.image, s.custom_fields, s.last_order_date,
+                   s.last_modified, s.last_modified_by, s.created_at,
+                   s.supply_type_id, st.name AS type_name
+            FROM supplies s
+            LEFT JOIN supply_types st ON s.supply_type_id = st.id
+            WHERE s.id = %s
         """, (supply_id,))
         
         row = cur.fetchone()
@@ -447,6 +554,8 @@ def create_supply(current_user_id=None):
         # Convert row dict to Supply object
         supply = Supply.from_dict(row).to_dict()
         supply['custom_fields'] = cf
+        supply['supply_type_id'] = row.get('supply_type_id')
+        supply['type_name'] = row.get('type_name')
         supply['totalQty'] = 0
         supply['locations'] = []
         supply['teams'] = teams
@@ -500,17 +609,8 @@ def update_supply(supply_id, current_user_id=None):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Validate custom_fields if provided
-        if 'custom_fields' in data:
-            allowed = _get_allowed_custom_field_names(cur)
-            ok, err = _validate_custom_fields(data.get('custom_fields'), allowed)
-            if not ok:
-                cur.close()
-                conn.close()
-                return jsonify({'error': err}), 400
-        
         # Check if supply exists (with conflict detection)
-        cur.execute("SELECT id, name FROM supplies WHERE id = %s", (supply_id,))
+        cur.execute("SELECT id, name, supply_type_id FROM supplies WHERE id = %s", (supply_id,))
         supply_check = cur.fetchone()
         if not supply_check:
             cur.close()
@@ -532,6 +632,45 @@ def update_supply(supply_id, current_user_id=None):
         }
         old_teams = current_state['teams']
         old_categories = current_state['categories']
+        
+        unlink_from_type = bool(data.get('unlink_from_type'))
+        old_type_id = supply_check.get('supply_type_id')
+        effective_type_id = None if unlink_from_type else old_type_id
+        type_row_update = None
+        if effective_type_id:
+            type_row_update = _fetch_supply_type_row(cur, effective_type_id)
+            if not type_row_update:
+                effective_type_id = None
+        
+        merged_cf_for_update = None
+        if 'custom_fields' in data:
+            allowed = _get_allowed_custom_field_names(cur)
+            cf_work = data.get('custom_fields')
+            if effective_type_id and type_row_update:
+                cf_work = _merge_custom_fields_from_type(type_row_update, cf_work)
+            ok, err = _validate_custom_fields(cf_work, allowed)
+            if not ok:
+                cur.close()
+                conn.close()
+                return jsonify({'error': err}), 400
+            merged_cf_for_update = cf_work
+        
+        if type_row_update and ('name' in data or 'description' in data):
+            prop_name = (
+                data['name'].strip()
+                if ('name' in data and data.get('name') is not None and str(data.get('name', '')).strip())
+                else current_state['name']
+            )
+            prop_desc = (
+                (data['description'].strip() or None)
+                if 'description' in data
+                else current_state['description']
+            )
+            okp, errp = _validate_name_desc_prefixes(type_row_update, prop_name, prop_desc)
+            if not okp:
+                cur.close()
+                conn.close()
+                return jsonify({'error': errp}), 400
         
         # Check if name is being changed and new name already exists
         if 'name' in data and data['name']:
@@ -559,8 +698,11 @@ def update_supply(supply_id, current_user_id=None):
             values.append(data['last_order_date'] or None)
         if 'custom_fields' in data:
             updates.append("custom_fields = %s")
-            cf = data.get('custom_fields')
-            values.append(json.dumps(cf) if cf else None)
+            values.append(json.dumps(merged_cf_for_update) if merged_cf_for_update else None)
+        
+        if unlink_from_type:
+            updates.append("supply_type_id = %s")
+            values.append(None)
         
         # Always update last_modified_by
         updates.append("last_modified_by = %s")
@@ -645,8 +787,12 @@ def update_supply(supply_id, current_user_id=None):
         
         # Fetch updated supply
         cur.execute("""
-            SELECT id, name, description, image, custom_fields, last_order_date, last_modified, last_modified_by, created_at
-            FROM supplies WHERE id = %s
+            SELECT s.id, s.name, s.description, s.image, s.custom_fields, s.last_order_date,
+                   s.last_modified, s.last_modified_by, s.created_at,
+                   s.supply_type_id, st.name AS type_name
+            FROM supplies s
+            LEFT JOIN supply_types st ON s.supply_type_id = st.id
+            WHERE s.id = %s
         """, (supply_id,))
         
         row = cur.fetchone()
@@ -660,6 +806,8 @@ def update_supply(supply_id, current_user_id=None):
             cf = cf or {}
         supply = Supply.from_dict(row).to_dict()
         supply['custom_fields'] = cf
+        supply['supply_type_id'] = row.get('supply_type_id')
+        supply['type_name'] = row.get('type_name')
         
         # Get computed quantities
         cur.execute("""
