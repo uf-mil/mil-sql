@@ -432,60 +432,59 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
             <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
               Name
             </label>
-            <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.35rem', marginBottom: '0.5rem' }}>
-              <span
-                style={{
-                  padding: '0.5rem 0.65rem',
-                  background: 'rgba(0,0,0,.35)',
-                  border: '1px solid rgba(255,255,255,.12)',
-                  borderRadius: '4px',
-                  color: 'var(--muted)',
-                  whiteSpace: 'nowrap',
-                  maxWidth: '45%',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}
-                title={supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_name_prefix || ''}
-              >
-                {supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_name_prefix || '(no prefix)'}
-              </span>
-              <input
-                ref={nameInputRef}
-                type="text"
-                placeholder="Your suffix (full name must stay unique)"
-                value={nameSuffix}
-                onChange={(e) => setNameSuffix(e.target.value)}
-                style={{ flex: 1, minWidth: 0 }}
-              />
-            </div>
+            {(() => {
+              const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+              const nameFix = t?.item_name_prefix ?? '';
+              const hasNameFix = String(nameFix).length > 0;
+              return hasNameFix ? (
+                <div className="modal-field-composite" title={nameFix}>
+                  <span className="modal-field-composite__prefix">{nameFix}</span>
+                  <input
+                    ref={nameInputRef}
+                    type="text"
+                    className="modal-field-composite__input"
+                    placeholder="Must stay unique"
+                    value={nameSuffix}
+                    onChange={(e) => setNameSuffix(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <input
+                  ref={nameInputRef}
+                  type="text"
+                  placeholder="Must stay unique"
+                  value={nameSuffix}
+                  onChange={(e) => setNameSuffix(e.target.value)}
+                />
+              );
+            })()}
             <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
               Description
             </label>
-            <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.35rem', marginBottom: '0.5rem' }}>
-              {(supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_description_prefix || '').trim() ? (
-                <span
-                  style={{
-                    padding: '0.5rem 0.65rem',
-                    background: 'rgba(0,0,0,.35)',
-                    border: '1px solid rgba(255,255,255,.12)',
-                    borderRadius: '4px',
-                    color: 'var(--muted)',
-                    whiteSpace: 'pre-wrap',
-                    maxWidth: '45%',
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  {supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_description_prefix}
-                </span>
-              ) : null}
-              <textarea
-                placeholder="Description suffix (optional)"
-                value={descSuffix}
-                onChange={(e) => setDescSuffix(e.target.value)}
-                rows="3"
-                style={{ flex: 1, minWidth: 0 }}
-              />
-            </div>
+            {(() => {
+              const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+              const descFix = t?.item_description_prefix ?? '';
+              const hasDescFix = String(descFix).trim().length > 0;
+              return hasDescFix ? (
+                <div className="modal-field-composite modal-field-composite--stack">
+                  <div className="modal-field-composite__prefix-block">{descFix}</div>
+                  <textarea
+                    className="modal-field-composite__textarea"
+                    placeholder="Optional"
+                    value={descSuffix}
+                    onChange={(e) => setDescSuffix(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              ) : (
+                <textarea
+                  placeholder="Description (optional)"
+                  value={descSuffix}
+                  onChange={(e) => setDescSuffix(e.target.value)}
+                  rows={3}
+                />
+              );
+            })()}
           </>
         ) : (
           <>

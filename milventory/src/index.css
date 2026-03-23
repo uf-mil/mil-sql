@@ -537,6 +537,94 @@ select.styled-select:focus {
   min-height: 60px;
 }
 
+/* Master create/edit: one bordered field with type-fixed text + editable tail */
+.modal .modal-field-composite {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.modal .modal-field-composite:focus-within {
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.modal .modal-field-composite__prefix {
+  padding: 0.5rem 0 0.5rem 0.5rem;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  pointer-events: none;
+}
+
+.modal .modal-field-composite__input {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0.5rem;
+  color: var(--text);
+  font-size: inherit;
+  font-family: inherit;
+  border-radius: 0 6px 6px 0;
+}
+
+.modal .modal-field-composite__input:focus {
+  border: none !important;
+  background: transparent !important;
+}
+
+.modal .modal-field-composite--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.modal .modal-field-composite__prefix-block {
+  padding: 0.5rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: none;
+  pointer-events: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.85rem;
+}
+
+.modal .modal-field-composite__textarea {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0.5rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+  border-radius: 0 0 6px 6px;
+  box-sizing: border-box;
+}
+
+.modal .modal-field-composite__textarea:focus {
+  border: none !important;
+  background: transparent !important;
+}
+
 .modal .edit-form-image-container {
   width: 100%;
   aspect-ratio: 16 / 9;
