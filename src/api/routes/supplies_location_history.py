@@ -306,7 +306,10 @@ def undo_location_history(history_id, current_user_id=None):
             if not paired:
                 cur.close()
                 conn.close()
-                return jsonify({'error': 'Paired MOVE entry not found'}), 400
+                return jsonify({
+                    'error': 'Paired MOVE entry not found',
+                    'error_type': 'MOVE_PAIR_MISSING',
+                }), 400
             
             # Reverse both legs: undo REMOVE by restoring source, undo ADD by removing from dest
             if history['action_type'] == 'REMOVE':
@@ -368,8 +371,74 @@ def undo_location_history(history_id, current_user_id=None):
         return jsonify({'success': True, 'deleted_id': history_id}), 200
     except mysql.connector.IntegrityError as e:
         if 'foreign key constraint' in str(e).lower():
-            return jsonify({'error': 'Supply or location does not exist'}), 400
-        return jsonify({'error': str(e)}), 400
+            return jsonify({
+                'error': 'Supply or location does not exist',
+                'error_type': 'UNDO_IMPOSSIBLE',
+            }), 400
+        return jsonify({'error': str(e), 'error_type': 'UNDO_IMPOSSIBLE'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@supplies_location_history_bp.route('/<int:history_id>/discard', methods=['POST'])
+@require_auth
+def discard_location_history(history_id, current_user_id=None):
+    """
+    POST /api/supplies-location-history/<id>/discard
+    Delete a location history row (and paired MOVE leg) without changing inventory.
+    Same permission rules as undo (non-leaders: only the latest global history timestamp).
+    """
+    try:
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("""
+            SELECT id, action_type, batch_id, changed_at
+            FROM supplies_location_history
+            WHERE id = %s
+        """, (history_id,))
+        history = cur.fetchone()
+        if not history:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'History entry not found'}), 404
+
+        if not session.get('is_leader', False):
+            if not is_latest_global_history_timestamp(cur, history['changed_at']):
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'error': 'Only the most recent action can be undone.',
+                    'error_type': 'UNDO_NOT_LATEST',
+                }), 403
+
+        if history['action_type'] == 'CASCADED_SUBTRACT':
+            cur.close()
+            conn.close()
+            return jsonify({
+                'error': 'Cannot discard cascaded subtract entries individually.',
+                'error_type': 'CASCADED_SUBTRACT_ENTRY',
+            }), 400
+
+        cur = conn.cursor()
+        paired_id = None
+        if history['action_type'] == 'MOVE' and history.get('batch_id'):
+            cur.execute("""
+                SELECT id FROM supplies_location_history
+                WHERE batch_id = %s AND id != %s
+            """, (history['batch_id'], history_id))
+            prow = cur.fetchone()
+            if prow:
+                paired_id = prow[0]
+
+        if paired_id is not None:
+            cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (paired_id,))
+        cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (history_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'success': True, 'discarded_id': history_id}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

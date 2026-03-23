@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { api, locationHistory } from '../../api';
+import { api, locationHistory, historyUndoAllowsDiscard } from '../../api';
 import { useInventory } from '../../context/InventoryContext';
+import { useBlockingDialog } from '../Common/BlockingDialogContext';
 import HistoryTableRow from './HistoryTableRow';
 import './HistoryModal.css';
 
 const HistoryModal = ({ isOpen, onClose, isAdmin = false }) => {
+  const { showConfirm } = useBlockingDialog();
   const { reloadMasterItems, reloadSupplyLocations } = useInventory();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -109,16 +111,42 @@ const HistoryModal = ({ isOpen, onClose, isAdmin = false }) => {
           await reloadSupplyLocations();
         }
       } else {
-      await api.undoSupplyHistory(historyId);
+        await api.undoSupplyHistory(historyId);
         await reloadMasterItems();
         if (reloadSupplyLocations) {
           await reloadSupplyLocations();
         }
       }
-      // Reload history after undo
       await loadHistory();
     } catch (err) {
-      setError(err.message || 'Failed to undo action');
+      if (historyUndoAllowsDiscard(err)) {
+        const remove = await showConfirm(
+          `${err.message}\n\nRemove this history entry from the log only? Inventory and catalog will stay as they are now.`,
+          {
+            title: 'Cannot undo',
+            confirmLabel: 'Remove from history',
+            cancelLabel: 'Close',
+            danger: true
+          }
+        );
+        if (remove) {
+          try {
+            if (historyType === 'location') {
+              await locationHistory.discard(historyId);
+              if (reloadSupplyLocations) await reloadSupplyLocations();
+            } else {
+              await api.discardSupplyHistory(historyId);
+              await reloadMasterItems();
+              if (reloadSupplyLocations) await reloadSupplyLocations();
+            }
+            await loadHistory();
+          } catch (e2) {
+            setError(e2.message || 'Failed to remove history entry');
+          }
+        }
+      } else {
+        setError(err.message || 'Failed to undo action');
+      }
     }
   };
 

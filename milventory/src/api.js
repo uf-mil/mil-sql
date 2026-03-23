@@ -76,6 +76,23 @@ const authHeaders = () => ({
   'Content-Type': 'application/json',
 });
 
+/** Attach status + error_type from JSON error body (for history undo/discard UX). */
+const apiJsonError = (r, data) => {
+  const error = new Error(data.error || 'Request failed');
+  error.response = r;
+  error.status = r.status;
+  if (data.error_type != null) error.error_type = data.error_type;
+  return error;
+};
+
+/** True when undo failed in a way that allows "remove from history only". */
+export function historyUndoAllowsDiscard(err) {
+  if (!err || err.error_type == null) return false;
+  return ['LOCATION_DELETED', 'SUPPLY_DELETED', 'UNDO_IMPOSSIBLE', 'MOVE_PAIR_MISSING'].includes(
+    err.error_type
+  );
+}
+
 // Helper to detect and handle conflict errors
 export const handleApiError = async (error) => {
   if (error.response) {
@@ -267,11 +284,11 @@ export const api = {
     });
   },
 
-  undoSupplyHistory: (historyId) => 
-    fetch(`${API_BASE}/supplies/history/${historyId}/undo`, { 
-      method: 'POST', 
-      credentials: 'include', 
-      headers: authHeaders() 
+  undoSupplyHistory: (historyId) =>
+    fetch(`${API_BASE}/supplies/history/${historyId}/undo`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders()
     }).then(r => {
       if (r.status === 401) {
         const error = new Error('Authentication required');
@@ -280,9 +297,26 @@ export const api = {
       }
       if (!r.ok) {
         return r.json().then(data => {
-          const error = new Error(data.error || 'Request failed');
-          error.response = r;
-          throw error;
+          throw apiJsonError(r, data);
+        });
+      }
+      return r.json();
+    }),
+
+  discardSupplyHistory: (historyId) =>
+    fetch(`${API_BASE}/supplies/history/${historyId}/discard`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          throw apiJsonError(r, data);
         });
       }
       return r.json();
@@ -764,9 +798,33 @@ export const locationHistory = {
       }
       if (!r.ok) {
         return r.json().then(data => {
-          const error = new Error(data.error || 'Request failed');
-          error.response = r;
-          throw error;
+          throw apiJsonError(r, data);
+        });
+      }
+      return r.json();
+    }).catch(err => {
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        const networkError = new Error('Network error: Unable to connect to server. Please check if the server is running.');
+        networkError.response = { status: 0 };
+        throw networkError;
+      }
+      throw err;
+    }),
+
+  discard: (historyId) =>
+    fetch(`${API_BASE}/supplies-location-history/${historyId}/discard`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders()
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          throw apiJsonError(r, data);
         });
       }
       return r.json();

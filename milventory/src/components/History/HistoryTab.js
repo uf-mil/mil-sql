@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { locationHistory } from '../../api';
+import { locationHistory, historyUndoAllowsDiscard } from '../../api';
 import { useInventory } from '../../context/InventoryContext';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
 
 const HistoryTab = () => {
-  const { showAlert } = useBlockingDialog();
+  const { showAlert, showConfirm } = useBlockingDialog();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,7 +43,28 @@ const HistoryTab = () => {
         await reloadSupplyLocations();
       }
     } catch (err) {
-      await showAlert(err.message || 'Failed to undo action', { title: 'Undo failed' });
+      if (historyUndoAllowsDiscard(err)) {
+        const remove = await showConfirm(
+          `${err.message}\n\nRemove this history entry from the log only? Inventory will stay as it is now.`,
+          {
+            title: 'Cannot undo',
+            confirmLabel: 'Remove from history',
+            cancelLabel: 'Close',
+            danger: true
+          }
+        );
+        if (remove) {
+          try {
+            await locationHistory.discard(historyId);
+            await loadHistory();
+            if (reloadSupplyLocations) await reloadSupplyLocations();
+          } catch (e2) {
+            await showAlert(e2.message || 'Failed to remove history entry', { title: 'Error' });
+          }
+        }
+      } else {
+        await showAlert(err.message || 'Failed to undo action', { title: 'Undo failed' });
+      }
     } finally {
       setUndoing(prev => {
         const next = new Set(prev);

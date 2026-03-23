@@ -1015,14 +1015,20 @@ def undo_supply_history(history_id, current_user_id=None):
             if not history['supply_id']:
                 cur.close()
                 conn.close()
-                return jsonify({'error': 'Cannot undo: supply no longer exists'}), 400
+                return jsonify({
+                    'error': 'Cannot undo: supply no longer exists',
+                    'error_type': 'UNDO_IMPOSSIBLE',
+                }), 400
             
             # Check supply still exists
             cur.execute("SELECT id FROM supplies WHERE id = %s", (history['supply_id'],))
             if not cur.fetchone():
                 cur.close()
                 conn.close()
-                return jsonify({'error': 'Cannot undo: supply no longer exists'}), 400
+                return jsonify({
+                    'error': 'Cannot undo: supply no longer exists',
+                    'error_type': 'UNDO_IMPOSSIBLE',
+                }), 400
             
             # Restore old values
             updates = []
@@ -1185,7 +1191,48 @@ def undo_supply_history(history_id, current_user_id=None):
         return jsonify(response_data), 200
     except mysql.connector.IntegrityError as e:
         conn.rollback()
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'error': str(e), 'error_type': 'UNDO_IMPOSSIBLE'}), 400
     except Exception as e:
         conn.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@supplies_bp.route('/history/<int:history_id>/discard', methods=['POST'])
+@require_auth
+def discard_supply_history(history_id, current_user_id=None):
+    """
+    POST /api/supplies/history/<id>/discard
+    Delete a supply history row (and CASCADE team/category rows) without changing supplies data.
+    Same permission rules as undo for non-leaders.
+    """
+    try:
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("""
+            SELECT id, changed_at FROM supplies_history WHERE id = %s
+        """, (history_id,))
+        row = cur.fetchone()
+        if not row:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'History entry not found'}), 404
+
+        if not session.get('is_leader', False):
+            if not is_latest_global_history_timestamp(cur, row['changed_at']):
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'error': 'Only the most recent action can be undone.',
+                    'error_type': 'UNDO_NOT_LATEST',
+                }), 403
+
+        cur = conn.cursor()
+        cur.execute("DELETE FROM supplies_history WHERE id = %s", (history_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify({'success': True, 'discarded_id': history_id}), 200
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
