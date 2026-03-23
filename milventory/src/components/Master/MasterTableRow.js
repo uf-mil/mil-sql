@@ -16,7 +16,7 @@ const formatDate = (isoString) => {
   return `${dateStr}, ${timeStr}`;
 };
 
-const formatCustomValue = (value, type) => {
+export const formatCustomValue = (value, type) => {
   if (value === undefined || value === null || value === '') return '—';
   if (type === 'date') {
     try {

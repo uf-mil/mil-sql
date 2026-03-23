@@ -280,6 +280,7 @@ export const InventoryProvider = ({ children }) => {
             locations: locations,
             teams: supply.teams || [],
             categories: supply.categories || [],
+            custom_fields: supply.custom_fields || {},
             lastModified: supply.lastModified || null,
             last_modified_by: supply.last_modified_by || null,
             last_modified_by_name: supply.last_modified_by_name || null,

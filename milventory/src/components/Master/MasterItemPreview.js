@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import MasterEditModal from './MasterEditModal';
-import { getCategories } from '../../api';
+import { getCategories, api } from '../../api';
+import { formatCustomValue } from './MasterTableRow';
 
 const MasterItemPreview = () => {
   const {
@@ -29,6 +30,7 @@ const MasterItemPreview = () => {
   const previewRef = useRef(null);
   const [editingItem, setEditingItem] = useState(null);
   const [categoryIdToName, setCategoryIdToName] = useState(new Map());
+  const [customFieldDefinitions, setCustomFieldDefinitions] = useState([]);
 
   // Fetch category mapping for display
   useEffect(() => {
@@ -43,6 +45,12 @@ const MasterItemPreview = () => {
         setCategoryIdToName(mapping);
       })
       .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    api.getCustomFieldDefinitions()
+      .then(data => setCustomFieldDefinitions(Array.isArray(data) ? data : []))
+      .catch(() => setCustomFieldDefinitions([]));
   }, []);
 
   const item = selectedMasterItem ? resolveMasterItem(selectedMasterItem) : null;
@@ -185,6 +193,22 @@ const MasterItemPreview = () => {
                     {category}
                   </span>
                 ))}
+              </div>
+            </div>
+          )}
+          {item.custom_fields && Object.keys(item.custom_fields).length > 0 && (
+            <div className="master-preview-custom-fields" style={{ marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+              <strong>Custom fields:</strong>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.25rem' }}>
+                {Object.entries(item.custom_fields).map(([fieldName, value]) => {
+                  const def = customFieldDefinitions.find(d => d.name === fieldName);
+                  return (
+                    <div key={fieldName} style={{ fontSize: '0.9rem' }}>
+                      <span style={{ color: 'var(--muted)' }}>{fieldName}:</span>{' '}
+                      {formatCustomValue(value, def?.type || 'text')}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

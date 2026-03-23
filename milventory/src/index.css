@@ -1072,6 +1072,16 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   line-height: 1.5;
 }
 
+.master-preview-custom-fields strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .master-preview-locations {
   margin-top: 0.75rem;
 }
