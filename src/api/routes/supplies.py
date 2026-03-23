@@ -18,7 +18,8 @@ from src.api.helpers.history import (
     log_team_changes,
     log_category_changes,
     get_supply_current_state,
-    snapshot_supply_locations_before_delete
+    snapshot_supply_locations_before_delete,
+    is_latest_global_history_timestamp,
 )
 
 supplies_bp = Blueprint('supplies', __name__)
@@ -961,6 +962,15 @@ def undo_supply_history(history_id, current_user_id=None):
             cur.close()
             conn.close()
             return jsonify({'error': 'History entry not found'}), 404
+        
+        if not session.get('is_leader', False):
+            if not is_latest_global_history_timestamp(cur, history['changed_at']):
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'error': 'Only the most recent action can be undone.',
+                    'error_type': 'UNDO_NOT_LATEST',
+                }), 403
         
         # For DELETE actions, supply_id might be NULL due to ON DELETE SET NULL
         # We need to find the original supply_id by looking at the old_name and matching

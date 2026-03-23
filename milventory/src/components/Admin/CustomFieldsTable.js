@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { admin } from '../../api';
+import { useBlockingDialog } from '../Common/BlockingDialogContext';
 
 const TYPES = ['text', 'number', 'date'];
 
 const CustomFieldsTable = () => {
+  const { showConfirm } = useBlockingDialog();
   const [definitions, setDefinitions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -82,7 +84,11 @@ const CustomFieldsTable = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this custom field definition? This will also remove this field and its value from all items that have it.')) return;
+    const ok = await showConfirm(
+      'Delete this custom field definition? This will also remove this field and its value from all items that have it.',
+      { title: 'Delete custom field', danger: true, confirmLabel: 'Delete', cancelLabel: 'Cancel' }
+    );
+    if (!ok) return;
     try {
       setError(null);
       await admin.deleteCustomFieldDefinition(id);

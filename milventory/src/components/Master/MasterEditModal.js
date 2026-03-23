@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { getCategories, getTeams, api } from '../../api';
+import { useBlockingDialog } from '../Common/BlockingDialogContext';
 
 // Levenshtein distance for fuzzy search
 const levenshteinDistance = (str1, str2) => {
@@ -166,6 +167,7 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
 
 const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   const { updateMasterItem, resolveMasterItem, masterInventoryItems } = useInventory();
+  const { showAlert } = useBlockingDialog();
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -263,7 +265,7 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     }
   }, [isOpen, originalItem, categoryIdToName]);
 
-  const handleImageChange = (e) => {
+  const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (!file) {
       // Keep existing image if no new file selected
@@ -272,14 +274,14 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
 
     // Validate file size (10MB max)
     if (file.size > 10 * 1024 * 1024) {
-      alert('Image file size must be less than 10MB');
+      await showAlert('Image file size must be less than 10MB');
       e.target.value = '';
       return;
     }
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+      await showAlert('Please select an image file');
       e.target.value = '';
       return;
     }
@@ -292,8 +294,9 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
       setImagePreview(base64Data);
     };
     reader.onerror = () => {
-      alert('Error reading image file');
-      e.target.value = '';
+      showAlert('Error reading image file').then(() => {
+        e.target.value = '';
+      });
     };
     reader.readAsDataURL(file);
   };
@@ -303,15 +306,15 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     setImagePreview(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (name.trim() && itemName) {
       // Check if name changed and new name already exists
       if (name.trim() !== itemName && masterInventoryItems.has(name.trim())) {
-        alert('An item with this name already exists. Please use a different name.');
+        await showAlert('An item with this name already exists. Please use a different name.');
         return;
       }
       if (!areNumberCustomFieldsValid(customFields, customFieldDefinitions)) {
-        alert('Please enter a valid number in all number fields (or leave them empty).');
+        await showAlert('Please enter a valid number in all number fields (or leave them empty).');
         return;
       }
 

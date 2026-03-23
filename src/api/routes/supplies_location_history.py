@@ -7,10 +7,11 @@ from pathlib import Path
 # Add src to path for imports (must be before other imports)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 import mysql.connector
 from src.api.db import get_db
 from src.api.middleware.auth import require_auth
+from src.api.helpers.history import is_latest_global_history_timestamp
 
 supplies_location_history_bp = Blueprint('supplies_location_history', __name__)
 
@@ -153,6 +154,15 @@ def undo_location_history(history_id, current_user_id=None):
             cur.close()
             conn.close()
             return jsonify({'error': 'History entry not found'}), 404
+        
+        if not session.get('is_leader', False):
+            if not is_latest_global_history_timestamp(cur, history['changed_at']):
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'error': 'Only the most recent action can be undone.',
+                    'error_type': 'UNDO_NOT_LATEST',
+                }), 403
         
         # No need to check undone status - if entry exists, it can be undone
         

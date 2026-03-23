@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { admin } from '../../api';
+import { useBlockingDialog } from '../Common/BlockingDialogContext';
 
 const LOCATION_TYPES = [
   { value: 'drawer', label: 'Drawer' },
@@ -12,6 +13,7 @@ const LOCATION_TYPES = [
 ];
 
 const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneCollapsed, onEditStart, onEditEnd, onPreviewUpdate, onEdgeDrag }) => {
+  const { showAlert, showConfirm } = useBlockingDialog();
   const previewRef = useRef(null);
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -187,15 +189,17 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
     if (!location) return;
     
     if (isProtected) {
-      alert(
+      await showAlert(
         `This location is protected and is a permanent inventory location. ` +
-        `To delete it, you must edit the database directly to set protected = FALSE.`
+        `To delete it, you must edit the database directly to set protected = FALSE.`,
+        { title: 'Protected location' }
       );
       return;
     }
     
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${location.name}"? This action cannot be undone.`
+    const confirmed = await showConfirm(
+      `Are you sure you want to delete "${location.name}"? This action cannot be undone.`,
+      { title: 'Delete location', danger: true, confirmLabel: 'Delete', cancelLabel: 'Cancel' }
     );
     
     if (!confirmed) return;
@@ -213,7 +217,7 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
         window.location.reload();
       }, 300);
     } catch (err) {
-      alert(`Failed to delete location: ${err.message}`);
+      await showAlert(`Failed to delete location: ${err.message}`, { title: 'Error' });
       setDeleting(false);
     }
   };

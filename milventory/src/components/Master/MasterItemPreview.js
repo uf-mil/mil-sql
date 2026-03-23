@@ -3,8 +3,10 @@ import { useInventory } from '../../context/InventoryContext';
 import MasterEditModal from './MasterEditModal';
 import { getCategories, api } from '../../api';
 import { formatCustomValue } from './MasterTableRow';
+import { useBlockingDialog } from '../Common/BlockingDialogContext';
 
 const MasterItemPreview = () => {
+  const { showConfirm } = useBlockingDialog();
   const {
     selectedMasterItem,
     resolveMasterItem,
@@ -86,10 +88,11 @@ const MasterItemPreview = () => {
   const positionX = leftPaneActualWidth + 20;
   const positionY = 20;
 
-  const handleDeleteItem = () => {
+  const handleDeleteItem = async () => {
     if (locations.length > 0) {
-      const confirmed = window.confirm(
-        `This item is used in ${locations.length} box(es). Delete from all boxes?`
+      const confirmed = await showConfirm(
+        `This item is used in ${locations.length} box(es). Delete from all boxes?`,
+        { title: 'Delete item', danger: true, confirmLabel: 'Delete all', cancelLabel: 'Cancel' }
       );
       if (!confirmed) return;
     }

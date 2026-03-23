@@ -265,3 +265,23 @@ def snapshot_supply_locations_before_delete(conn, supply_id, supply_name, change
         return batch_id   # return so caller can attach to the supplies_history row too
     finally:
         cur.close()
+
+
+def is_latest_global_history_timestamp(cur, changed_at):
+    """
+    True if changed_at equals the latest timestamp across location + supply history.
+    Non-leaders may only undo that row; leaders skip this check in routes.
+    """
+    if changed_at is None:
+        return False
+    cur.execute("""
+        SELECT GREATEST(
+            COALESCE((SELECT MAX(changed_at) FROM supplies_location_history), '1970-01-01 00:00:00'),
+            COALESCE((SELECT MAX(changed_at) FROM supplies_history), '1970-01-01 00:00:00')
+        ) AS latest
+    """)
+    row = cur.fetchone()
+    latest = row['latest'] if row else None
+    if latest is None:
+        return False
+    return changed_at == latest

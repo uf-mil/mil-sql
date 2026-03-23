@@ -130,7 +130,7 @@ const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
 
   // Determine if entry can be undone
   // Note: Undone entries are deleted entirely from the database, so we don't need to check undone status
-  // For users: only last 5 items can be undone
+  // For users: only the first row (most recent on this page) can be undone
   // For admins: all items can be undone
   const baseCanUndo = entry.historyType === 'location' 
     ? entry.action_type !== 'CASCADED_SUBTRACT'
@@ -138,7 +138,7 @@ const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
   
   const canUndo = isAdmin 
     ? baseCanUndo  // Admins can undo all items
-    : baseCanUndo && index < 5;  // Users can only undo last 5 items
+    : baseCanUndo && index < 1;  // Users can only undo the top row
 
   return (
     <tr className="history-row">

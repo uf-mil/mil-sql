@@ -10,6 +10,7 @@ import AddModePreview from './components/Map/AddModePreview';
 import Login from './components/Auth/Login';
 import ErrorToast from './components/Common/ErrorToast';
 import ConflictErrorModal from './components/Common/ConflictErrorModal';
+import { BlockingDialogProvider } from './components/Common/BlockingDialogContext';
 import HistoryModal from './components/History/HistoryModal';
 import AdminDashboard from './components/Admin/AdminDashboard';
 import { auth } from './api';
@@ -55,6 +56,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <BlockingDialogProvider>
       <Routes>
         <Route
           path="/"
@@ -80,6 +82,7 @@ function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </BlockingDialogProvider>
     </BrowserRouter>
   );
 }

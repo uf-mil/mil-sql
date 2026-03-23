@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { locationHistory } from '../../api';
 import { useInventory } from '../../context/InventoryContext';
+import { useBlockingDialog } from '../Common/BlockingDialogContext';
 
 const HistoryTab = () => {
+  const { showAlert } = useBlockingDialog();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -41,7 +43,7 @@ const HistoryTab = () => {
         await reloadSupplyLocations();
       }
     } catch (err) {
-      alert(err.message || 'Failed to undo action');
+      await showAlert(err.message || 'Failed to undo action', { title: 'Undo failed' });
     } finally {
       setUndoing(prev => {
         const next = new Set(prev);
