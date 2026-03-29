@@ -20,12 +20,10 @@ const InventoryContext = createContext(null);
 /** Build master table location strings from API supplies.locations[] */
 function locationsListFromSupplyLocs(locations) {
   const out = [];
-  let freeQty = 0;
   let freeN = 0;
   (locations || []).forEach((loc) => {
     if (loc.location === 'Free Coordinate' || (loc.coord_x != null && loc.coord_y != null)) {
       freeN += 1;
-      freeQty += loc.qty || 0;
       return;
     }
     if (loc.shelf !== null && loc.shelf !== undefined) {
@@ -35,7 +33,7 @@ function locationsListFromSupplyLocs(locations) {
     }
   });
   if (freeN > 0) {
-    out.push(freeN > 1 || freeQty > 1 ? `Free Coordinate (${freeQty})` : 'Free Coordinate');
+    out.push(freeN === 1 ? 'Free Coordinate' : `Free Coordinates (${freeN})`);
   }
   return out;
 }
@@ -1038,7 +1036,7 @@ export const InventoryProvider = ({ children }) => {
           supply_id: supplyId,
           coord_x: a.x,
           coord_y: a.y,
-          amount: a.qty || 1
+          amount: 1
         });
       }
       await reloadSupplyLocations();
@@ -1071,12 +1069,20 @@ export const InventoryProvider = ({ children }) => {
       const sid = supplyNameToId.get(name);
       if (!sid) return;
       const { x, y } = clampPointToRoom(worldX, worldY);
-      setFreePlacePendingAdds((prev) => [
-        ...prev,
-        { tempId: newTempFreePlaceId(), x, y, qty: 1 }
-      ]);
+      setFreePlacePendingAdds((prev) => {
+        const existing = freePlacementsBySupplyName.get(name) || [];
+        const onServer = existing.some(
+          (p) => Math.round(p.x) === x && Math.round(p.y) === y
+        );
+        const pendingDup = prev.some((a) => a.x === x && a.y === y);
+        if (onServer || pendingDup) {
+          setError('That floor coordinate already has a marker for this item (one unit per coordinate).');
+          return prev;
+        }
+        return [...prev, { tempId: newTempFreePlaceId(), x, y, qty: 1 }];
+      });
     },
-    [supplyNameToId]
+    [supplyNameToId, freePlacementsBySupplyName, setError]
   );
 
   const updateFreePlaceSessionCoord = useCallback((id, worldX, worldY) => {

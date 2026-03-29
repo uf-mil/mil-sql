@@ -205,8 +205,11 @@ def add_supply_location(current_user_id=None):
                 return jsonify({'error': 'Amount must be positive'}), 400
         else:
             amount = int(data.get('amount', 1))
-            if amount <= 0:
-                return jsonify({'error': 'Amount must be positive'}), 400
+            if amount != 1:
+                return jsonify({
+                    'error': 'Free coordinate placements must use amount 1 (one unit per coordinate)',
+                    'error_type': 'FREE_COORD_AMOUNT',
+                }), 400
         
         conn = get_db()
         cur = conn.cursor(dictionary=True)
@@ -235,13 +238,6 @@ def add_supply_location(current_user_id=None):
                 conn.close()
                 return jsonify({'error': 'Coordinates must be inside the map room bounds'}), 400
             
-            total_now = map_total_qty_for_supply(cur, supply_id)
-            ok_qty, err_qty = check_unique_type_map_qty(cur, supply_id, total_now + amount)
-            if not ok_qty:
-                cur.close()
-                conn.close()
-                return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
-            
             cur.execute("""
                 SELECT id, amount FROM supplies_location
                 WHERE supply_id = %s AND location_name IS NULL
@@ -250,45 +246,55 @@ def add_supply_location(current_user_id=None):
             existing = cur.fetchone()
             
             if existing:
-                old_amount = existing[1]
-                new_amount = old_amount + amount
-                cur.execute("""
-                    UPDATE supplies_location
-                    SET amount = %s, last_modified_by = %s
-                    WHERE id = %s
-                """, (new_amount, current_user_id, existing[0]))
                 location_id = existing[0]
-                log_location_history(
-                    conn, 'ADD',
-                    supply_id=supply_id,
-                    supply_name=supply['name'],
-                    location_name=FREE_COORD_HISTORY_LABEL,
-                    shelf=None,
-                    old_amount=old_amount,
-                    new_amount=new_amount,
-                    changed_by=current_user_id,
-                    batch_id=batch_id,
-                    related_location=f'{cx},{cy}',
-                )
-            else:
+                old_amount = existing[1]
+                if old_amount != 1:
+                    cur.execute("""
+                        UPDATE supplies_location
+                        SET amount = 1, last_modified_by = %s
+                        WHERE id = %s
+                    """, (current_user_id, location_id))
                 cur.execute("""
-                    INSERT INTO supplies_location
-                    (supply_id, location_name, coord_x, coord_y, shelf, amount, last_modified_by)
-                    VALUES (%s, NULL, %s, %s, NULL, %s, %s)
-                """, (supply_id, cx, cy, amount, current_user_id))
-                location_id = cur.lastrowid
-                log_location_history(
-                    conn, 'ADD',
-                    supply_id=supply_id,
-                    supply_name=supply['name'],
-                    location_name=FREE_COORD_HISTORY_LABEL,
-                    shelf=None,
-                    old_amount=None,
-                    new_amount=amount,
-                    changed_by=current_user_id,
-                    batch_id=batch_id,
-                    related_location=f'{cx},{cy}',
-                )
+                    UPDATE supplies
+                    SET last_modified = CURRENT_TIMESTAMP, last_modified_by = %s
+                    WHERE id = %s
+                """, (current_user_id, supply_id))
+                conn.commit()
+                cur.execute("""
+                    SELECT id, supply_id, location_name, coord_x, coord_y, shelf, amount, last_modified, last_modified_by, created_at
+                    FROM supplies_location WHERE id = %s
+                """, (location_id,))
+                row = cur.fetchone()
+                location = SupplyLocation.from_db_row(row)
+                cur.close()
+                conn.close()
+                return jsonify(location.to_dict()), 200
+
+            total_now = map_total_qty_for_supply(cur, supply_id)
+            ok_qty, err_qty = check_unique_type_map_qty(cur, supply_id, total_now + 1)
+            if not ok_qty:
+                cur.close()
+                conn.close()
+                return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
+
+            cur.execute("""
+                INSERT INTO supplies_location
+                (supply_id, location_name, coord_x, coord_y, shelf, amount, last_modified_by)
+                VALUES (%s, NULL, %s, %s, NULL, 1, %s)
+            """, (supply_id, cx, cy, current_user_id))
+            location_id = cur.lastrowid
+            log_location_history(
+                conn, 'ADD',
+                supply_id=supply_id,
+                supply_name=supply['name'],
+                location_name=FREE_COORD_HISTORY_LABEL,
+                shelf=None,
+                old_amount=None,
+                new_amount=1,
+                changed_by=current_user_id,
+                batch_id=batch_id,
+                related_location=f'{cx},{cy}',
+            )
         else:
             shelf = data.get('shelf')
             location_name = data['location']
@@ -371,6 +377,11 @@ def add_supply_location(current_user_id=None):
             return jsonify({'error': 'Supply or location does not exist'}), 400
         if 'unique_supply_location_shelf' in str(e).lower():
             return jsonify({'error': 'Supply location already exists'}), 400
+        if 'uniq_free_coord_uid' in str(e).lower():
+            return jsonify({
+                'error': 'A floor marker already exists at these coordinates for this item',
+                'error_type': 'FREE_COORD_DUPLICATE',
+            }), 409
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -434,6 +445,13 @@ def update_supply_location(location_id, current_user_id=None):
                 cur.close()
                 conn.close()
                 return jsonify({'error': 'Amount cannot be negative'}), 400
+            if is_free and int(data['amount']) != 1:
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'error': 'Free coordinate rows must have amount 1',
+                    'error_type': 'FREE_COORD_AMOUNT',
+                }), 400
             updates.append("amount = %s")
             values.append(data['amount'])
         
@@ -459,6 +477,22 @@ def update_supply_location(location_id, current_user_id=None):
                 cur.close()
                 conn.close()
                 return jsonify({'error': 'Coordinates must be inside the map room bounds'}), 400
+            cur.execute(
+                """
+                SELECT id FROM supplies_location
+                WHERE supply_id = %s AND location_name IS NULL
+                  AND coord_x = %s AND coord_y = %s AND id <> %s
+                LIMIT 1
+                """,
+                (old_location['supply_id'], cx, cy, location_id),
+            )
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'error': 'Another floor marker already exists at these coordinates for this item',
+                    'error_type': 'FREE_COORD_DUPLICATE',
+                }), 409
             updates.append("coord_x = %s")
             updates.append("coord_y = %s")
             values.extend([cx, cy])
@@ -536,6 +570,11 @@ def update_supply_location(location_id, current_user_id=None):
             return jsonify({'error': 'Location does not exist'}), 400
         if 'unique_supply_location_shelf' in str(e).lower():
             return jsonify({'error': 'Supply location already exists at this location/shelf'}), 400
+        if 'uniq_free_coord_uid' in str(e).lower():
+            return jsonify({
+                'error': 'A floor marker already exists at these coordinates for this item',
+                'error_type': 'FREE_COORD_DUPLICATE',
+            }), 409
         return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500

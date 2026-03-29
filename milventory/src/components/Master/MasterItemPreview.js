@@ -39,6 +39,7 @@ const MasterItemPreview = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [categoryIdToName, setCategoryIdToName] = useState(new Map());
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState([]);
+  const [freeCoordsOpen, setFreeCoordsOpen] = useState(true);
 
   // Fetch category mapping for display
   useEffect(() => {
@@ -69,8 +70,9 @@ const MasterItemPreview = () => {
     ? item.categories.map(catId => categoryIdToName.get(catId)).filter(name => name !== undefined)
     : [];
 
-  // Build detailed location entries with qty (breaking Tall Cabinets down by shelf)
-  const locationDetails = [];
+  // Box/shelf locations (with qty); free coordinates listed separately (always one unit per coordinate)
+  const boxLocationDetails = [];
+  const freeCoordinatePairs = [];
   if (selectedMasterItem) {
     locations.forEach(boxTitle => {
       const boxData = inventoryData.get(boxTitle);
@@ -80,19 +82,16 @@ const MasterItemPreview = () => {
         matchingItems.forEach(i => {
           const shelfIdx = i.shelf ?? 0;
           const shelfName = SHELF_NAMES[shelfIdx] || `Shelf ${shelfIdx}`;
-          locationDetails.push({ label: `${boxTitle} → ${shelfName}`, qty: i.qty });
+          boxLocationDetails.push({ label: `${boxTitle} → ${shelfName}`, qty: i.qty });
         });
       } else {
         const totalQty = matchingItems.reduce((sum, i) => sum + (i.qty || 0), 0);
-        locationDetails.push({ label: boxTitle, qty: totalQty });
+        boxLocationDetails.push({ label: boxTitle, qty: totalQty });
       }
     });
     const freeDots = freePlacementsBySupplyName.get(selectedMasterItem) || [];
     freeDots.forEach((p) => {
-      locationDetails.push({
-        label: `Floor (${Math.round(p.x)}, ${Math.round(p.y)})`,
-        qty: p.qty || 0
-      });
+      freeCoordinatePairs.push({ x: Math.round(p.x), y: Math.round(p.y) });
     });
   }
 
@@ -234,14 +233,49 @@ const MasterItemPreview = () => {
           )}
           <div className="master-preview-locations">
             <strong>Locations:</strong>
-            {locationDetails.length === 0 ? (
+            {boxLocationDetails.length === 0 && freeCoordinatePairs.length === 0 ? (
               <div className="master-preview-location-item">No locations</div>
             ) : (
-              locationDetails.map((loc, idx) => (
-                <div key={idx} className="master-preview-location-item">
-                  {loc.label} <span className="master-preview-location-qty">(Qty: {loc.qty})</span>
-                </div>
-              ))
+              <>
+                {boxLocationDetails.map((loc, idx) => (
+                  <div key={idx} className="master-preview-location-item">
+                    {loc.label}{' '}
+                    <span className="master-preview-location-qty">(Qty: {loc.qty})</span>
+                  </div>
+                ))}
+                {freeCoordinatePairs.length > 0 && (
+                  <div className="master-preview-free-coords-group">
+                    <button
+                      type="button"
+                      className="master-preview-location-item master-preview-locations-row-button"
+                      onClick={() => setFreeCoordsOpen((o) => !o)}
+                      aria-expanded={freeCoordsOpen}
+                      aria-label={
+                        freeCoordsOpen
+                          ? 'Collapse free coordinates'
+                          : 'Expand free coordinates'
+                      }
+                    >
+                      Free Coordinates{' '}
+                      <span className="master-preview-location-qty">
+                        (Qty: {freeCoordinatePairs.length})
+                      </span>
+                    </button>
+                    {freeCoordsOpen && (
+                      <ul className="master-preview-free-coords-list">
+                        {freeCoordinatePairs.map((c, idx) => (
+                          <li
+                            key={`${c.x}-${c.y}-${idx}`}
+                            className="master-preview-free-coord-item"
+                          >
+                            ({c.x}, {c.y})
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
           {item.image && (
@@ -263,7 +297,7 @@ const MasterItemPreview = () => {
             <strong>Actions:</strong>
             {isInFreePlaceMode && (
               <p className="master-preview-free-place-hint" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: 'var(--muted)' }}>
-                Click the room floor to queue a marker, drag to reposition, double-click to queue removal. Nothing is saved until Done. Cancel discards all changes since you entered free place.
+                Click the room floor to queue a marker (one unit per coordinate), drag to reposition, double-click to queue removal. Nothing is saved until Done. Cancel discards all changes since you entered free place.
               </p>
             )}
             {isInMoveMode && (
