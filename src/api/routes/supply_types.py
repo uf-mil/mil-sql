@@ -8,6 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from flask import Blueprint, request, jsonify
+
+from src.api.helpers.datetime_json import db_datetime_to_utc_iso
 import mysql.connector
 from src.api.db import get_db
 from src.api.middleware.auth import require_auth, require_leader
@@ -47,8 +49,8 @@ def _row_to_dict(row):
         'default_custom_fields': dcf,
         'locked_custom_field_keys': lck,
         'is_unique': bool(row.get('is_unique')),
-        'created_at': row['created_at'].isoformat() if row.get('created_at') else None,
-        'updated_at': row['updated_at'].isoformat() if row.get('updated_at') else None,
+        'created_at': db_datetime_to_utc_iso(row.get('created_at')),
+        'updated_at': db_datetime_to_utc_iso(row.get('updated_at')),
     }
 
 

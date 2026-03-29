@@ -3,6 +3,7 @@ import { useInventory } from '../../context/InventoryContext';
 import MasterEditModal from './MasterEditModal';
 import { getCategories, api } from '../../api';
 import { formatCustomValue } from './MasterTableRow';
+import { formatEasternDateTime } from '../../utils/appTimeZone';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
 
 const MasterItemPreview = () => {
@@ -21,7 +22,12 @@ const MasterItemPreview = () => {
     cancelMoveMode,
     moveModeItem,
     leftPaneWidth,
-    leftPaneCollapsed
+    leftPaneCollapsed,
+    freePlaceModeItem,
+    freePlacementsBySupplyName,
+    startFreePlaceMode,
+    cancelFreePlaceMode,
+    finishFreePlaceMode
   } = useInventory();
 
   const SHELF_NAMES = [
@@ -81,6 +87,13 @@ const MasterItemPreview = () => {
         locationDetails.push({ label: boxTitle, qty: totalQty });
       }
     });
+    const freeDots = freePlacementsBySupplyName.get(selectedMasterItem) || [];
+    freeDots.forEach((p) => {
+      locationDetails.push({
+        label: `Floor (${Math.round(p.x)}, ${Math.round(p.y)})`,
+        qty: p.qty || 0
+      });
+    });
   }
 
   // Calculate position to the right of left pane
@@ -89,9 +102,11 @@ const MasterItemPreview = () => {
   const positionY = 20;
 
   const handleDeleteItem = async () => {
-    if (locations.length > 0) {
+    const freeDots = freePlacementsBySupplyName.get(selectedMasterItem) || [];
+    const placeCount = locations.length + freeDots.length;
+    if (placeCount > 0) {
       const confirmed = await showConfirm(
-        `This item is used in ${locations.length} box(es). Delete from all boxes?`,
+        `This item appears in ${placeCount} place(s) on the map (boxes and/or floor). Delete from everywhere?`,
         { title: 'Delete item', danger: true, confirmLabel: 'Delete all', cancelLabel: 'Cancel' }
       );
       if (!confirmed) return;
@@ -116,6 +131,7 @@ const MasterItemPreview = () => {
   };
   
   const isInMoveMode = moveModeItem === selectedMasterItem;
+  const isInFreePlaceMode = freePlaceModeItem === selectedMasterItem;
 
   if (!selectedMasterItem || !item) return null;
 
@@ -138,6 +154,7 @@ const MasterItemPreview = () => {
               className="master-preview-pane-close"
               onClick={() => {
                 if (isInMoveMode) cancelMoveMode();
+                if (freePlaceModeItem === selectedMasterItem) cancelFreePlaceMode();
                 clearSelectedMasterItem();
               }}
               title="Close preview"
@@ -237,15 +254,34 @@ const MasterItemPreview = () => {
               <strong>Last modified by:</strong> {item.last_modified_by_name}
               {item.lastModified && (
                 <span style={{ marginLeft: '0.5rem' }}>
-                  ({new Date(item.lastModified).toLocaleString()})
+                  ({formatEasternDateTime(item.lastModified)})
                 </span>
               )}
             </div>
           )}
           <div className="master-preview-actions">
             <strong>Actions:</strong>
+            {isInFreePlaceMode && (
+              <p className="master-preview-free-place-hint" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                Click the room floor to queue a marker, drag to reposition, double-click to queue removal. Nothing is saved until Done. Cancel discards all changes since you entered free place.
+              </p>
+            )}
+            {isInMoveMode && (
+              <p style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: 'var(--muted)' }}>
+                Dropping on a box moves stock immediately. Drag floor markers to preview; Apply Move saves those positions. Cancel Move reverts box moves and discards floor drags.
+              </p>
+            )}
             <div className="master-preview-actions-buttons">
-              {isInMoveMode ? (
+              {isInFreePlaceMode ? (
+                <>
+                  <button className="master-action-button free-place-button" onClick={() => void finishFreePlaceMode()} title="Save floor changes to the server">
+                    Done
+                  </button>
+                  <button className="master-action-button cancel-button" onClick={cancelFreePlaceMode} title="Cancel free placement mode">
+                    Cancel
+                  </button>
+                </>
+              ) : isInMoveMode ? (
                 <>
                   <button className="master-action-button add-button" onClick={finishMoveMode} title="Apply moves and exit move mode">
                     Apply Move
@@ -268,8 +304,11 @@ const MasterItemPreview = () => {
                   <button className="master-action-button edit-button" onClick={handleEdit} title="Edit item">
                     Edit
                   </button>
-                  <button className="master-action-button delete-button" onClick={handleDeleteItem} title="Delete item from master inventory">
-                    Delete All
+                  <button className="master-action-button delete-button" onClick={handleDeleteItem} title="Remove this item from the master catalog and all locations">
+                    Delete Master Item
+                  </button>
+                  <button className="master-action-button free-place-button" onClick={() => startFreePlaceMode(selectedMasterItem)} title="Place on room floor by coordinates">
+                    Free place
                   </button>
                 </>
               )}

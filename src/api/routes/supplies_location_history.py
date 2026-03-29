@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from flask import Blueprint, request, jsonify, session
 import mysql.connector
 from src.api.db import get_db
+from src.api.helpers.datetime_json import db_datetime_to_utc_iso
 from src.api.middleware.auth import require_auth
 from src.api.helpers.history import is_latest_global_history_timestamp
 from src.api.helpers.unique_type_qty import map_total_qty_for_supply, check_unique_type_map_qty
@@ -108,11 +109,11 @@ def get_location_history(current_user_id=None):
                 'related_shelf': row['related_shelf'],
                 'batch_id': row['batch_id'],
                 'undone': bool(row['undone']),
-                'undone_at': row['undone_at'].isoformat() if row['undone_at'] else None,
+                'undone_at': db_datetime_to_utc_iso(row['undone_at']),
                 'undone_by': row['undone_by'],
                 'changed_by': row['changed_by'],
                 'changed_by_name': f"{row['first_name']} {row['last_name']}" if row['first_name'] and row['last_name'] else None,
-                'changed_at': row['changed_at'].isoformat() if row['changed_at'] else None
+                'changed_at': db_datetime_to_utc_iso(row['changed_at'])
             }
             results.append(result)
         

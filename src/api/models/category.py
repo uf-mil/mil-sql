@@ -1,5 +1,7 @@
 """Category model for database operations."""
 
+from src.api.helpers.datetime_json import db_datetime_to_utc_iso
+
 
 class Category:
     def __init__(self, id, name, created_at):
@@ -17,7 +19,7 @@ class Category:
         return {
             'id': self.id,
             'name': self.name,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': db_datetime_to_utc_iso(self.created_at)
         }
 
 

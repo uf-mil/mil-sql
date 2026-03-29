@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Optional
 from datetime import date, datetime
 
+from src.api.helpers.datetime_json import db_datetime_to_utc_iso
+
 
 @dataclass
 class Supply:
@@ -63,21 +65,15 @@ class Supply:
             'image': self.image,
         }
         if self.last_order_date:
-            if isinstance(self.last_order_date, date):
-                result['last_order_date'] = self.last_order_date.isoformat()
-            else:
-                result['last_order_date'] = str(self.last_order_date)
+            serialized = db_datetime_to_utc_iso(self.last_order_date)
+            result['last_order_date'] = serialized if serialized is not None else str(self.last_order_date)
         if self.last_modified:
-            if isinstance(self.last_modified, datetime):
-                result['lastModified'] = self.last_modified.isoformat()
-            else:
-                result['lastModified'] = str(self.last_modified)
+            serialized = db_datetime_to_utc_iso(self.last_modified)
+            result['lastModified'] = serialized if serialized is not None else str(self.last_modified)
         if self.last_modified_by:
             result['last_modified_by'] = self.last_modified_by
         if self.created_at:
-            if isinstance(self.created_at, datetime):
-                result['created_at'] = self.created_at.isoformat()
-            else:
-                result['created_at'] = str(self.created_at)
+            serialized = db_datetime_to_utc_iso(self.created_at)
+            result['created_at'] = serialized if serialized is not None else str(self.created_at)
         return result
 

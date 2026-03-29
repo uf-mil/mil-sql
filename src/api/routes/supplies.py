@@ -13,6 +13,7 @@ import mysql.connector
 from src.api.db import get_db
 from src.api.models.supply import Supply
 from src.api.middleware.auth import require_auth
+from src.api.helpers.datetime_json import db_datetime_to_utc_iso
 from src.api.helpers.history import (
     log_supply_history,
     log_team_changes,
@@ -125,7 +126,7 @@ def get_supplies(current_user_id=None):
                 'custom_fields': cf,
                 'supply_type_id': row.get('supply_type_id'),
                 'type_name': row.get('type_name'),
-                'lastModified': row['last_modified'].isoformat() if row['last_modified'] else None,
+                'lastModified': db_datetime_to_utc_iso(row['last_modified']),
                 'last_modified_by': row['last_modified_by'],
                 'totalQty': int(row['totalQty']),
                 'locations': locations,
@@ -133,7 +134,7 @@ def get_supplies(current_user_id=None):
                 'categories': category_ids
             }
             if row['last_order_date']:
-                supply_dict['last_order_date'] = row['last_order_date'].isoformat() if hasattr(row['last_order_date'], 'isoformat') else str(row['last_order_date'])
+                supply_dict['last_order_date'] = db_datetime_to_utc_iso(row['last_order_date'])
             
             # Get member name for last_modified_by if available
             if row['last_modified_by']:
@@ -262,7 +263,7 @@ def get_supply(supply_id, current_user_id=None):
             'custom_fields': cf,
             'supply_type_id': row.get('supply_type_id'),
             'type_name': row.get('type_name'),
-            'lastModified': row['last_modified'].isoformat() if row['last_modified'] else None,
+            'lastModified': db_datetime_to_utc_iso(row['last_modified']),
             'last_modified_by': row['last_modified_by'],
             'totalQty': int(row['totalQty']),
             'locations': locations,
@@ -270,7 +271,7 @@ def get_supply(supply_id, current_user_id=None):
             'categories': category_ids
         }
         if row['last_order_date']:
-            supply_dict['last_order_date'] = row['last_order_date'].isoformat() if hasattr(row['last_order_date'], 'isoformat') else str(row['last_order_date'])
+            supply_dict['last_order_date'] = db_datetime_to_utc_iso(row['last_order_date'])
         
         # Get member name for last_modified_by if available
         if row['last_modified_by']:
@@ -1095,12 +1096,12 @@ def get_supply_history(current_user_id=None):
                 'new_description': row['new_description'],
                 'old_image': row['old_image'],
                 'new_image': row['new_image'],
-                'old_last_order_date': row['old_last_order_date'].isoformat() if row['old_last_order_date'] else None,
-                'new_last_order_date': row['new_last_order_date'].isoformat() if row['new_last_order_date'] else None,
+                'old_last_order_date': db_datetime_to_utc_iso(row['old_last_order_date']),
+                'new_last_order_date': db_datetime_to_utc_iso(row['new_last_order_date']),
                 'changed_by': row['changed_by'],
                 'changed_by_name': f"{user['first_name']} {user['last_name']}" if user else None,
                 'changed_by_email': user['uf_email'] if user else None,
-                'changed_at': row['changed_at'].isoformat() if row['changed_at'] else None,
+                'changed_at': db_datetime_to_utc_iso(row['changed_at']),
                 'can_undo': can_undo,
                 'undo_removes_log_only': undo_removes_log_only,
                 'team_changes': team_changes,
