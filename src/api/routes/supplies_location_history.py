@@ -14,6 +14,7 @@ from src.api.helpers.datetime_json import db_datetime_to_utc_iso
 from src.api.middleware.auth import require_auth
 from src.api.helpers.history import is_latest_global_history_timestamp
 from src.api.helpers.unique_type_qty import map_total_qty_for_supply, check_unique_type_map_qty
+from src.api.repositories import supplies_location_history_repository as lh_repo
 
 supplies_location_history_bp = Blueprint('supplies_location_history', __name__)
 
@@ -47,51 +48,10 @@ def get_location_history(current_user_id=None):
         
         conn = get_db()
         cur = conn.cursor(dictionary=True)
-        
-        # Build query with filters
-        query = """
-            SELECT 
-                slh.id,
-                slh.supply_id,
-                slh.supply_name,
-                slh.location_name,
-                slh.shelf,
-                slh.action_type,
-                slh.old_amount,
-                slh.new_amount,
-                slh.related_location,
-                slh.related_shelf,
-                slh.batch_id,
-                slh.undone,
-                slh.undone_at,
-                slh.undone_by,
-                slh.changed_by,
-                slh.changed_at,
-                m.first_name,
-                m.last_name
-            FROM supplies_location_history slh
-            LEFT JOIN members m ON slh.changed_by = m.uf_id
-            WHERE 1=1
-        """
-        params = []
-        
-        if supply_id:
-            query += " AND slh.supply_id = %s"
-            params.append(supply_id)
-        
-        if supply_name:
-            query += " AND slh.supply_name LIKE %s"
-            params.append(f'%{supply_name}%')
-        
-        if location_name:
-            query += " AND slh.location_name = %s"
-            params.append(location_name)
-        
-        query += " ORDER BY slh.changed_at DESC LIMIT %s OFFSET %s"
-        params.extend([limit, offset])
-        
-        cur.execute(query, params)
-        rows = cur.fetchall()
+
+        rows = lh_repo.fetch_history_page(
+            cur, supply_id, supply_name, location_name, limit, offset
+        )
         
         # Format results
         results = []
@@ -142,16 +102,7 @@ def undo_location_history(history_id, current_user_id=None):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Fetch history entry
-        cur.execute("""
-            SELECT id, supply_id, supply_name, location_name, shelf,
-                   action_type, old_amount, new_amount,
-                   related_location, related_shelf, batch_id, undone
-            FROM supplies_location_history
-            WHERE id = %s
-        """, (history_id,))
-        
-        history = cur.fetchone()
+        history = lh_repo.fetch_history_entry_for_undo_dict(cur, history_id)
         if not history:
             cur.close()
             conn.close()
@@ -187,10 +138,8 @@ def undo_location_history(history_id, current_user_id=None):
             # If old_amount was None, decrement by new_amount
             amount_to_remove = history['new_amount'] - (history['old_amount'] or 0)
             
-            # Check if supply still exists
-            if history['supply_id']:
-                cur.execute("SELECT id FROM supplies WHERE id = %s", (history['supply_id'],))
-                if not cur.fetchone():
+            if history["supply_id"]:
+                if not lh_repo.supply_exists_tuple(cur, history["supply_id"]):
                     cur.close()
                     conn.close()
                     return jsonify({
@@ -199,27 +148,20 @@ def undo_location_history(history_id, current_user_id=None):
                         'supply_name': history['supply_name']
                     }), 409
             
-            # Find current location entry
-            cur.execute("""
-                SELECT id, amount FROM supplies_location
-                WHERE supply_id = %s AND location_name = %s 
-                  AND (shelf = %s OR (shelf IS NULL AND %s IS NULL))
-            """, (history['supply_id'], history['location_name'], 
-                  history['shelf'], history['shelf']))
-            
-            current = cur.fetchone()
+            current = lh_repo.select_location_entry_tuple(
+                cur,
+                history["supply_id"],
+                history["location_name"],
+                history["shelf"],
+            )
             if current:
                 new_amount = current[1] - amount_to_remove
                 if new_amount <= 0:
-                    # Delete the row
-                    cur.execute("DELETE FROM supplies_location WHERE id = %s", (current[0],))
+                    lh_repo.delete_supplies_location_by_id(cur, current[0])
                 else:
-                    # Update amount
-                    cur.execute("""
-                        UPDATE supplies_location
-                        SET amount = %s, last_modified_by = %s
-                        WHERE id = %s
-                    """, (new_amount, current_user_id, current[0]))
+                    lh_repo.update_supplies_location_amount_tuple(
+                        cur, new_amount, current_user_id, current[0]
+                    )
             else:
                 # Location entry doesn't exist (already deleted), can't undo
                 cur.close()
@@ -240,9 +182,7 @@ def undo_location_history(history_id, current_user_id=None):
                     'supply_name': history['supply_name']
                 }), 409
             
-            # Check if supply still exists
-            cur.execute("SELECT id FROM supplies WHERE id = %s", (history['supply_id'],))
-            if not cur.fetchone():
+            if not lh_repo.supply_exists_tuple(cur, history["supply_id"]):
                 cur.close()
                 conn.close()
                 return jsonify({
@@ -250,31 +190,27 @@ def undo_location_history(history_id, current_user_id=None):
                     'error_type': 'SUPPLY_DELETED',
                     'supply_name': history['supply_name']
                 }), 409
-            
-            # Check if location entry exists
-            cur.execute("""
-                SELECT id, amount FROM supplies_location
-                WHERE supply_id = %s AND location_name = %s 
-                  AND (shelf = %s OR (shelf IS NULL AND %s IS NULL))
-            """, (history['supply_id'], history['location_name'],
-                  history['shelf'], history['shelf']))
-            
-            existing = cur.fetchone()
+
+            existing = lh_repo.select_location_entry_tuple(
+                cur,
+                history["supply_id"],
+                history["location_name"],
+                history["shelf"],
+            )
             if existing:
-                # Increment by old_amount
-                new_amount = existing[1] + (history['old_amount'] or 0)
-                cur.execute("""
-                    UPDATE supplies_location
-                    SET amount = %s, last_modified_by = %s
-                    WHERE id = %s
-                """, (new_amount, current_user_id, existing[0]))
+                new_amount = existing[1] + (history["old_amount"] or 0)
+                lh_repo.update_supplies_location_amount_tuple(
+                    cur, new_amount, current_user_id, existing[0]
+                )
             else:
-                # Insert new entry
-                cur.execute("""
-                    INSERT INTO supplies_location (supply_id, location_name, shelf, amount, last_modified_by)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (history['supply_id'], history['location_name'], 
-                      history['shelf'], history['old_amount'], current_user_id))
+                lh_repo.insert_supplies_location_box_tuple(
+                    cur,
+                    history["supply_id"],
+                    history["location_name"],
+                    history["shelf"],
+                    history["old_amount"],
+                    current_user_id,
+                )
         
         elif action_type == 'UPDATE':
             # Restore old_amount
@@ -287,24 +223,21 @@ def undo_location_history(history_id, current_user_id=None):
                     'supply_name': history['supply_name']
                 }), 409
             
-            cur.execute("""
-                UPDATE supplies_location
-                SET amount = %s, last_modified_by = %s
-                WHERE supply_id = %s AND location_name = %s 
-                  AND (shelf = %s OR (shelf IS NULL AND %s IS NULL))
-            """, (history['old_amount'], current_user_id,
-                  history['supply_id'], history['location_name'],
-                  history['shelf'], history['shelf']))
-        
+            lh_repo.update_amount_by_supply_location_shelf_tuple(
+                cur,
+                history["old_amount"],
+                current_user_id,
+                history["supply_id"],
+                history["location_name"],
+                history["shelf"],
+            )
+
         elif action_type == 'MOVE':
-            # Find the paired history row via batch_id and reverse both legs
-            cur.execute("""
-                SELECT id, location_name, shelf, old_amount, new_amount
-                FROM supplies_location_history
-                WHERE batch_id = %s AND id != %s
-            """, (history['batch_id'], history_id))
-            
-            paired = cur.fetchone()
+            pcur = conn.cursor(dictionary=True)
+            paired = lh_repo.fetch_paired_move_row_dict(
+                pcur, history["batch_id"], history_id
+            )
+            pcur.close()
             if not paired:
                 cur.close()
                 conn.close()
@@ -313,55 +246,46 @@ def undo_location_history(history_id, current_user_id=None):
                     'error_type': 'MOVE_PAIR_MISSING',
                 }), 400
             
-            # Reverse both legs: undo REMOVE by restoring source, undo ADD by removing from dest
-            if history['action_type'] == 'REMOVE':
-                # This is the REMOVE leg - restore source
-                cur.execute("""
-                    SELECT id, amount FROM supplies_location
-                    WHERE supply_id = %s AND location_name = %s 
-                      AND (shelf = %s OR (shelf IS NULL AND %s IS NULL))
-                """, (history['supply_id'], history['location_name'],
-                      history['shelf'], history['shelf']))
-                
-                existing = cur.fetchone()
-                amount_to_restore = history['old_amount'] - (history['new_amount'] or 0)
+            if history["action_type"] == "REMOVE":
+                existing = lh_repo.select_location_entry_tuple(
+                    cur,
+                    history["supply_id"],
+                    history["location_name"],
+                    history["shelf"],
+                )
+                amount_to_restore = history["old_amount"] - (history["new_amount"] or 0)
                 if existing:
                     new_amount = existing[1] + amount_to_restore
-                    cur.execute("""
-                        UPDATE supplies_location
-                        SET amount = %s, last_modified_by = %s
-                        WHERE id = %s
-                    """, (new_amount, current_user_id, existing[0]))
+                    lh_repo.update_supplies_location_amount_tuple(
+                        cur, new_amount, current_user_id, existing[0]
+                    )
                 else:
-                    cur.execute("""
-                        INSERT INTO supplies_location (supply_id, location_name, shelf, amount, last_modified_by)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (history['supply_id'], history['location_name'],
-                          history['shelf'], amount_to_restore, current_user_id))
-                
-                # Undo the ADD leg (remove from destination)
-                cur.execute("""
-                    SELECT id, amount FROM supplies_location
-                    WHERE supply_id = %s AND location_name = %s 
-                      AND (shelf = %s OR (shelf IS NULL AND %s IS NULL))
-                """, (history['supply_id'], paired['location_name'],
-                      paired['shelf'], paired['shelf']))
-                
-                dest_existing = cur.fetchone()
+                    lh_repo.insert_supplies_location_box_tuple(
+                        cur,
+                        history["supply_id"],
+                        history["location_name"],
+                        history["shelf"],
+                        amount_to_restore,
+                        current_user_id,
+                    )
+
+                dest_existing = lh_repo.select_location_entry_tuple(
+                    cur,
+                    history["supply_id"],
+                    paired["location_name"],
+                    paired["shelf"],
+                )
                 if dest_existing:
-                    amount_to_remove = paired['new_amount'] - (paired['old_amount'] or 0)
+                    amount_to_remove = paired["new_amount"] - (paired["old_amount"] or 0)
                     new_dest_amount = dest_existing[1] - amount_to_remove
                     if new_dest_amount <= 0:
-                        cur.execute("DELETE FROM supplies_location WHERE id = %s", (dest_existing[0],))
+                        lh_repo.delete_supplies_location_by_id(cur, dest_existing[0])
                     else:
-                        cur.execute("""
-                            UPDATE supplies_location
-                            SET amount = %s, last_modified_by = %s
-                            WHERE id = %s
-                        """, (new_dest_amount, current_user_id, dest_existing[0]))
-            
-            # Delete paired entry too
-            cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (paired['id'],))
+                        lh_repo.update_supplies_location_amount_tuple(
+                            cur, new_dest_amount, current_user_id, dest_existing[0]
+                        )
+
+            lh_repo.delete_history_by_id(cur, paired["id"])
         
         sid = history.get('supply_id')
         if sid:
@@ -375,8 +299,7 @@ def undo_location_history(history_id, current_user_id=None):
                 conn.close()
                 return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
 
-        # Delete this history entry entirely (not just mark as undone)
-        cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (history_id,))
+        lh_repo.delete_history_by_id(cur, history_id)
         
         conn.commit()
         cur.close()
@@ -406,12 +329,7 @@ def discard_location_history(history_id, current_user_id=None):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
-        cur.execute("""
-            SELECT id, action_type, batch_id, changed_at
-            FROM supplies_location_history
-            WHERE id = %s
-        """, (history_id,))
-        history = cur.fetchone()
+        history = lh_repo.fetch_history_meta_for_discard_dict(cur, history_id)
         if not history:
             cur.close()
             conn.close()
@@ -436,18 +354,16 @@ def discard_location_history(history_id, current_user_id=None):
 
         cur = conn.cursor()
         paired_id = None
-        if history['action_type'] == 'MOVE' and history.get('batch_id'):
-            cur.execute("""
-                SELECT id FROM supplies_location_history
-                WHERE batch_id = %s AND id != %s
-            """, (history['batch_id'], history_id))
-            prow = cur.fetchone()
+        if history["action_type"] == "MOVE" and history.get("batch_id"):
+            prow = lh_repo.fetch_paired_id_tuple(
+                cur, history["batch_id"], history_id
+            )
             if prow:
                 paired_id = prow[0]
 
         if paired_id is not None:
-            cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (paired_id,))
-        cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (history_id,))
+            lh_repo.delete_history_by_id(cur, paired_id)
+        lh_repo.delete_history_by_id(cur, history_id)
         conn.commit()
         cur.close()
         conn.close()
@@ -474,17 +390,7 @@ def undo_batch_history(batch_id, current_user_id=None):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Fetch all entries for this batch
-        cur.execute("""
-            SELECT id, supply_id, supply_name, location_name, shelf,
-                   action_type, old_amount, new_amount,
-                   related_location, related_shelf
-            FROM supplies_location_history
-            WHERE batch_id = %s
-            ORDER BY id
-        """, (batch_id,))
-        
-        entries = cur.fetchall()
+        entries = lh_repo.fetch_batch_entries_ordered_dict(cur, batch_id)
         if not entries:
             cur.close()
             conn.close()
@@ -493,7 +399,7 @@ def undo_batch_history(batch_id, current_user_id=None):
         # Delete all entries in the batch
         deleted_count = 0
         for entry in entries:
-            cur.execute("DELETE FROM supplies_location_history WHERE id = %s", (entry['id'],))
+            lh_repo.delete_history_by_id(cur, entry["id"])
             deleted_count += 1
         
         conn.commit()

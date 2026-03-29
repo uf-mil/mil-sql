@@ -14,6 +14,7 @@ import mysql.connector
 from src.api.db import get_db
 from src.api.middleware.auth import require_auth, require_leader
 from src.api.helpers.unique_type_qty import type_has_supply_with_map_qty_over_one
+from src.api.repositories import supply_types_repository as repo
 
 supply_types_bp = Blueprint('supply_types', __name__)
 
@@ -121,14 +122,7 @@ def list_supply_types(current_user_id=None):
     try:
         conn = get_db()
         cur = conn.cursor(dictionary=True)
-        cur.execute("""
-            SELECT id, name, template_description, item_name_prefix, item_description_prefix,
-                   image, default_custom_fields, locked_custom_field_keys, is_unique,
-                   created_at, updated_at
-            FROM supply_types
-            ORDER BY name
-        """)
-        rows = cur.fetchall()
+        rows = repo.list_all_dict(cur)
         cur.close()
         conn.close()
         return jsonify([_row_to_dict(r) for r in rows]), 200
@@ -142,13 +136,7 @@ def get_supply_type(type_id, current_user_id=None):
     try:
         conn = get_db()
         cur = conn.cursor(dictionary=True)
-        cur.execute("""
-            SELECT id, name, template_description, item_name_prefix, item_description_prefix,
-                   image, default_custom_fields, locked_custom_field_keys, is_unique,
-                   created_at, updated_at
-            FROM supply_types WHERE id = %s
-        """, (type_id,))
-        row = cur.fetchone()
+        row = repo.fetch_by_id_dict(cur, type_id)
         cur.close()
         conn.close()
         if not row:
@@ -186,12 +174,8 @@ def create_supply_type(current_user_id=None):
 
         conn = get_db()
         cur = conn.cursor(dictionary=True)
-        cur.execute("""
-            INSERT INTO supply_types (
-                name, template_description, item_name_prefix, item_description_prefix,
-                image, default_custom_fields, locked_custom_field_keys, is_unique
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
+        tid = repo.insert_supply_type(
+            cur,
             name,
             template_description,
             item_name_prefix,
@@ -200,16 +184,9 @@ def create_supply_type(current_user_id=None):
             json.dumps(dcf) if dcf else None,
             json.dumps(lck) if lck else None,
             is_unique,
-        ))
+        )
         conn.commit()
-        tid = cur.lastrowid
-        cur.execute("""
-            SELECT id, name, template_description, item_name_prefix, item_description_prefix,
-                   image, default_custom_fields, locked_custom_field_keys, is_unique,
-                   created_at, updated_at
-            FROM supply_types WHERE id = %s
-        """, (tid,))
-        row = cur.fetchone()
+        row = repo.fetch_by_id_dict(cur, tid)
         cur.close()
         conn.close()
         return jsonify(_row_to_dict(row)), 201
@@ -228,11 +205,7 @@ def update_supply_type(type_id, current_user_id=None):
         data = request.json or {}
         conn = get_db()
         cur = conn.cursor(dictionary=True)
-        cur.execute("""
-            SELECT id, item_name_prefix, item_description_prefix
-            FROM supply_types WHERE id = %s
-        """, (type_id,))
-        before = cur.fetchone()
+        before = repo.fetch_prefixes_row(cur, type_id)
         if not before:
             cur.close()
             conn.close()
@@ -301,16 +274,12 @@ def update_supply_type(type_id, current_user_id=None):
 
         if fields:
             vals.append(type_id)
-            cur.execute(f"UPDATE supply_types SET {', '.join(fields)} WHERE id = %s", vals)
+            repo.update_supply_type_columns(cur, fields, vals)
 
         cascade_name = 'item_name_prefix' in data
         cascade_desc = 'item_description_prefix' in data
         if cascade_name or cascade_desc:
-            cur.execute(
-                "SELECT id, name, description FROM supplies WHERE supply_type_id = %s",
-                (type_id,),
-            )
-            sup_rows = cur.fetchall()
+            sup_rows = repo.select_supplies_id_name_desc_for_type(cur, type_id)
             updates = []
             for s in sup_rows:
                 nm = s['name']
@@ -334,8 +303,7 @@ def update_supply_type(type_id, current_user_id=None):
                     'error': 'Updating prefixes would create duplicate item names for this type.',
                 }), 400
             for sid, nm, dc in updates:
-                cur.execute("SELECT id FROM supplies WHERE name = %s AND id != %s", (nm, sid))
-                if cur.fetchone():
+                if repo.select_supply_id_by_name_excluding(cur, nm, sid):
                     conn.rollback()
                     cur.close()
                     conn.close()
@@ -343,20 +311,11 @@ def update_supply_type(type_id, current_user_id=None):
                         'error': f'Item name "{nm}" is already used by another supply.',
                     }), 400
             for sid, nm, dc in updates:
-                cur.execute(
-                    "UPDATE supplies SET name = %s, description = %s WHERE id = %s",
-                    (nm, dc, sid),
-                )
+                repo.update_supply_name_description(cur, sid, nm, dc)
 
         conn.commit()
 
-        cur.execute("""
-            SELECT id, name, template_description, item_name_prefix, item_description_prefix,
-                   image, default_custom_fields, locked_custom_field_keys, is_unique,
-                   created_at, updated_at
-            FROM supply_types WHERE id = %s
-        """, (type_id,))
-        row = cur.fetchone()
+        row = repo.fetch_by_id_dict(cur, type_id)
         cur.close()
         conn.close()
         return jsonify(_row_to_dict(row)), 200
@@ -374,8 +333,8 @@ def delete_supply_type(type_id, current_user_id=None):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("DELETE FROM supply_types WHERE id = %s", (type_id,))
-        if cur.rowcount == 0:
+        deleted = repo.delete_supply_type_by_id(cur, type_id)
+        if deleted == 0:
             cur.close()
             conn.close()
             return jsonify({'error': 'Type not found'}), 404

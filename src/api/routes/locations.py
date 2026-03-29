@@ -13,6 +13,7 @@ import mysql.connector
 from src.api.db import get_db
 from src.api.models.location import Location
 from src.api.middleware.auth import require_leader
+from src.api.repositories import locations_repository as repo
 
 locations_bp = Blueprint('locations', __name__)
 
@@ -53,9 +54,9 @@ def sync_locations_json():
         # Fetch all locations from DB
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations ORDER BY name")
+        rows = repo.list_all_tuple_ordered(cur)
         db_locations = {}
-        for row in cur.fetchall():
+        for row in rows:
             db_locations[row[0]] = {
                 'name': row[0],
                 'x': row[1],
@@ -126,8 +127,7 @@ def get_locations():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations ORDER BY name")
-        rows = cur.fetchall()
+        rows = repo.list_all_tuple_ordered(cur)
         locations = [Location.from_db_row(row).to_dict() for row in rows]
         cur.close()
         conn.close()
@@ -151,8 +151,7 @@ def get_location(name):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations WHERE name = %s", (name,))
-        row = cur.fetchone()
+        row = repo.fetch_by_name_tuple(cur, name)
         cur.close()
         conn.close()
         
@@ -203,9 +202,16 @@ def create_location(current_user_id=None):
         
         conn = get_db()
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO locations (name, x, y, width, height, type, shelf_count, protected) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            (location.name, location.x, location.y, location.width, location.height, location.type, shelf_count, False)
+        repo.insert_location(
+            cur,
+            location.name,
+            location.x,
+            location.y,
+            location.width,
+            location.height,
+            location.type,
+            shelf_count,
+            False,
         )
         conn.commit()
         cur.close()
@@ -262,18 +268,14 @@ def update_location(name):
         
         conn = get_db()
         cur = conn.cursor()
-        
-        # Check if location exists
-        cur.execute("SELECT name FROM locations WHERE name = %s", (name,))
-        if not cur.fetchone():
+
+        if not repo.name_exists(cur, name):
             cur.close()
             conn.close()
             return jsonify({'error': 'Location not found'}), 404
-        
-        # Handle name rename separately (FK has ON UPDATE CASCADE)
+
         new_name = update_data.pop('name', None)
-        
-        # Build update query dynamically for non-name fields
+
         if update_data:
             set_clauses = []
             values = []
@@ -281,27 +283,21 @@ def update_location(name):
                 set_clauses.append(f"{field} = %s")
                 values.append(value)
             values.append(name)
-            
-            query = f"UPDATE locations SET {', '.join(set_clauses)} WHERE name = %s"
-            cur.execute(query, values)
-        
-        # Apply name rename if requested (cascades to supply_locations via FK)
+            repo.update_by_name(cur, set_clauses, values)
+
         final_name = name
         if new_name and new_name != name:
-            # Check new name doesn't already exist
-            cur.execute("SELECT name FROM locations WHERE name = %s", (new_name,))
-            if cur.fetchone():
+            if repo.name_exists(cur, new_name):
                 cur.close()
                 conn.close()
                 return jsonify({'error': f'Location "{new_name}" already exists'}), 409
-            cur.execute("UPDATE locations SET name = %s WHERE name = %s", (new_name, name))
+            repo.rename(cur, new_name, name)
             final_name = new_name
         
         conn.commit()
         
         # Fetch updated location using final name
-        cur.execute("SELECT name, x, y, width, height, type, protected FROM locations WHERE name = %s", (final_name,))
-        row = cur.fetchone()
+        row = repo.fetch_by_name_tuple(cur, final_name)
         location = Location.from_db_row(row).to_dict()
         
         cur.close()
@@ -329,14 +325,12 @@ def delete_location(name, current_user_id=None):
         conn = get_db()
         cur = conn.cursor()
         
-        # Check if location exists
-        cur.execute("SELECT name FROM locations WHERE name = %s", (name,))
-        if not cur.fetchone():
+        if not repo.name_exists(cur, name):
             cur.close()
             conn.close()
             return jsonify({'error': 'Location not found'}), 404
-        
-        cur.execute("DELETE FROM locations WHERE name = %s", (name,))
+
+        repo.delete_by_name(cur, name)
         conn.commit()
         cur.close()
         conn.close()
