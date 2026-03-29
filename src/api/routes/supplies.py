@@ -26,6 +26,17 @@ from src.api.helpers.history import (
 supplies_bp = Blueprint('supplies', __name__)
 
 
+def _effective_supply_image(supply_image, type_image):
+    """If the linked type has a template image, that is the only image (supply row stores NULL)."""
+    if type_image:
+        return type_image
+    return supply_image if supply_image else None
+
+
+def _type_has_template_image(type_row):
+    return bool(type_row and type_row.get('image'))
+
+
 @supplies_bp.route('', methods=['GET'])
 @require_auth
 def get_supplies(current_user_id=None):
@@ -50,6 +61,7 @@ def get_supplies(current_user_id=None):
                 s.custom_fields,
                 s.supply_type_id,
                 st.name AS type_name,
+                st.image AS type_image,
                 s.last_order_date,
                 s.last_modified,
                 s.last_modified_by,
@@ -59,7 +71,7 @@ def get_supplies(current_user_id=None):
             LEFT JOIN supply_types st ON s.supply_type_id = st.id
             LEFT JOIN supplies_location sl ON s.id = sl.supply_id
             GROUP BY s.id, s.name, s.description, s.image, s.custom_fields, s.supply_type_id,
-                     st.name, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
+                     st.name, st.image, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
             ORDER BY s.name
         """)
         
@@ -122,7 +134,8 @@ def get_supplies(current_user_id=None):
                 'id': row['id'],
                 'name': row['name'],
                 'description': row['description'],
-                'image': row['image'],
+                'image': _effective_supply_image(row.get('image'), row.get('type_image')),
+                'type_has_template_image': bool(row.get('type_image')),
                 'custom_fields': cf,
                 'supply_type_id': row.get('supply_type_id'),
                 'type_name': row.get('type_name'),
@@ -183,6 +196,7 @@ def get_supply(supply_id, current_user_id=None):
                 s.custom_fields,
                 s.supply_type_id,
                 st.name AS type_name,
+                st.image AS type_image,
                 s.last_order_date,
                 s.last_modified,
                 s.last_modified_by,
@@ -193,7 +207,7 @@ def get_supply(supply_id, current_user_id=None):
             LEFT JOIN supplies_location sl ON s.id = sl.supply_id
             WHERE s.id = %s
             GROUP BY s.id, s.name, s.description, s.image, s.custom_fields, s.supply_type_id,
-                     st.name, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
+                     st.name, st.image, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
         """, (supply_id,))
         
         row = cur.fetchone()
@@ -259,7 +273,8 @@ def get_supply(supply_id, current_user_id=None):
             'id': row['id'],
             'name': row['name'],
             'description': row['description'],
-            'image': row['image'],
+            'image': _effective_supply_image(row.get('image'), row.get('type_image')),
+            'type_has_template_image': bool(row.get('type_image')),
             'custom_fields': cf,
             'supply_type_id': row.get('supply_type_id'),
             'type_name': row.get('type_name'),
@@ -402,15 +417,6 @@ def create_supply(current_user_id=None):
         if 'name' not in data or not data['name'].strip():
             return jsonify({'error': 'Name is required'}), 400
         
-        # Validate image size (max 10MB file = ~13.3MB base64)
-        if 'image' in data and data['image']:
-            # Base64 data URI format: data:image/...;base64,<base64_string>
-            if data['image'].startswith('data:image'):
-                base64_part = data['image'].split(',', 1)[1] if ',' in data['image'] else ''
-                # Approximate: base64 is ~33% larger than original
-                if len(base64_part) > 13_300_000:  # ~10MB file
-                    return jsonify({'error': 'Image file size exceeds 10MB limit'}), 400
-        
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
@@ -441,15 +447,30 @@ def create_supply(current_user_id=None):
 
         name_final = data['name'].strip()
         desc_final = data.get('description', '').strip() or None
-        image_final = data.get('image') or None
+
+        if type_row and _type_has_template_image(type_row):
+            if data.get('image'):
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'error': 'Items linked to a type that has a template image cannot use a separate item image.',
+                }), 400
+            image_final = None
+        else:
+            image_final = data.get('image') or None
+            if image_final and str(image_final).startswith('data:image'):
+                base64_part = image_final.split(',', 1)[1] if ',' in image_final else ''
+                if len(base64_part) > 13_300_000:
+                    cur.close()
+                    conn.close()
+                    return jsonify({'error': 'Image file size exceeds 10MB limit'}), 400
+
         if type_row:
             okp, errp = _validate_name_desc_prefixes(type_row, name_final, desc_final)
             if not okp:
                 cur.close()
                 conn.close()
                 return jsonify({'error': errp}), 400
-            if not image_final:
-                image_final = type_row.get('image')
         
         # Check if supply with this name already exists
         cur.execute("SELECT id FROM supplies WHERE name = %s", (name_final,))
@@ -545,7 +566,7 @@ def create_supply(current_user_id=None):
         cur.execute("""
             SELECT s.id, s.name, s.description, s.image, s.custom_fields, s.last_order_date,
                    s.last_modified, s.last_modified_by, s.created_at,
-                   s.supply_type_id, st.name AS type_name
+                   s.supply_type_id, st.name AS type_name, st.image AS type_image
             FROM supplies s
             LEFT JOIN supply_types st ON s.supply_type_id = st.id
             WHERE s.id = %s
@@ -575,6 +596,8 @@ def create_supply(current_user_id=None):
         
         # Convert row dict to Supply object
         supply = Supply.from_dict(row).to_dict()
+        supply['image'] = _effective_supply_image(row.get('image'), row.get('type_image'))
+        supply['type_has_template_image'] = bool(row.get('type_image'))
         supply['custom_fields'] = cf
         supply['supply_type_id'] = row.get('supply_type_id')
         supply['type_name'] = row.get('type_name')
@@ -621,13 +644,6 @@ def update_supply(supply_id, current_user_id=None):
         if not data:
             return jsonify({'error': 'Request body is required'}), 400
         
-        # Validate image size if provided
-        if 'image' in data and data['image']:
-            if data['image'].startswith('data:image'):
-                base64_part = data['image'].split(',', 1)[1] if ',' in data['image'] else ''
-                if len(base64_part) > 13_300_000:
-                    return jsonify({'error': 'Image file size exceeds 10MB limit'}), 400
-        
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
@@ -663,6 +679,24 @@ def update_supply(supply_id, current_user_id=None):
             type_row_update = _fetch_supply_type_row(cur, effective_type_id)
             if not type_row_update:
                 effective_type_id = None
+
+        has_type_template_image = _type_has_template_image(type_row_update)
+
+        if 'image' in data and data['image'] and has_type_template_image:
+            cur.close()
+            conn.close()
+            return jsonify({
+                'error': 'Items linked to a type that has a template image cannot use a separate item image.',
+            }), 400
+
+        if 'image' in data and data['image'] and not has_type_template_image:
+            img = data['image']
+            if str(img).startswith('data:image'):
+                base64_part = img.split(',', 1)[1] if ',' in img else ''
+                if len(base64_part) > 13_300_000:
+                    cur.close()
+                    conn.close()
+                    return jsonify({'error': 'Image file size exceeds 10MB limit'}), 400
         
         merged_cf_for_update = None
         if 'custom_fields' in data:
@@ -712,7 +746,10 @@ def update_supply(supply_id, current_user_id=None):
         if 'description' in data:
             updates.append("description = %s")
             values.append(data['description'].strip() or None)
-        if 'image' in data:
+        if has_type_template_image:
+            updates.append("image = %s")
+            values.append(None)
+        elif 'image' in data:
             updates.append("image = %s")
             values.append(data['image'] or None)
         if 'last_order_date' in data:
@@ -775,10 +812,17 @@ def update_supply(supply_id, current_user_id=None):
                         continue
         
         # Log history for UPDATE action
+        if has_type_template_image:
+            image_for_history = None
+        elif 'image' in data:
+            image_for_history = data['image'] or None
+        else:
+            image_for_history = old_values['image']
+
         new_values = {
             'name': data.get('name', old_values['name']).strip() if 'name' in data else old_values['name'],
             'description': (data.get('description', '').strip() or None) if 'description' in data else old_values['description'],
-            'image': data.get('image') if 'image' in data else old_values['image'],
+            'image': image_for_history,
             'last_order_date': data.get('last_order_date') if 'last_order_date' in data else old_values['last_order_date']
         }
         history_id = log_supply_history(
@@ -811,7 +855,7 @@ def update_supply(supply_id, current_user_id=None):
         cur.execute("""
             SELECT s.id, s.name, s.description, s.image, s.custom_fields, s.last_order_date,
                    s.last_modified, s.last_modified_by, s.created_at,
-                   s.supply_type_id, st.name AS type_name
+                   s.supply_type_id, st.name AS type_name, st.image AS type_image
             FROM supplies s
             LEFT JOIN supply_types st ON s.supply_type_id = st.id
             WHERE s.id = %s
@@ -827,6 +871,8 @@ def update_supply(supply_id, current_user_id=None):
         else:
             cf = cf or {}
         supply = Supply.from_dict(row).to_dict()
+        supply['image'] = _effective_supply_image(row.get('image'), row.get('type_image'))
+        supply['type_has_template_image'] = bool(row.get('type_image'))
         supply['custom_fields'] = cf
         supply['supply_type_id'] = row.get('supply_type_id')
         supply['type_name'] = row.get('type_name')

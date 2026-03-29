@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { admin, api } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
+import { useInventory } from '../../context/InventoryContext';
 
 const areNumberCustomFieldsValid = (customFields, customFieldDefinitions) => {
   const numberDefs = customFieldDefinitions.filter(d => d.type === 'number');
@@ -101,7 +102,7 @@ const TypeFormBody = ({
       />
     </label>
     {form.image && (
-      <div className="edit-form-image-container" style={{ maxHeight: '160px', aspectRatio: 'auto' }}>
+      <div className="edit-form-image-container">
         <img src={form.image} alt="" />
       </div>
     )}
@@ -282,6 +283,7 @@ const TypeFormBody = ({
 
 const ItemTypesTable = () => {
   const { showConfirm } = useBlockingDialog();
+  const { reloadMasterItems } = useInventory();
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -435,6 +437,10 @@ const ItemTypesTable = () => {
         locked_custom_field_keys,
         is_unique: editForm.is_unique
       });
+      await reloadMasterItems();
+      try {
+        localStorage.setItem('milventory-master-catalog-bump', String(Date.now()));
+      } catch (_) { /* ignore */ }
       closeEditModal();
       await loadTypes();
     } catch (err) {
@@ -451,6 +457,10 @@ const ItemTypesTable = () => {
     try {
       setError(null);
       await admin.deleteSupplyType(id);
+      await reloadMasterItems();
+      try {
+        localStorage.setItem('milventory-master-catalog-bump', String(Date.now()));
+      } catch (_) { /* ignore */ }
       await loadTypes();
     } catch (err) {
       setError(err.message);

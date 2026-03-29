@@ -251,8 +251,6 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   useEffect(() => {
     if (!isOpen || !originalItem) return;
 
-    setImage(originalItem.image || null);
-    setImagePreview(originalItem.image || null);
     setCustomFields(originalItem.custom_fields || {});
     setAddFieldDropdownOpen(false);
     setSelectedTeams(originalItem.teams || []);
@@ -264,9 +262,18 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     if (originalItem.supply_type_id) {
       setName(originalItem.name || '');
       setDescription(originalItem.description || '');
+      setImage(null);
+      setImagePreview(originalItem.image || null);
       api.getSupplyType(originalItem.supply_type_id)
         .then((t) => {
           setLinkedType(t);
+          if (t.image) {
+            setImage(null);
+            setImagePreview(originalItem.image || t.image);
+          } else {
+            setImage(originalItem.image || null);
+            setImagePreview(originalItem.image || null);
+          }
           setCustomFields((prev) => {
             const cf = { ...prev };
             const locked = Array.isArray(t.locked_custom_field_keys) ? t.locked_custom_field_keys : [];
@@ -297,10 +304,14 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
           setLinkedType(null);
           setName(originalItem.name || '');
           setDescription(originalItem.description || '');
+          setImage(originalItem.image || null);
+          setImagePreview(originalItem.image || null);
         });
     } else {
       setName(originalItem.name || '');
       setDescription(originalItem.description || '');
+      setImage(originalItem.image || null);
+      setImagePreview(originalItem.image || null);
     }
 
     setTimeout(() => nameInputRef.current?.focus(), 0);
@@ -320,6 +331,11 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     originalItem?.supply_type_id && linkedType && !unlinkFromType
   );
 
+  const typeBlocksOwnImage =
+    !unlinkFromType &&
+    Boolean(originalItem?.supply_type_id) &&
+    (Boolean(originalItem.type_has_template_image) || Boolean(linkedType?.image));
+
   // Load categories when categoryIdToName mapping is ready
   useEffect(() => {
     if (isOpen && originalItem && categoryIdToName.size > 0) {
@@ -336,6 +352,10 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   }, [isOpen, originalItem, categoryIdToName]);
 
   const handleImageChange = async (e) => {
+    if (typeBlocksOwnImage) {
+      e.target.value = '';
+      return;
+    }
     const file = e.target.files[0];
     if (!file) {
       // Keep existing image if no new file selected
@@ -409,7 +429,7 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
       const updatedItem = {
         name: finalName,
         description: finalDesc,
-        image: image || null,
+        image: typeBlocksOwnImage ? null : image || null,
         teams: selectedTeams.length > 0 ? selectedTeams : [],
         categories: categoryIds.length > 0 ? categoryIds : [],
         custom_fields: customFields,
@@ -451,7 +471,7 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
       onClick={handleOverlayClick}
       onKeyDown={handleKeyDown}
     >
-      <div className="modal">
+      <div className="modal master-item-edit-modal">
         <h3>Edit Master Item</h3>
         {originalItem?.supply_type_id && !unlinkFromType && (
           <label style={{ display: 'block', marginBottom: '0.65rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
@@ -672,45 +692,40 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
 
         <div>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-            Image (optional, max 10MB)
+            {typeBlocksOwnImage ? 'Image (from item type)' : 'Image (optional, max 10MB)'}
           </label>
+          {typeBlocksOwnImage}
           {imagePreview && (
-            <div style={{ marginBottom: '0.5rem' }}>
-              <img
-                src={imagePreview}
-                alt="Current"
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '200px',
-                  borderRadius: '4px',
-                  border: '1px solid var(--stroke)',
-                  marginBottom: '0.5rem',
-                }}
-              />
+            <div className="edit-form-image-container" style={{ marginBottom: '0.5rem' }}>
+              <img src={imagePreview} alt="Current" />
             </div>
           )}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
-            style={{ marginBottom: '0.5rem' }}
-          />
-          {imagePreview && (
-            <button
-              type="button"
-              onClick={handleRemoveImage}
-              style={{
-                background: 'var(--files)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '0.25rem 0.5rem',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-              }}
-            >
-              Remove Image
-            </button>
+          {!typeBlocksOwnImage && (
+            <>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                style={{ marginBottom: '0.5rem' }}
+              />
+              {imagePreview && (
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  style={{
+                    background: 'var(--files)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '0.25rem 0.5rem',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  Remove Image
+                </button>
+              )}
+            </>
           )}
         </div>
         <div className="modal-actions">

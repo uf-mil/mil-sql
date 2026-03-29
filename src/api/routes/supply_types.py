@@ -54,6 +54,67 @@ def _row_to_dict(row):
     }
 
 
+def _join_prefix_suffix(prefix, suffix):
+    """Match milventory joinPrefixSuffix: rstrip(prefix) + optional space + trim(suffix)."""
+    p = (prefix or '').rstrip()
+    s = (suffix or '').strip()
+    if not p:
+        return s
+    if not s:
+        return p
+    sep = '' if p.endswith(' ') else ' '
+    return f"{p}{sep}{s}"
+
+
+def _suffix_after_prefix(full, prefix):
+    op = (prefix or '').strip()
+    if not op:
+        return None
+    fn = (full or '').strip()
+    if fn.startswith(op):
+        return fn[len(op):].lstrip()
+    return None
+
+
+def _recompute_linked_supply_name(old_name, old_np, new_np):
+    """Rebuild supply.name after type item_name_prefix change; None = leave unchanged."""
+    old_np = (old_np or '').strip()
+    new_np = (new_np or '').strip()
+    old_name = (old_name or '').strip()
+    if not old_np:
+        if not new_np:
+            return None
+        return _join_prefix_suffix(new_np, old_name)
+    su = _suffix_after_prefix(old_name, old_np)
+    if su is None:
+        return None
+    return _join_prefix_suffix(new_np, su)
+
+
+def _recompute_linked_supply_description(old_desc, old_dp, new_dp):
+    """Rebuild supply.description after type item_description_prefix change; None = leave unchanged."""
+    old_dp = (old_dp or '').strip() if old_dp else ''
+    new_dp = (new_dp or '').strip() if new_dp else ''
+    old_d = (old_desc or '').strip() if old_desc else ''
+    if not old_dp:
+        if not new_dp:
+            return None
+        return _join_prefix_suffix(new_dp, old_d) if old_d else new_dp
+    if not old_d:
+        return new_dp if new_dp else None
+    su = _suffix_after_prefix(old_d, old_dp)
+    if su is None:
+        return None
+    out = _join_prefix_suffix(new_dp, su)
+    return out if out else (su or None)
+
+
+def _desc_norm(d):
+    if d is None:
+        return ''
+    return str(d).strip()
+
+
 @supply_types_bp.route('', methods=['GET'])
 @require_auth
 def list_supply_types(current_user_id=None):
@@ -167,11 +228,29 @@ def update_supply_type(type_id, current_user_id=None):
         data = request.json or {}
         conn = get_db()
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT id FROM supply_types WHERE id = %s", (type_id,))
-        if not cur.fetchone():
+        cur.execute("""
+            SELECT id, item_name_prefix, item_description_prefix
+            FROM supply_types WHERE id = %s
+        """, (type_id,))
+        before = cur.fetchone()
+        if not before:
             cur.close()
             conn.close()
             return jsonify({'error': 'Type not found'}), 404
+
+        old_np = (before.get('item_name_prefix') or '').strip()
+        odp = before.get('item_description_prefix')
+        old_dp = (odp or '').strip() if odp else ''
+        new_np = old_np
+        new_dp = old_dp
+        if 'item_name_prefix' in data:
+            new_np = (data.get('item_name_prefix') or '').strip()
+        if 'item_description_prefix' in data:
+            r = data.get('item_description_prefix')
+            if r is None:
+                new_dp = ''
+            else:
+                new_dp = (str(r) or '').strip()
 
         if 'is_unique' in data and data.get('is_unique'):
             if type_has_supply_with_map_qty_over_one(cur, type_id):
@@ -223,7 +302,53 @@ def update_supply_type(type_id, current_user_id=None):
         if fields:
             vals.append(type_id)
             cur.execute(f"UPDATE supply_types SET {', '.join(fields)} WHERE id = %s", vals)
-            conn.commit()
+
+        cascade_name = 'item_name_prefix' in data
+        cascade_desc = 'item_description_prefix' in data
+        if cascade_name or cascade_desc:
+            cur.execute(
+                "SELECT id, name, description FROM supplies WHERE supply_type_id = %s",
+                (type_id,),
+            )
+            sup_rows = cur.fetchall()
+            updates = []
+            for s in sup_rows:
+                nm = s['name']
+                dc = s['description']
+                if cascade_name:
+                    nn = _recompute_linked_supply_name(s['name'], old_np, new_np)
+                    if nn is not None:
+                        nm = nn
+                if cascade_desc:
+                    nd = _recompute_linked_supply_description(s['description'], old_dp, new_dp)
+                    if nd is not None:
+                        dc = nd
+                if nm != s['name'] or _desc_norm(dc) != _desc_norm(s['description']):
+                    updates.append((s['id'], nm, dc))
+            proposed = [u[1] for u in updates]
+            if len(proposed) != len(set(proposed)):
+                conn.rollback()
+                cur.close()
+                conn.close()
+                return jsonify({
+                    'error': 'Updating prefixes would create duplicate item names for this type.',
+                }), 400
+            for sid, nm, dc in updates:
+                cur.execute("SELECT id FROM supplies WHERE name = %s AND id != %s", (nm, sid))
+                if cur.fetchone():
+                    conn.rollback()
+                    cur.close()
+                    conn.close()
+                    return jsonify({
+                        'error': f'Item name "{nm}" is already used by another supply.',
+                    }), 400
+            for sid, nm, dc in updates:
+                cur.execute(
+                    "UPDATE supplies SET name = %s, description = %s WHERE id = %s",
+                    (nm, dc, sid),
+                )
+
+        conn.commit()
 
         cur.execute("""
             SELECT id, name, template_description, item_name_prefix, item_description_prefix,

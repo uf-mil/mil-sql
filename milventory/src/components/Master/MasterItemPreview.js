@@ -40,6 +40,8 @@ const MasterItemPreview = () => {
   const [categoryIdToName, setCategoryIdToName] = useState(new Map());
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState([]);
   const [freeCoordsOpen, setFreeCoordsOpen] = useState(true);
+  /** 'landscape' = wider or square → image below text; 'portrait' = taller → image right */
+  const [descImageLayout, setDescImageLayout] = useState('landscape');
 
   // Fetch category mapping for display
   useEffect(() => {
@@ -132,7 +134,17 @@ const MasterItemPreview = () => {
   const isInMoveMode = moveModeItem === selectedMasterItem;
   const isInFreePlaceMode = freePlaceModeItem === selectedMasterItem;
 
+  const hasDescriptionText = Boolean(item?.description);
+  const hasPreviewImage = Boolean(item?.image);
+
+  useEffect(() => {
+    setDescImageLayout('landscape');
+  }, [selectedMasterItem, item?.image]);
+
   if (!selectedMasterItem || !item) return null;
+
+  const descriptionLayout =
+    hasPreviewImage && hasDescriptionText ? descImageLayout : hasPreviewImage ? 'landscape' : 'text-only';
 
   return (
     <>
@@ -161,10 +173,30 @@ const MasterItemPreview = () => {
               ×
             </button>
           </div>
-          {item.description && (
+          {(hasDescriptionText || hasPreviewImage) && (
             <div className="master-preview-description">
-              <strong>Description:</strong>
-              <p>{item.description}</p>
+              <strong>{hasDescriptionText ? 'Description:' : 'Image:'}</strong>
+              <div className={`master-preview-description-body master-preview-description-body--${descriptionLayout}`}>
+                {hasDescriptionText && (
+                  <div className="master-preview-description-text">
+                    <p>{item.description}</p>
+                  </div>
+                )}
+                {hasPreviewImage && (
+                  <div className="master-preview-description-image">
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      onLoad={(e) => {
+                        const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+                        if (w > 0 && h > 0) {
+                          setDescImageLayout(h > w ? 'portrait' : 'landscape');
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {(item.teams && item.teams.length > 0) && (
@@ -278,11 +310,6 @@ const MasterItemPreview = () => {
               </>
             )}
           </div>
-          {item.image && (
-            <div className="master-preview-image">
-              <img src={item.image} alt={item.name} />
-            </div>
-          )}
           {item.last_modified_by_name && (
             <div className="master-preview-last-modified" style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
               <strong>Last modified by:</strong> {item.last_modified_by_name}
@@ -296,12 +323,12 @@ const MasterItemPreview = () => {
           <div className="master-preview-actions">
             <strong>Actions:</strong>
             {isInFreePlaceMode && (
-              <p className="master-preview-free-place-hint" style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: 'var(--muted)' }}>
-                Click the room floor to queue a marker (one unit per coordinate), drag to reposition, double-click to queue removal. Nothing is saved until Done. Cancel discards all changes since you entered free place.
+              <p className="master-preview-actions-hint master-preview-free-place-hint">
+                Click the room floor to add an instance of the item. Drag to reposition, double-click to remove.  Cancel discards all changes.
               </p>
             )}
             {isInMoveMode && (
-              <p style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              <p className="master-preview-actions-hint">
                 Dropping on a box moves stock immediately. Drag floor markers to preview; Apply Move saves those positions. Cancel Move reverts box moves and discards floor drags.
               </p>
             )}

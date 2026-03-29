@@ -52,7 +52,7 @@ const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
         <button
           className="collapse-button collapse-button-right"
           onClick={handleToggleCollapse}
-          title="Inventory Boxes"
+          title="Admin Dashboard"
           style={{ left: `${buttonLeft}px` }}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -73,7 +73,7 @@ const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
         />
         <div className="master-inventory-table">
           <div className="master-table-header">
-            <h2>Inventory Boxes</h2>
+            <h2>Admin Dashboard</h2>
           </div>
           
           {/* Subtabs */}

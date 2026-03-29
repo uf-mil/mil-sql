@@ -338,6 +338,7 @@ export const InventoryProvider = ({ children }) => {
             custom_fields: supply.custom_fields || {},
             supply_type_id: supply.supply_type_id ?? null,
             type_name: supply.type_name || null,
+            type_has_template_image: Boolean(supply.type_has_template_image),
             lastModified: supply.lastModified || null,
             last_modified_by: supply.last_modified_by || null,
             last_modified_by_name: supply.last_modified_by_name || null,
@@ -498,6 +499,7 @@ export const InventoryProvider = ({ children }) => {
           custom_fields: supply.custom_fields || {},
           supply_type_id: supply.supply_type_id ?? null,
           type_name: supply.type_name || null,
+          type_has_template_image: Boolean(supply.type_has_template_image),
           lastModified: supply.lastModified || null,
           last_modified_by: supply.last_modified_by || null,
           last_modified_by_name: supply.last_modified_by_name || null,
@@ -511,6 +513,17 @@ export const InventoryProvider = ({ children }) => {
       console.error('Error reloading Master inventory items:', error);
     }
   }, []);
+
+  // Other tabs (e.g. /admin) can bump this key so the catalog refetches without a full reload
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'milventory-master-catalog-bump') {
+        reloadMasterItems();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [reloadMasterItems]);
 
   // Add Mode functions
   const startAddMode = useCallback((itemName) => {
@@ -1373,6 +1386,7 @@ export const InventoryProvider = ({ children }) => {
           custom_fields: created.custom_fields || {},
           supply_type_id: created.supply_type_id ?? null,
           type_name: created.type_name || null,
+          type_has_template_image: Boolean(created.type_has_template_image),
           lastModified: created.lastModified || null,
           last_modified_by: created.last_modified_by || null,
           last_modified_by_name: created.last_modified_by_name || null,
@@ -1438,6 +1452,7 @@ export const InventoryProvider = ({ children }) => {
           custom_fields: updated.custom_fields || {},
           supply_type_id: updated.supply_type_id ?? null,
           type_name: updated.type_name || null,
+          type_has_template_image: Boolean(updated.type_has_template_image),
           lastModified: updated.lastModified || null,
           last_modified_by: updated.last_modified_by || null,
           last_modified_by_name: updated.last_modified_by_name || null,

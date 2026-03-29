@@ -364,9 +364,10 @@ body {
   flex-shrink: 0;
 }
 
+/* Modal / form image preview: full image visible, scaled down — no crop */
 .edit-form-image-container {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  max-height: min(50vh, 26rem);
   background: rgba(0,0,0,.3);
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 6px;
@@ -376,12 +377,18 @@ body {
   justify-content: center;
   flex-shrink: 0;
   position: relative;
+  box-sizing: border-box;
+  padding: 0.35rem;
 }
 
 .edit-form-image-container img {
-  width: 100%;
-  height: 100%;
+  display: block;
+  max-width: 100%;
+  max-height: min(50vh, 26rem);
+  width: auto;
+  height: auto;
   object-fit: contain;
+  object-position: center;
 }
 
 .edit-form-image-placeholder {
@@ -459,6 +466,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+/* Master create/edit: cap height (40px inset top + bottom), scroll body */
+.modal.master-item-edit-modal,
+.modal.master-item-create-modal {
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 .modal h3 {
@@ -652,32 +669,6 @@ select.styled-select:focus {
 .modal .modal-field-composite__textarea:focus {
   border: none !important;
   background: transparent !important;
-}
-
-.modal .edit-form-image-container {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  background: rgba(0,0,0,.3);
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: 6px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.modal .edit-form-image-container img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.modal .edit-form-image-placeholder {
-  color: var(--muted);
-  font-style: italic;
-  font-size: 0.85rem;
 }
 
 .modal-actions {
@@ -914,6 +905,8 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   height: 100%;
   padding: 1rem;
   overflow: hidden;
+  container-type: inline-size;
+  container-name: admin-inv-panel;
 }
 
 .master-table-header {
@@ -1077,26 +1070,43 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   padding: 2rem 1rem;
 }
 
-/* Admin Subtabs */
+/* Admin Subtabs — grid keeps all labels visible; 2×2 when panel is narrow */
 .admin-subtabs {
-  display: flex;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem 0.4rem;
   margin-bottom: 1rem;
   border-bottom: 1px solid rgba(255,255,255,.1);
   padding-bottom: 0.5rem;
   flex-shrink: 0;
 }
 
+@container admin-inv-panel (max-width: 440px) {
+  .admin-subtabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .admin-subtab {
   background: none;
   border: none;
   color: var(--muted);
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 0.35rem;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.25;
   border-bottom: 2px solid transparent;
-  transition: all 0.2s;
+  transition: color 0.2s, border-color 0.2s;
   margin-bottom: -0.5rem;
+  min-width: 0;
+  min-height: 2.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .admin-subtab:hover {
@@ -1123,7 +1133,9 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 
 .master-preview-pane-overlay .master-preview-pane {
   width: 400px;
-  max-height: 450px;
+  /* Match overlay top offset (20px) with equal inset from viewport bottom */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   overflow-y: auto;
 }
 
@@ -1193,6 +1205,79 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   margin: 0;
   color: var(--text);
   line-height: 1.5;
+}
+
+/* Description + image: landscape/square → column (image below, centered); portrait → row (text left, image right) */
+.master-preview-description-body {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.master-preview-description-body--text-only {
+  flex-direction: column;
+}
+
+.master-preview-description-body--landscape {
+  flex-direction: column;
+  align-items: center;
+}
+
+.master-preview-description-body--landscape .master-preview-description-text {
+  align-self: stretch;
+  width: 100%;
+}
+
+.master-preview-description-body--portrait {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.master-preview-description-body--portrait .master-preview-description-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.master-preview-description-image {
+  flex-shrink: 0;
+}
+
+/* Portrait: fixed-width strip on the right; center the image in that strip */
+.master-preview-description-body--portrait .master-preview-description-image {
+  flex: 0 0 min(42%, 14rem);
+  width: min(42%, 14rem);
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.master-preview-description-body--landscape .master-preview-description-image {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.master-preview-description-image img {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 4px;
+}
+
+/* Landscape / stacked: cap height so tall assets do not dominate */
+.master-preview-description-body--landscape .master-preview-description-image img {
+  max-height: min(45vh, 22rem);
+}
+
+/* Portrait / beside text: stay within the image column; cap height */
+.master-preview-description-body--portrait .master-preview-description-image img {
+  max-width: 100%;
+  max-height: min(40vh, 18rem);
+  width: auto;
+  height: auto;
 }
 
 .master-preview-custom-fields strong {
@@ -1267,15 +1352,6 @@ button.master-preview-locations-row-button {
   font-size: 0.85em;
 }
 
-.master-preview-image {
-  margin-top: 0.75rem;
-}
-
-.master-preview-image img {
-  max-width: 100%;
-  border-radius: 4px;
-}
-
 .master-preview-actions {
   display: flex;
   flex-direction: column;
@@ -1287,11 +1363,18 @@ button.master-preview-locations-row-button {
 
 .master-preview-actions strong {
   display: block;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
   color: var(--muted);
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* Tight to the heading; space before buttons lives on the hint’s bottom margin */
+.master-preview-actions-hint {
+  margin: 0.2rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .master-preview-actions-buttons {
@@ -1300,6 +1383,11 @@ button.master-preview-locations-row-button {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+  margin-top: 0.5rem;
+}
+
+.master-preview-actions:has(.master-preview-actions-hint) .master-preview-actions-buttons {
+  margin-top: 0;
 }
 
 .master-action-button {

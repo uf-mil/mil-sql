@@ -184,8 +184,8 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [image, setImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  /** User upload only; type template is shown separately and never sent as supply image */
+  const [customImage, setCustomImage] = useState(null);
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
@@ -259,8 +259,7 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
     if (isOpen) {
       setName('');
       setDescription('');
-      setImage(null);
-      setImagePreview(null);
+      setCustomImage(null);
       setSelectedTeams([]);
       setSelectedCategories([]);
       setCategorySearchQuery('');
@@ -292,16 +291,18 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
     setNameSuffix('');
     setDescSuffix('');
     if (t.image) {
-      setImage(t.image);
-      setImagePreview(t.image);
+      setCustomImage(null);
     }
   }, [selectedSupplyTypeId, supplyTypes, isOpen]);
 
   const handleImageChange = async (e) => {
+    const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+    if (t?.image) {
+      e.target.value = '';
+      return;
+    }
     const file = e.target.files[0];
     if (!file) {
-      setImage(null);
-      setImagePreview(null);
       return;
     }
 
@@ -320,8 +321,7 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64Data = event.target.result;
-      setImage(base64Data);
-      setImagePreview(base64Data);
+      setCustomImage(base64Data);
     };
     reader.onerror = () => {
       showAlert('Error reading image file').then(() => {
@@ -332,8 +332,9 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
   };
 
   const handleRemoveImage = () => {
-    setImage(null);
-    setImagePreview(null);
+    const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+    if (t?.image) return;
+    setCustomImage(null);
   };
 
   const handleSave = async () => {
@@ -361,10 +362,11 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
         .map(catName => categoryNameToId.get(catName))
         .filter(id => id !== undefined);
       
+      const typeHasTemplateImage = Boolean(selectedType?.image);
       const newItem = {
         name: fullName.trim(),
         description: fullDesc,
-        image: image || null,
+        image: typeHasTemplateImage ? null : customImage || null,
         teams: selectedTeams.length > 0 ? selectedTeams : undefined,
         categories: categoryIds.length > 0 ? categoryIds : undefined,
         custom_fields: Object.keys(customFields).length > 0 ? customFields : undefined,
@@ -399,6 +401,8 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const selectedType = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+  const typeBlocksOwnImage = Boolean(selectedType?.image);
+  const imagePreviewDisplay = typeBlocksOwnImage ? selectedType?.image ?? null : customImage;
   const typePresetKeys =
     selectedType?.default_custom_fields && typeof selectedType.default_custom_fields === 'object'
       ? new Set(Object.keys(selectedType.default_custom_fields))
@@ -410,7 +414,7 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
       onClick={handleOverlayClick}
       onKeyDown={handleKeyDown}
     >
-      <div className="modal">
+      <div className="modal master-item-create-modal">
         <h3>Create Item</h3>
         <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
           Item type (optional)
@@ -628,48 +632,50 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
 
         <div>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-            Image (optional, max 10MB)
+            {typeBlocksOwnImage ? 'Image (from item type)' : 'Image (optional, max 10MB)'}
           </label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
-            style={{ marginBottom: '0.5rem' }}
-          />
-          {imagePreview && (
-            <div style={{ marginTop: '0.5rem', position: 'relative', display: 'inline-block' }}>
-              <img
-                src={imagePreview}
-                alt="Preview"
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '200px',
-                  borderRadius: '4px',
-                  border: '1px solid var(--stroke)',
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleRemoveImage}
-                style={{
-                  position: 'absolute',
-                  top: '4px',
-                  right: '4px',
-                  background: 'var(--files)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '24px',
-                  height: '24px',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                ×
-              </button>
+          {typeBlocksOwnImage && (
+            <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', color: 'var(--muted)' }}>
+              This type supplies the image. Choose None or a type without an image to upload your own.
+            </p>
+          )}
+          {!typeBlocksOwnImage && (
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              style={{ marginBottom: '0.5rem' }}
+            />
+          )}
+          {imagePreviewDisplay && (
+            <div className="edit-form-image-container" style={{ marginTop: '0.5rem' }}>
+              <img src={imagePreviewDisplay} alt="Preview" />
+              {!typeBlocksOwnImage && (
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  style={{
+                    position: 'absolute',
+                    top: '6px',
+                    right: '6px',
+                    background: 'var(--files)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1,
+                  }}
+                  aria-label="Remove image"
+                >
+                  ×
+                </button>
+              )}
             </div>
           )}
         </div>
