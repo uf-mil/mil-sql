@@ -118,79 +118,89 @@ const TypeFormBody = ({
         const def = customFieldDefinitions.find(d => d.name === key);
         const fieldType = def ? def.type : 'text';
         const displayValue = value === undefined || value === null ? '' : String(value);
+        const cfId = `type-cf-${String(key).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
         return (
-          <div
-            key={key}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', marginBottom: '0.5rem' }}
-          >
-            {fieldType === 'text' && (
-              <input
-                type="text"
-                placeholder={`${key} (optional default)`}
-                value={displayValue}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    typeCustomFields: { ...f.typeCustomFields, [key]: e.target.value }
-                  }))
-                }
-                style={{ flex: 1, minWidth: 0 }}
-              />
-            )}
-            {fieldType === 'number' && (
-              <input
-                type="number"
-                step="any"
-                placeholder={`${key} (optional default)`}
-                value={displayValue}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    typeCustomFields: {
-                      ...f.typeCustomFields,
-                      [key]: e.target.value === '' ? '' : Number(e.target.value)
-                    }
-                  }))
-                }
-                style={{ flex: 1, minWidth: 0 }}
-              />
-            )}
-            {fieldType === 'date' && (
-              <input
-                type="date"
-                value={displayValue}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    typeCustomFields: { ...f.typeCustomFields, [key]: e.target.value }
-                  }))
-                }
-                style={{ flex: 1, minWidth: 0 }}
-              />
-            )}
-            <button
-              type="button"
-              onClick={() =>
-                setForm((f) => {
-                  const n = { ...f.typeCustomFields };
-                  delete n[key];
-                  return { ...f, typeCustomFields: n };
-                })
-              }
-              style={{
-                flexShrink: 0,
-                background: 'transparent',
-                border: 'none',
-                color: '#888',
-                cursor: 'pointer',
-                padding: '0.25rem',
-                fontSize: '1.25rem',
-                lineHeight: 1
-              }}
-              title="Remove field"
+          <div key={key} style={{ width: '100%', marginBottom: '0.65rem' }}>
+            <label
+              htmlFor={cfId}
+              style={{ display: 'block', marginBottom: '0.28rem', fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 500 }}
             >
-              ×
-            </button>
+              {key}
+              <span style={{ fontWeight: 400, opacity: 0.85 }}> ({fieldType})</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+              {fieldType === 'text' && (
+                <input
+                  id={cfId}
+                  type="text"
+                  placeholder="Optional default for new items"
+                  value={displayValue}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      typeCustomFields: { ...f.typeCustomFields, [key]: e.target.value }
+                    }))
+                  }
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+              )}
+              {fieldType === 'number' && (
+                <input
+                  id={cfId}
+                  type="number"
+                  step="any"
+                  placeholder="Optional default for new items"
+                  value={displayValue}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      typeCustomFields: {
+                        ...f.typeCustomFields,
+                        [key]: e.target.value === '' ? '' : Number(e.target.value)
+                      }
+                    }))
+                  }
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+              )}
+              {fieldType === 'date' && (
+                <input
+                  id={cfId}
+                  type="date"
+                  value={displayValue}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      typeCustomFields: { ...f.typeCustomFields, [key]: e.target.value }
+                    }))
+                  }
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((f) => {
+                    const n = { ...f.typeCustomFields };
+                    delete n[key];
+                    return { ...f, typeCustomFields: n };
+                  })
+                }
+                style={{
+                  flexShrink: 0,
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#888',
+                  cursor: 'pointer',
+                  padding: '0.25rem',
+                  fontSize: '1.25rem',
+                  lineHeight: 1
+                }}
+                title="Remove field"
+              >
+                ×
+              </button>
+            </div>
           </div>
         );
       })}

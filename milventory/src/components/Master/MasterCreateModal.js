@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { getCategories, getTeams, api } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
@@ -178,7 +178,192 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
   );
 };
 
-const MasterCreateModal = ({ isOpen, onClose }) => {
+/** Single-select supply type with search. */
+const SupplyTypeSearchSelect = ({ supplyTypes, value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
+  const containerRef = useRef(null);
+  const triggerRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const updateMenuPos = () => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setMenuPos({ top: r.bottom + 4, left: r.left, width: r.width });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateMenuPos();
+    const onScrollOrResize = () => updateMenuPos();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      const menu = document.getElementById('supply-type-search-menu');
+      if (menu?.contains(e.target)) return;
+      if (containerRef.current?.contains(e.target)) return;
+      setOpen(false);
+      setQuery('');
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const selected = supplyTypes.find((x) => String(x.id) === String(value));
+  const label = selected
+    ? `${selected.name}${selected.is_unique ? ' (max 1 on map)' : ''}`
+    : 'None';
+
+  const q = query.trim().toLowerCase();
+  let filteredTypes;
+  if (!q) {
+    filteredTypes = supplyTypes;
+  } else {
+    const scored = supplyTypes.map((t) => {
+      const nameLower = (t.name || '').toLowerCase();
+      const isSubstring = nameLower.includes(q);
+      const distance = levenshteinDistance(q, nameLower);
+      return { t, score: isSubstring ? distance - 10 : distance };
+    });
+    scored.sort((a, b) => a.score !== b.score ? a.score - b.score : (a.t.name || '').localeCompare(b.t.name || ''));
+    filteredTypes = scored.map((s) => s.t);
+  }
+
+  const pick = (id) => {
+    onChange(id === '' || id === null || id === undefined ? '' : String(id));
+    setOpen(false);
+    setQuery('');
+  };
+
+  const rowStyle = (active) => ({
+    padding: '0.5rem 0.75rem',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+    color: 'var(--text)',
+    background: active ? 'rgba(255,255,255,.08)' : 'transparent',
+  });
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', marginBottom: '0.75rem' }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="styled-select"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: '100%',
+          padding: '0.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.5rem',
+          textAlign: 'left',
+          cursor: 'pointer',
+          boxSizing: 'border-box',
+          appearance: 'none',
+          WebkitAppearance: 'none',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ flexShrink: 0, fontSize: '0.65rem', color: 'var(--muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div
+          id="supply-type-search-menu"
+          style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: Math.max(menuPos.width, 200),
+            zIndex: 2000,
+            background: 'var(--panel)',
+            border: '1px solid rgba(255,255,255,.15)',
+            borderRadius: '6px',
+            boxShadow: '0 8px 24px rgba(0,0,0,.45)',
+            overflow: 'hidden',
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              setOpen(false);
+              setQuery('');
+            }
+          }}
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search item types…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '0.5rem 0.65rem',
+              border: 'none',
+              borderBottom: '1px solid rgba(255,255,255,.1)',
+              background: 'rgba(0,0,0,.25)',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              outline: 'none',
+            }}
+          />
+          <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+            <div
+              role="option"
+              onClick={() => pick('')}
+              style={rowStyle(!value)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,.1)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = !value ? 'rgba(255,255,255,.08)' : 'transparent'; }}
+            >
+              None
+            </div>
+            {filteredTypes.length === 0 ? (
+              <div style={{ padding: '0.6rem 0.75rem', color: 'var(--muted)', fontSize: '0.8rem' }}>
+                No matching types
+              </div>
+            ) : (
+              filteredTypes.map((t) => {
+                const active = String(t.id) === String(value);
+                return (
+                  <div
+                    key={t.id}
+                    role="option"
+                    onClick={() => pick(t.id)}
+                    style={rowStyle(active)}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,.1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'rgba(255,255,255,.08)' : 'transparent'; }}
+                  >
+                    {t.name}
+                    {t.is_unique ? ' (max 1 on map)' : ''}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
   const { createMasterItem, masterInventoryItems } = useInventory();
   const { showAlert } = useBlockingDialog();
   
@@ -271,10 +456,14 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
       setLockedFieldKeys([]);
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
-  }, [isOpen]);
+  }, [isOpen, showTypeSelector]);
 
   useEffect(() => {
     if (!isOpen) return;
+    if (!showTypeSelector) {
+      setLockedFieldKeys([]);
+      return;
+    }
     const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
     if (!selectedSupplyTypeId || !t) {
       setLockedFieldKeys([]);
@@ -293,10 +482,11 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
     if (t.image) {
       setCustomImage(null);
     }
-  }, [selectedSupplyTypeId, supplyTypes, isOpen]);
+  }, [selectedSupplyTypeId, supplyTypes, isOpen, showTypeSelector]);
 
   const handleImageChange = async (e) => {
-    const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+    const tid = showTypeSelector ? selectedSupplyTypeId : '';
+    const t = tid ? supplyTypes.find((x) => String(x.id) === String(tid)) : null;
     if (t?.image) {
       e.target.value = '';
       return;
@@ -332,17 +522,21 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
   };
 
   const handleRemoveImage = () => {
-    const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+    const tid = showTypeSelector ? selectedSupplyTypeId : '';
+    const t = tid ? supplyTypes.find((x) => String(x.id) === String(tid)) : null;
     if (t?.image) return;
     setCustomImage(null);
   };
 
   const handleSave = async () => {
-    const selectedType = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
-    const fullName = selectedSupplyTypeId && selectedType
+    const effectiveTypeId = showTypeSelector ? selectedSupplyTypeId : '';
+    const selectedType = effectiveTypeId
+      ? supplyTypes.find((x) => String(x.id) === String(effectiveTypeId))
+      : undefined;
+    const fullName = effectiveTypeId && selectedType
       ? joinPrefixSuffix(selectedType.item_name_prefix, nameSuffix)
       : name.trim();
-    const fullDescRaw = selectedSupplyTypeId && selectedType
+    const fullDescRaw = effectiveTypeId && selectedType
       ? joinPrefixSuffix(selectedType.item_description_prefix || '', descSuffix)
       : description.trim();
     const fullDesc = fullDescRaw.trim() ? fullDescRaw.trim() : null;
@@ -371,7 +565,7 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
         categories: categoryIds.length > 0 ? categoryIds : undefined,
         custom_fields: Object.keys(customFields).length > 0 ? customFields : undefined,
         locations: [],
-        supply_type_id: selectedSupplyTypeId ? Number(selectedSupplyTypeId) : undefined
+        supply_type_id: effectiveTypeId ? Number(effectiveTypeId) : undefined
       };
       
       createMasterItem(newItem);
@@ -400,7 +594,10 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const selectedType = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+  const effectiveTypeId = showTypeSelector ? selectedSupplyTypeId : '';
+  const selectedType = effectiveTypeId
+    ? supplyTypes.find((x) => String(x.id) === String(effectiveTypeId))
+    : undefined;
   const typeBlocksOwnImage = Boolean(selectedType?.image);
   const imagePreviewDisplay = typeBlocksOwnImage ? selectedType?.image ?? null : customImage;
   const typePresetKeys =
@@ -416,28 +613,25 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
     >
       <div className="modal master-item-create-modal">
         <h3>Create Item</h3>
-        <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
-          Item type (optional)
-        </label>
-        <select
-          value={selectedSupplyTypeId}
-          onChange={(e) => setSelectedSupplyTypeId(e.target.value)}
-          style={{ marginBottom: '0.75rem', width: '100%', padding: '0.5rem' }}
-        >
-          <option value="">None</option>
-          {supplyTypes.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}{t.is_unique ? ' (max 1 on map)' : ''}
-            </option>
-          ))}
-        </select>
-        {selectedSupplyTypeId ? (
+        {showTypeSelector && (
+          <>
+            <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+              Item type (optional)
+            </label>
+            <SupplyTypeSearchSelect
+              supplyTypes={supplyTypes}
+              value={selectedSupplyTypeId}
+              onChange={setSelectedSupplyTypeId}
+            />
+          </>
+        )}
+        {effectiveTypeId ? (
           <>
             <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
               Name
             </label>
             {(() => {
-              const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+              const t = selectedType;
               const nameFix = t?.item_name_prefix ?? '';
               const hasNameFix = String(nameFix).length > 0;
               return hasNameFix ? (
@@ -466,7 +660,7 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
               Description
             </label>
             {(() => {
-              const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+              const t = selectedType;
               const descFix = t?.item_description_prefix ?? '';
               const hasDescFix = String(descFix).trim().length > 0;
               return hasDescFix ? (
@@ -533,53 +727,63 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
             const def = customFieldDefinitions.find(d => d.name === key);
             const fieldType = def ? def.type : 'text';
             const displayValue = value === undefined || value === null ? '' : String(value);
+            const cfId = `create-cf-${String(key).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
             return (
-              <div
-                key={key}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', marginBottom: '0.5rem' }}
-              >
-                {fieldType === 'text' && (
-                  <input
-                    type="text"
-                    placeholder={key}
-                    value={displayValue}
-                    disabled={typePresetKeys.has(key)}
-                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
-                  />
-                )}
-                {fieldType === 'number' && (
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder={key}
-                    value={displayValue}
-                    disabled={typePresetKeys.has(key)}
-                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
-                  />
-                )}
-                {fieldType === 'date' && (
-                  <input
-                    type="date"
-                    value={displayValue}
-                    disabled={typePresetKeys.has(key)}
-                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
-                  />
-                )}
-                <button
-                  type="button"
-                  disabled={lockedFieldKeys.includes(key)}
-                  onClick={() => setCustomFields(prev => { const n = { ...prev }; delete n[key]; return n; })}
-                  style={{
-                    flexShrink: 0, background: 'transparent', border: 'none', color: lockedFieldKeys.includes(key) ? '#444' : '#888', cursor: lockedFieldKeys.includes(key) ? 'not-allowed' : 'pointer',
-                    padding: '0.25rem', fontSize: '1.25rem', lineHeight: 1
-                  }}
-                  title={lockedFieldKeys.includes(key) ? 'Required by type' : 'Remove field'}
+              <div key={key} style={{ width: '100%', marginBottom: '0.65rem' }}>
+                <label
+                  htmlFor={cfId}
+                  style={{ display: 'block', marginBottom: '0.28rem', fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 500 }}
                 >
-                  ×
-                </button>
+                  {key}
+                  <span style={{ fontWeight: 400, opacity: 0.85 }}> ({fieldType})</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  {fieldType === 'text' && (
+                    <input
+                      id={cfId}
+                      type="text"
+                      placeholder="Value"
+                      value={displayValue}
+                      disabled={typePresetKeys.has(key)}
+                      onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
+                      style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
+                    />
+                  )}
+                  {fieldType === 'number' && (
+                    <input
+                      id={cfId}
+                      type="number"
+                      step="any"
+                      placeholder="Value"
+                      value={displayValue}
+                      disabled={typePresetKeys.has(key)}
+                      onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
+                    />
+                  )}
+                  {fieldType === 'date' && (
+                    <input
+                      id={cfId}
+                      type="date"
+                      value={displayValue}
+                      disabled={typePresetKeys.has(key)}
+                      onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
+                      style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    disabled={lockedFieldKeys.includes(key)}
+                    onClick={() => setCustomFields(prev => { const n = { ...prev }; delete n[key]; return n; })}
+                    style={{
+                      flexShrink: 0, background: 'transparent', border: 'none', color: lockedFieldKeys.includes(key) ? '#444' : '#888', cursor: lockedFieldKeys.includes(key) ? 'not-allowed' : 'pointer',
+                      padding: '0.25rem', fontSize: '1.25rem', lineHeight: 1
+                    }}
+                    title={lockedFieldKeys.includes(key) ? 'Required by type' : 'Remove field'}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -688,11 +892,8 @@ const MasterCreateModal = ({ isOpen, onClose }) => {
             className="save"
             onClick={handleSave}
             disabled={
-              !(selectedSupplyTypeId
-                ? joinPrefixSuffix(
-                    supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId))?.item_name_prefix,
-                    nameSuffix
-                  ).trim()
+              !(effectiveTypeId
+                ? joinPrefixSuffix(selectedType?.item_name_prefix, nameSuffix).trim()
                 : name.trim()) || !areNumberCustomFieldsValid(customFields, customFieldDefinitions)
             }
           >

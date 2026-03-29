@@ -11,7 +11,7 @@ import HistoryModal from '../History/HistoryModal';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const { wrapRef, leftPaneWidth, leftPaneCollapsed } = useInventory();
+  const { wrapRef, leftPaneWidth, leftPaneCollapsed, dismissMasterWorkbenchUI } = useInventory();
   const svgRef = useRef(null);
   const [drawMode, setDrawMode] = useState(false);
   const [showAddLocationModal, setShowAddLocationModal] = useState(false);
@@ -135,7 +135,9 @@ const AdminDashboard = () => {
           Admin Dashboard
           <span style={{ float: 'right', marginRight: '1rem' }}>
             <button
-              onClick={() => setShowHistoryModal(true)}
+              onClick={() => {
+                void dismissMasterWorkbenchUI().then(() => setShowHistoryModal(true));
+              }}
               style={{
                 marginRight: '0.5rem',
                 padding: '0.25rem 0.5rem',

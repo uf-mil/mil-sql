@@ -66,7 +66,7 @@ export const InventoryProvider = ({ children }) => {
   const [leftPaneWidth, setLeftPaneWidth] = useState(300);
   const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
   const [masterFilterLocation, setMasterFilterLocation] = useState(null); // Location to filter master table by
-  
+
   // Loading and error states
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1539,6 +1539,29 @@ export const InventoryProvider = ({ children }) => {
     setSelectedMasterItem(null);
   }, []);
 
+  /** Close master preview (clears selection), add/subtract/move/free-place modes, and box add/edit UI. */
+  const dismissMasterWorkbenchUI = useCallback(async () => {
+    try {
+      await cancelMoveMode();
+    } catch (e) {
+      console.error('dismissMasterWorkbenchUI: cancelMoveMode', e);
+    }
+    clearFreePlaceSession();
+    setAddModeItem(null);
+    setAddModeQtyPerClick(1);
+    setAddModePending(new Map());
+    setSubtractModeItem(null);
+    setSubtractModeQtyPerClick(1);
+    setSubtractModePending(new Map());
+    setSelectedMasterItem(null);
+    setSelectedBox(null);
+    setCurrentEditingBox(null);
+    setCurrentEditingIndex(null);
+    setCurrentAddingBox(null);
+    setCurrentAddingIndex(null);
+    setTooltip({ visible: false, title: '', x: 0, y: 0 });
+  }, [cancelMoveMode, clearFreePlaceSession]);
+
   const value = {
     // State
     inventoryData,
@@ -1597,6 +1620,7 @@ export const InventoryProvider = ({ children }) => {
     updateMasterItem,
     deleteMasterItem,
     clearSelectedMasterItem,
+    dismissMasterWorkbenchUI,
     reloadMasterItems,
     reloadSupplyLocations,
     // Master Table Filter

@@ -141,6 +141,10 @@ const MasterItemPreview = () => {
     setDescImageLayout('landscape');
   }, [selectedMasterItem, item?.image]);
 
+  useEffect(() => {
+    if (!selectedMasterItem) setEditingItem(null);
+  }, [selectedMasterItem]);
+
   if (!selectedMasterItem || !item) return null;
 
   const descriptionLayout =

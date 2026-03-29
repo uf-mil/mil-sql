@@ -14,6 +14,7 @@ const MasterInventoryTable = () => {
     getItemLocations,
     setSelectedMasterItem,
     selectedMasterItem,
+    dismissMasterWorkbenchUI,
     inventoryData,
     masterFilterLocation,
     setMasterFilterLocation
@@ -21,6 +22,7 @@ const MasterInventoryTable = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [createFromType, setCreateFromType] = useState(true);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [filterType, setFilterType] = useState('location'); // 'location' | 'category' | 'type'
   const [selectedLocations, setSelectedLocations] = useState(new Set());
@@ -396,7 +398,7 @@ const MasterInventoryTable = () => {
   };
 
   const handleAddItem = () => {
-    setShowAddModal(true);
+    void dismissMasterWorkbenchUI().then(() => setShowAddModal(true));
   };
 
   const handleSort = (column) => {
@@ -1462,13 +1464,38 @@ const MasterInventoryTable = () => {
             </table>
           )}
         </div>
-        <div className="master-table-actions">
+        <div
+          className="master-table-actions"
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}
+        >
           <button className="add-item-button" onClick={handleAddItem}>
             + Create Item
           </button>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontSize: '0.85rem',
+              color: 'var(--muted)',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={createFromType}
+              onChange={(e) => setCreateFromType(e.target.checked)}
+            />
+            Create from Type
+          </label>
         </div>
       </div>
-      <MasterCreateModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
+      <MasterCreateModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        showTypeSelector={createFromType}
+      />
     </>
   );
 };

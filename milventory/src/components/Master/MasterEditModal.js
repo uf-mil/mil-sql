@@ -593,53 +593,63 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
             const def = customFieldDefinitions.find(d => d.name === key);
             const fieldType = def ? def.type : 'text';
             const displayValue = value === undefined || value === null ? '' : String(value);
+            const cfId = `edit-cf-${String(key).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
             return (
-              <div
-                key={key}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', marginBottom: '0.5rem' }}
-              >
-                {fieldType === 'text' && (
-                  <input
-                    type="text"
-                    placeholder={key}
-                    value={displayValue}
-                    disabled={typePresetKeys.has(key)}
-                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
-                  />
-                )}
-                {fieldType === 'number' && (
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder={key}
-                    value={displayValue}
-                    disabled={typePresetKeys.has(key)}
-                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
-                  />
-                )}
-                {fieldType === 'date' && (
-                  <input
-                    type="date"
-                    value={displayValue}
-                    disabled={typePresetKeys.has(key)}
-                    onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
-                    style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
-                  />
-                )}
-                <button
-                  type="button"
-                  disabled={lockedFieldKeys.includes(key)}
-                  onClick={() => setCustomFields(prev => { const n = { ...prev }; delete n[key]; return n; })}
-                  style={{
-                    flexShrink: 0, background: 'transparent', border: 'none', color: lockedFieldKeys.includes(key) ? '#444' : '#888', cursor: lockedFieldKeys.includes(key) ? 'not-allowed' : 'pointer',
-                    padding: '0.25rem', fontSize: '1.25rem', lineHeight: 1
-                  }}
-                  title={lockedFieldKeys.includes(key) ? 'Required by type' : 'Remove field'}
+              <div key={key} style={{ width: '100%', marginBottom: '0.65rem' }}>
+                <label
+                  htmlFor={cfId}
+                  style={{ display: 'block', marginBottom: '0.28rem', fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 500 }}
                 >
-                  ×
-                </button>
+                  {key}
+                  <span style={{ fontWeight: 400, opacity: 0.85 }}> ({fieldType})</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                  {fieldType === 'text' && (
+                    <input
+                      id={cfId}
+                      type="text"
+                      placeholder="Value"
+                      value={displayValue}
+                      disabled={typePresetKeys.has(key)}
+                      onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
+                      style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
+                    />
+                  )}
+                  {fieldType === 'number' && (
+                    <input
+                      id={cfId}
+                      type="number"
+                      step="any"
+                      placeholder="Value"
+                      value={displayValue}
+                      disabled={typePresetKeys.has(key)}
+                      onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
+                    />
+                  )}
+                  {fieldType === 'date' && (
+                    <input
+                      id={cfId}
+                      type="date"
+                      value={displayValue}
+                      disabled={typePresetKeys.has(key)}
+                      onChange={(e) => setCustomFields(prev => ({ ...prev, [key]: e.target.value }))}
+                      style={{ flex: 1, minWidth: 0, opacity: typePresetKeys.has(key) ? 0.75 : 1 }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    disabled={lockedFieldKeys.includes(key)}
+                    onClick={() => setCustomFields(prev => { const n = { ...prev }; delete n[key]; return n; })}
+                    style={{
+                      flexShrink: 0, background: 'transparent', border: 'none', color: lockedFieldKeys.includes(key) ? '#444' : '#888', cursor: lockedFieldKeys.includes(key) ? 'not-allowed' : 'pointer',
+                      padding: '0.25rem', fontSize: '1.25rem', lineHeight: 1
+                    }}
+                    title={lockedFieldKeys.includes(key) ? 'Required by type' : 'Remove field'}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
             );
           })}

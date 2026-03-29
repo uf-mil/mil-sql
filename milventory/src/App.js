@@ -129,7 +129,16 @@ function ProtectedRoute({ children, requireLeader = false }) {
 }
 
 function AppContent({ user, onLogout }) {
-  const { wrapRef, svgRef, isLoading, error, setError, conflictError, setConflictError } = useInventory();
+  const {
+    wrapRef,
+    svgRef,
+    isLoading,
+    error,
+    setError,
+    conflictError,
+    setConflictError,
+    dismissMasterWorkbenchUI,
+  } = useInventory();
   const navigate = useNavigate();
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
@@ -184,7 +193,9 @@ function AppContent({ user, onLogout }) {
                 </button>
               )}
               <button
-                onClick={() => setShowHistoryModal(true)}
+                onClick={() => {
+                  void dismissMasterWorkbenchUI().then(() => setShowHistoryModal(true));
+                }}
                 style={{
                   marginLeft: '1rem',
                   padding: '0.25rem 0.5rem',
