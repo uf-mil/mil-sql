@@ -1,18 +1,25 @@
 import React from 'react';
+import {
+  easternCalendarDayKey,
+  formatEasternDateShort,
+  formatEasternDateOnly,
+  formatEasternTimeShort,
+} from '../../utils/appTimeZone';
 
 const formatDate = (isoString) => {
   if (!isoString) return '—';
   const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return '—';
   const now = new Date();
-  const isToday = date.toDateString() === now.toDateString();
+  const isToday = easternCalendarDayKey(date) === easternCalendarDayKey(now);
 
-  const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const timeStr = formatEasternTimeShort(date);
 
   if (isToday) {
     return timeStr;
   }
 
-  const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const dateStr = formatEasternDateShort(date);
   return `${dateStr}, ${timeStr}`;
 };
 
@@ -21,7 +28,7 @@ export const formatCustomValue = (value, type) => {
   if (type === 'date') {
     try {
       const d = new Date(value);
-      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
+      return Number.isNaN(d.getTime()) ? String(value) : formatEasternDateOnly(d);
     } catch {
       return String(value);
     }

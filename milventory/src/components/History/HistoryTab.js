@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatEasternDateOnly } from '../../utils/appTimeZone';
 import { locationHistory, historyUndoAllowsDiscard } from '../../api';
 import { useInventory } from '../../context/InventoryContext';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
@@ -126,7 +127,7 @@ const HistoryTab = () => {
     if (diffMins < 60) return `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
     if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
     if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
-    return date.toLocaleDateString();
+    return formatEasternDateOnly(date);
   };
 
   const formatLocation = (entry) => {

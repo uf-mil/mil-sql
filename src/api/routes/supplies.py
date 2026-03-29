@@ -66,19 +66,30 @@ def get_supplies(current_user_id=None):
         for row in cur.fetchall():
             # Get locations for this supply
             cur.execute("""
-                SELECT location_name, shelf, amount
+                SELECT id, location_name, coord_x, coord_y, shelf, amount
                 FROM supplies_location
                 WHERE supply_id = %s
-                ORDER BY location_name, shelf
+                ORDER BY COALESCE(location_name, ''), shelf
             """, (row['id'],))
             
             locations = []
             for loc_row in cur.fetchall():
-                locations.append({
-                    'location': loc_row['location_name'],
-                    'shelf': loc_row['shelf'],
-                    'qty': loc_row['amount']
-                })
+                if loc_row['location_name'] is None and loc_row['coord_x'] is not None:
+                    locations.append({
+                        'location': 'Free Coordinate',
+                        'shelf': loc_row['shelf'],
+                        'qty': loc_row['amount'],
+                        'coord_x': int(loc_row['coord_x']),
+                        'coord_y': int(loc_row['coord_y']),
+                        'supply_location_id': loc_row['id'],
+                    })
+                else:
+                    locations.append({
+                        'location': loc_row['location_name'],
+                        'shelf': loc_row['shelf'],
+                        'qty': loc_row['amount'],
+                        'supply_location_id': loc_row['id'],
+                    })
             
             # Get teams for this supply
             cur.execute("""
@@ -199,21 +210,31 @@ def get_supply(supply_id, current_user_id=None):
         elif cf is None:
             cf = {}
         
-        # Get locations for this supply
         cur.execute("""
-            SELECT location_name, shelf, amount
+            SELECT id, location_name, coord_x, coord_y, shelf, amount
             FROM supplies_location
             WHERE supply_id = %s
-            ORDER BY location_name, shelf
+            ORDER BY COALESCE(location_name, ''), shelf
         """, (supply_id,))
         
         locations = []
         for loc_row in cur.fetchall():
-            locations.append({
-                'location': loc_row['location_name'],
-                'shelf': loc_row['shelf'],
-                'qty': loc_row['amount']
-            })
+            if loc_row['location_name'] is None and loc_row['coord_x'] is not None:
+                locations.append({
+                    'location': 'Free Coordinate',
+                    'shelf': loc_row['shelf'],
+                    'qty': loc_row['amount'],
+                    'coord_x': int(loc_row['coord_x']),
+                    'coord_y': int(loc_row['coord_y']),
+                    'supply_location_id': loc_row['id'],
+                })
+            else:
+                locations.append({
+                    'location': loc_row['location_name'],
+                    'shelf': loc_row['shelf'],
+                    'qty': loc_row['amount'],
+                    'supply_location_id': loc_row['id'],
+                })
         
         # Get teams for this supply
         cur.execute("""
@@ -819,19 +840,30 @@ def update_supply(supply_id, current_user_id=None):
         total_qty = total_qty_row['totalQty'] if total_qty_row else 0
         
         cur.execute("""
-            SELECT location_name, shelf, amount
+            SELECT id, location_name, coord_x, coord_y, shelf, amount
             FROM supplies_location
             WHERE supply_id = %s
-            ORDER BY location_name, shelf
+            ORDER BY COALESCE(location_name, ''), shelf
         """, (supply_id,))
         
         locations = []
         for loc_row in cur.fetchall():
-            locations.append({
-                'location': loc_row['location_name'],
-                'shelf': loc_row['shelf'],
-                'qty': loc_row['amount']
-            })
+            if loc_row['location_name'] is None and loc_row['coord_x'] is not None:
+                locations.append({
+                    'location': 'Free Coordinate',
+                    'shelf': loc_row['shelf'],
+                    'qty': loc_row['amount'],
+                    'coord_x': int(loc_row['coord_x']),
+                    'coord_y': int(loc_row['coord_y']),
+                    'supply_location_id': loc_row['id'],
+                })
+            else:
+                locations.append({
+                    'location': loc_row['location_name'],
+                    'shelf': loc_row['shelf'],
+                    'qty': loc_row['amount'],
+                    'supply_location_id': loc_row['id'],
+                })
         
         # Get teams
         cur.execute("""

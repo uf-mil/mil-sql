@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import MasterItemPreview from '../Master/MasterItemPreview';
 import ArrowConnections from './ArrowConnections';
@@ -6,6 +6,7 @@ import BoxInventoryOverlay from './BoxInventoryOverlay';
 import AddModeArrow from './AddModeArrow';
 import MoveModeBoxes from './MoveModeBoxes';
 import SubtractModePreview from './SubtractModePreview';
+import FreePlaceDots from './FreePlaceDots';
 
 const SHELF_NAMES = [
   'Shelf 6 (Top)',
@@ -17,7 +18,35 @@ const SHELF_NAMES = [
 ];
 
 const MapComponent = forwardRef((props, ref) => {
-  const { worldRef, inventoryData, inventoryBounds, selectedBox, currentDragOverBox, handleBoxClick, handleBoxHover, handleBoxHoverLeave, handleDrop, setCurrentDragOverBox, addModeItem, addModePending, handleBoxClickAddMode, boxHasAnyPending, selectedMasterItem, getItemLocations, moveModeItem, moveModeDragging, handleMoveModeDrop, subtractModeItem, subtractModePending, handleBoxClickSubtractMode, boxHasAnySubtractPending } = useInventory();
+  const {
+    worldRef,
+    inventoryData,
+    inventoryBounds,
+    selectedBox,
+    currentDragOverBox,
+    handleBoxClick,
+    handleBoxHover,
+    handleBoxHoverLeave,
+    handleDrop,
+    setCurrentDragOverBox,
+    addModeItem,
+    addModePending,
+    handleBoxClickAddMode,
+    boxHasAnyPending,
+    selectedMasterItem,
+    getItemLocations,
+    moveModeItem,
+    moveModeDragging,
+    handleMoveModeDrop,
+    subtractModeItem,
+    subtractModePending,
+    handleBoxClickSubtractMode,
+    boxHasAnySubtractPending,
+    freePlaceModeItem,
+    handleFreePlaceWorldClick
+  } = useInventory();
+
+  const freePlaceRoomPointerRef = useRef(null);
 
   // Compute highlighted box set from selected Master item (for React-managed className)
   const highlightedBoxes = selectedMasterItem ? new Set(getItemLocations(selectedMasterItem)) : null;
@@ -130,6 +159,34 @@ const MapComponent = forwardRef((props, ref) => {
     ry: 18
   };
 
+  const onFreePlaceRoomPointerDown = (e) => {
+    if (!freePlaceModeItem || e.button !== 0) return;
+    freePlaceRoomPointerRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const onFreePlaceRoomClick = (e) => {
+    if (!freePlaceModeItem || !worldRef.current || !handleFreePlaceWorldClick) return;
+    if (e.button !== 0) return;
+    const start = freePlaceRoomPointerRef.current;
+    freePlaceRoomPointerRef.current = null;
+    if (start) {
+      const d = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+      if (d > 12) return;
+    }
+    e.stopPropagation();
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const ctm = worldRef.current.getScreenCTM();
+    if (!ctm) return;
+    const w = pt.matrixTransform(ctm.inverse());
+    void handleFreePlaceWorldClick(w.x, w.y);
+  };
+
+  const boxPointerBlockFreePlace = freePlaceModeItem ? { pointerEvents: 'none' } : undefined;
+
   // All Tall Cabinets get shelf overlays in add mode, subtract mode, or move mode
   const tallCabinets = (addModeItem || subtractModeItem || moveModeItem)
     ? boxes.filter(b => b.title.startsWith('Tall Cabinet'))
@@ -139,7 +196,18 @@ const MapComponent = forwardRef((props, ref) => {
     <>
       <svg ref={ref} className="map" viewBox={viewBox} aria-label="Room map">
         <g ref={worldRef} id="world">
-          <rect className="room" x={roomBounds.x} y={roomBounds.y} width={roomBounds.width} height={roomBounds.height} rx={roomBounds.rx} ry={roomBounds.ry}/>
+          <rect
+            className={`room${freePlaceModeItem ? ' room-free-place-active' : ''}`}
+            x={roomBounds.x}
+            y={roomBounds.y}
+            width={roomBounds.width}
+            height={roomBounds.height}
+            rx={roomBounds.rx}
+            ry={roomBounds.ry}
+            style={freePlaceModeItem ? { cursor: 'crosshair' } : undefined}
+            onPointerDown={onFreePlaceRoomPointerDown}
+            onClick={onFreePlaceRoomClick}
+          />
           
           {boxes.map((box, idx) => {
             // For regular boxes (not Tall Cabinets), check if they have pending items
@@ -194,6 +262,7 @@ const MapComponent = forwardRef((props, ref) => {
                   onDragOver={(e) => handleDragOver(e, box.title)}
                   onDragLeave={(e) => handleDragLeave(e, box.title)}
                   onDrop={(e) => handleDropBox(e, box.title)}
+                  style={boxPointerBlockFreePlace}
                 />
                 {hasAddPending && (
                   <text
@@ -271,7 +340,11 @@ const MapComponent = forwardRef((props, ref) => {
                             handleBoxClickSubtractMode(box.title, idx);
                           }
                         } : undefined}
-                        style={moveModeItem ? { pointerEvents: 'none' } : undefined}
+                        style={
+                          moveModeItem || freePlaceModeItem
+                            ? { pointerEvents: 'none' }
+                            : undefined
+                        }
                       />
                       <text
                         className="add-mode-shelf-label"
@@ -319,6 +392,7 @@ const MapComponent = forwardRef((props, ref) => {
           <BoxInventoryOverlay />
           <AddModeArrow />
           <MoveModeBoxes />
+          <FreePlaceDots />
         </g>
       </svg>
       <MasterItemPreview />

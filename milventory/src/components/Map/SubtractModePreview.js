@@ -1,5 +1,5 @@
 import React from 'react';
-import { useInventory } from '../../context/InventoryContext';
+import { useInventory, FREE_SUBTRACT_DOT_PREFIX } from '../../context/InventoryContext';
 
 const SubtractModePreview = () => {
   const {
@@ -12,7 +12,8 @@ const SubtractModePreview = () => {
     leftPaneWidth,
     leftPaneCollapsed,
     resolveMasterItem,
-    subtractModePreviewRef
+    subtractModePreviewRef,
+    freePlacementsBySupplyName
   } = useInventory();
 
   const item = subtractModeItem ? resolveMasterItem(subtractModeItem) : null;
@@ -51,6 +52,13 @@ const SubtractModePreview = () => {
   // Format a pending key for display
   const formatPendingKey = (key) => {
     const parts = key.split('||');
+    if (parts[0] === FREE_SUBTRACT_DOT_PREFIX && parts[1] != null && parts[1] !== '') {
+      const id = parseInt(parts[1], 10);
+      const placements = freePlacementsBySupplyName.get(subtractModeItem) || [];
+      const dot = placements.find((p) => p.id === id);
+      if (dot) return `Floor (${Math.round(dot.x)}, ${Math.round(dot.y)})`;
+      return 'Floor placement';
+    }
     if (parts.length > 1) {
       const shelfIdx = parseInt(parts[1], 10);
       return `${parts[0]} → ${SHELF_NAMES[shelfIdx] || `Shelf ${shelfIdx}`}`;
@@ -81,6 +89,9 @@ const SubtractModePreview = () => {
           </button>
         </div>
         
+        <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+          Click boxes or <strong>floor markers</strong> to queue subtractions (same qty per click). Use <strong>Finish Subtract</strong> to apply, or <strong>Cancel</strong> to discard all pending.
+        </p>
         <div className="add-mode-qty-field">
           <label>Qty subtracted per click:</label>
           <div className="number-input-wrapper">

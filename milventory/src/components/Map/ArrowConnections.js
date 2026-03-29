@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { useInventory } from '../../context/InventoryContext';
+import { useInventory, MASTER_ARROWS_REDRAW_EVENT } from '../../context/InventoryContext';
 import * as d3 from 'd3';
 
 const SHELF_NAMES = [
@@ -18,7 +18,14 @@ const ArrowConnections = () => {
     inventoryData,
     svgRef,
     worldRef,
-    moveModeItem
+    moveModeItem,
+    subtractModeItem,
+    freePlaceModeItem,
+    freePlacementsBySupplyName,
+    freePlaceVisualDots,
+    subtractModeVisualFreeDots,
+    moveModeVisualFreeDots,
+    moveModeDotDragLiveByIdRef
   } = useInventory();
 
   const arrowsRef = useRef(null);
@@ -47,10 +54,23 @@ const ArrowConnections = () => {
     // Clear existing arrows
     arrowsGroup.innerHTML = '';
 
-    if (!selectedMasterItem) return;
+    const arrowItem =
+      subtractModeItem || moveModeItem || freePlaceModeItem || selectedMasterItem;
+    if (!arrowItem) return;
 
-    const locations = getItemLocations(selectedMasterItem);
-    if (locations.length === 0) return;
+    const locations = getItemLocations(arrowItem);
+    let freeDots = freePlacementsBySupplyName.get(arrowItem) || [];
+    if (freePlaceModeItem === arrowItem && freePlaceVisualDots != null) {
+      freeDots = freePlaceVisualDots;
+    } else if (subtractModeItem === arrowItem && subtractModeVisualFreeDots != null) {
+      freeDots = subtractModeVisualFreeDots;
+    } else if (moveModeItem === arrowItem && moveModeVisualFreeDots != null) {
+      freeDots = moveModeVisualFreeDots.map((d) => {
+        const live = moveModeDotDragLiveByIdRef.current.get(d.id);
+        return live ? { ...d, x: live.x, y: live.y } : d;
+      });
+    }
+    if (locations.length === 0 && freeDots.length === 0) return;
 
     // Find preview pane position in screen coordinates
     const previewPane = document.querySelector('.master-preview-pane-overlay');
@@ -70,7 +90,7 @@ const ArrowConnections = () => {
 
       let boxX, boxY;
       
-      if (moveModeItem && moveModeItem === selectedMasterItem) {
+      if (moveModeItem && moveModeItem === arrowItem) {
         // In move mode, point to the little red boxes
         const matchingItems = boxData.inventory.filter(item => item.name === moveModeItem);
         if (matchingItems.length === 0) return;
@@ -105,7 +125,25 @@ const ArrowConnections = () => {
       
       drawArrowToPoint(previewX, previewY, boxX, boxY, arrowsGroup);
     });
-  }, [selectedMasterItem, getItemLocations, inventoryData, svgRef, screenToWorld, moveModeItem]);
+
+    freeDots.forEach((p) => {
+      drawArrowToPoint(previewX, previewY, p.x, p.y, arrowsGroup);
+    });
+  }, [
+    selectedMasterItem,
+    subtractModeItem,
+    moveModeItem,
+    freePlaceModeItem,
+    freePlaceVisualDots,
+    subtractModeVisualFreeDots,
+    moveModeVisualFreeDots,
+    moveModeDotDragLiveByIdRef,
+    getItemLocations,
+    inventoryData,
+    svgRef,
+    screenToWorld,
+    freePlacementsBySupplyName
+  ]);
   
   const drawArrowToPoint = (previewX, previewY, boxX, boxY, arrowsGroup) => {
 
@@ -194,9 +232,21 @@ const ArrowConnections = () => {
     };
   }, [drawArrows]);
 
+  // Floor-dot drag updates a ref only; redraw arrows on custom event
+  useEffect(() => {
+    const onRedraw = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(drawArrows);
+    };
+    window.addEventListener(MASTER_ARROWS_REDRAW_EVENT, onRedraw);
+    return () => window.removeEventListener(MASTER_ARROWS_REDRAW_EVENT, onRedraw);
+  }, [drawArrows]);
+
   // Update arrows on zoom/pan via MutationObserver — direct DOM, no React state
   useEffect(() => {
-    if (!selectedMasterItem || !worldRef.current) return;
+    const arrowActive =
+      subtractModeItem || moveModeItem || freePlaceModeItem || selectedMasterItem;
+    if (!arrowActive || !worldRef.current) return;
 
     const world = worldRef.current;
 
@@ -212,9 +262,9 @@ const ArrowConnections = () => {
       observer.disconnect();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [selectedMasterItem, worldRef, drawArrows]);
+  }, [selectedMasterItem, subtractModeItem, moveModeItem, freePlaceModeItem, worldRef, drawArrows]);
 
-  if (!selectedMasterItem) return null;
+  if (!subtractModeItem && !moveModeItem && !freePlaceModeItem && !selectedMasterItem) return null;
 
   return <g ref={arrowsRef} className="arrow-connections" />;
 };

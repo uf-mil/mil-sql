@@ -155,6 +155,11 @@ try:
     migrate_supply_types()
 except Exception as e:
     print(f"⚠ Warning: Could not run supply_types migration: {e}")
+try:
+    from src.scripts.migrate_supplies_location_free_place import migrate_supplies_location_free_place
+    migrate_supplies_location_free_place()
+except Exception as e:
+    print(f"⚠ Warning: Could not run supplies_location free_place migration: {e}")
 
 # Seed test user, teams, categories, and locations
 try:

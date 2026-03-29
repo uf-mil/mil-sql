@@ -16,6 +16,35 @@
   --files: #b72a2a;     /* red file cabinets */
 }
 
+/* Global scrollbars: transparent track; thumb stays visible */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(154, 168, 194, 0.45) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track-piece {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.34);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 @keyframes slideDown {
   from {
     opacity: 0;
@@ -733,6 +762,12 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 
 .room { fill: var(--room); stroke: #2c3344; stroke-width: 6; }
 
+.room-free-place-active {
+  stroke: var(--accent);
+  stroke-width: 8;
+  opacity: 0.98;
+}
+
 .box {
   vector-effect: non-scaling-stroke;
   stroke: var(--stroke); stroke-width: 2; rx: 10; ry: 10; cursor: pointer;
@@ -1204,6 +1239,9 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 }
 
 .master-preview-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid rgba(255,255,255,.1);
@@ -1220,10 +1258,14 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 
 .master-preview-actions-buttons {
   display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
 }
 
 .master-action-button {
+  flex: 0 0 auto;
   background: rgba(255,255,255,.1);
   border: none;
   color: var(--text);
@@ -1232,6 +1274,7 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   cursor: pointer;
   font-size: 0.8rem;
   transition: background 0.2s, opacity 0.2s;
+  white-space: nowrap;
 }
 
 .master-action-button:hover {
@@ -1254,6 +1297,16 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 
 .master-action-button.add-button:hover {
   background: rgba(74, 222, 128, 0.5);
+}
+
+.master-action-button.free-place-button {
+  background: rgba(56, 189, 248, 0.35);
+  color: #fff;
+  font-weight: 400;
+}
+
+.master-action-button.free-place-button:hover {
+  background: rgba(56, 189, 248, 0.5);
 }
 
 /* Arrow Connections */

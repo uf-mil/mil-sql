@@ -1,8 +1,44 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import { api, admin, handleApiError } from '../api';
+import { clampPointToRoom } from '../constants/mapBounds';
+
+export const MASTER_ARROWS_REDRAW_EVENT = 'milventory-master-arrows-redraw';
+
+function newTempFreePlaceId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `fp-${crypto.randomUUID()}`;
+  }
+  return `fp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/** Pending subtract map keys for floor placements (`${prefix}||supply_location_id`). */
+export const FREE_SUBTRACT_DOT_PREFIX = '__free__';
 
 const InventoryContext = createContext(null);
+
+/** Build master table location strings from API supplies.locations[] */
+function locationsListFromSupplyLocs(locations) {
+  const out = [];
+  let freeQty = 0;
+  let freeN = 0;
+  (locations || []).forEach((loc) => {
+    if (loc.location === 'Free Coordinate' || (loc.coord_x != null && loc.coord_y != null)) {
+      freeN += 1;
+      freeQty += loc.qty || 0;
+      return;
+    }
+    if (loc.shelf !== null && loc.shelf !== undefined) {
+      out.push(`${loc.location} (Shelf ${loc.shelf})`);
+    } else {
+      out.push(loc.location);
+    }
+  });
+  if (freeN > 0) {
+    out.push(freeN > 1 || freeQty > 1 ? `Free Coordinate (${freeQty})` : 'Free Coordinate');
+  }
+  return out;
+}
 
 export const useInventory = () => {
   const context = useContext(InventoryContext);
@@ -63,9 +99,20 @@ export const InventoryProvider = ({ children }) => {
   const [moveModeItem, setMoveModeItem] = useState(null);
   const [moveModeDragging, setMoveModeDragging] = useState(null); // { boxTitle, shelf, qty, x, y }
   const [moveModePending, setMoveModePending] = useState([]); // Array of { from, to, shelfFrom, shelfTo, qty, supplyId } for undo
+  /** Pending floor-dot positions in move mode (applied on Finish; discarded on Cancel). */
+  const [moveModeFreeCoordById, setMoveModeFreeCoordById] = useState(() => new Map());
+  /** Live world coords during floor-dot drag (React state updates only on drag end so D3 is not torn down). */
+  const moveModeDotDragLiveByIdRef = useRef(new Map());
   const moveModeItemRef = useRef(null);
   const moveModePendingRef = useRef([]); // Ref version for callbacks
   const isDraggingMoveBoxRef = useRef(false); // Synchronous ref for D3 filter
+
+  const [freePlaceModeItem, setFreePlaceModeItem] = useState(null);
+  const freePlaceModeItemRef = useRef(null);
+  const [freePlacementsBySupplyName, setFreePlacementsBySupplyName] = useState(new Map());
+  const [freePlacePendingDeletes, setFreePlacePendingDeletes] = useState(() => new Set());
+  const [freePlacePendingCoordById, setFreePlacePendingCoordById] = useState(() => new Map());
+  const [freePlacePendingAdds, setFreePlacePendingAdds] = useState([]);
   
   // Keep refs in sync with state
   useEffect(() => {
@@ -95,6 +142,10 @@ export const InventoryProvider = ({ children }) => {
   useEffect(() => {
     moveModeItemRef.current = moveModeItem;
   }, [moveModeItem]);
+
+  useEffect(() => {
+    freePlaceModeItemRef.current = freePlaceModeItem;
+  }, [freePlaceModeItem]);
   
   // Refs
   const wrapRef = useRef(null);
@@ -118,38 +169,51 @@ export const InventoryProvider = ({ children }) => {
 
   // Function to reload supply locations from API
   const reloadSupplyLocations = useCallback(async () => {
-        try {
-          const supplyLocations = await api.getAllSupplyLocations();
-          
-          // Group by location_name and merge into inventoryData
-          const locationMap = new Map();
-          supplyLocations.forEach(sl => {
-            const key = sl.location;
-            if (!locationMap.has(key)) {
-              locationMap.set(key, []);
-            }
-            locationMap.get(key).push({
-          id: sl.id, // supply_location_id from API
-              name: sl.supply_name || '', // From JOIN in API
-              qty: sl.qty, // API maps amount to qty
-              shelf: sl.shelf !== null ? sl.shelf : undefined
-            });
+    try {
+      const supplyLocations = await api.getAllSupplyLocations();
+
+      const locationMap = new Map();
+      const freeMap = new Map();
+
+      supplyLocations.forEach((sl) => {
+        if (sl.free_place || (sl.coord_x != null && sl.coord_y != null)) {
+          const name = sl.supply_name || '';
+          if (!freeMap.has(name)) freeMap.set(name, []);
+          freeMap.get(name).push({
+            id: sl.id,
+            x: sl.coord_x,
+            y: sl.coord_y,
+            qty: sl.qty || 0
           });
-          
-      // Merge into inventoryData - update ALL boxes, even if they're now empty
-          setInventoryData(prev => {
-            const next = new Map(prev);
-        // Update all existing boxes - set inventory to empty array if not in locationMap
+          return;
+        }
+        const key = sl.location;
+        if (key == null || key === '') return;
+        if (!locationMap.has(key)) {
+          locationMap.set(key, []);
+        }
+        locationMap.get(key).push({
+          id: sl.id,
+          name: sl.supply_name || '',
+          qty: sl.qty,
+          shelf: sl.shelf !== null ? sl.shelf : undefined
+        });
+      });
+
+      setFreePlacementsBySupplyName(freeMap);
+
+      setInventoryData((prev) => {
+        const next = new Map(prev);
         prev.forEach((boxData, locationName) => {
           const items = locationMap.get(locationName) || [];
-                next.set(locationName, {
-                  ...boxData,
-                  inventory: items
-                });
-            });
-            return next;
+          next.set(locationName, {
+            ...boxData,
+            inventory: items
           });
-        } catch (apiError) {
+        });
+        return next;
+      });
+    } catch (apiError) {
       console.error('Error reloading supply locations from API:', apiError);
     }
   }, []);
@@ -264,14 +328,7 @@ export const InventoryProvider = ({ children }) => {
           // Build name to ID mapping
           nameToIdMap.set(supply.name, supply.id);
           
-          // Convert API response to Master item format
-          // API returns locations[] with {location, shelf, qty}
-          const locations = (supply.locations || []).map(loc => {
-            if (loc.shelf !== null && loc.shelf !== undefined) {
-              return `${loc.location} (Shelf ${loc.shelf})`;
-            }
-            return loc.location;
-          });
+          const locations = locationsListFromSupplyLocs(supply.locations);
           
           newMasterItems.set(supply.name, {
             name: supply.name,
@@ -431,17 +488,8 @@ export const InventoryProvider = ({ children }) => {
       const nameToIdMap = new Map();
       
       supplies.forEach(supply => {
-        // Build name to ID mapping
         nameToIdMap.set(supply.name, supply.id);
-        
-        // Convert API response to Master item format
-        const locations = (supply.locations || []).map(loc => {
-          if (loc.shelf !== null && loc.shelf !== undefined) {
-            return `${loc.location} (Shelf ${loc.shelf})`;
-          }
-          return loc.location;
-        });
-        
+        const locations = locationsListFromSupplyLocs(supply.locations);
         newMasterItems.set(supply.name, {
           name: supply.name,
           description: supply.description || '',
@@ -468,6 +516,7 @@ export const InventoryProvider = ({ children }) => {
 
   // Add Mode functions
   const startAddMode = useCallback((itemName) => {
+    setFreePlaceModeItem(null);
     setAddModeItem(itemName);
     setAddModeQtyPerClick(1);
     setAddModePending(new Map());
@@ -506,6 +555,10 @@ export const InventoryProvider = ({ children }) => {
       return;
     }
 
+    const restorePreviewItem = () => {
+      if (currentItem) setSelectedMasterItem(currentItem);
+    };
+
     // Get supply_id for the item
     const supplyId = supplyNameToId.get(currentItem);
     if (!supplyId) {
@@ -531,6 +584,7 @@ export const InventoryProvider = ({ children }) => {
       setAddModeItem(null);
       setAddModeQtyPerClick(1);
       setAddModePending(new Map());
+      restorePreviewItem();
       return;
     }
 
@@ -551,6 +605,7 @@ export const InventoryProvider = ({ children }) => {
       setAddModeItem(null);
       setAddModeQtyPerClick(1);
       setAddModePending(new Map());
+      restorePreviewItem();
     } catch (error) {
       console.error('Error finishing add mode:', error);
       // Only set error if not panning (to avoid breaking pan)
@@ -566,13 +621,16 @@ export const InventoryProvider = ({ children }) => {
   }, [supplyNameToId, reloadSupplyLocations, reloadMasterItems]);
 
   const cancelAddMode = useCallback(() => {
+    const restore = addModeItemRef.current;
     setAddModeItem(null);
     setAddModeQtyPerClick(1);
     setAddModePending(new Map());
+    if (restore) setSelectedMasterItem(restore);
   }, []);
 
   // Subtract Mode functions (removes items from boxes, not the master entry)
   const startSubtractMode = useCallback((itemName) => {
+    setFreePlaceModeItem(null);
     setSubtractModeItem(itemName);
     setSubtractModeQtyPerClick(1);
     setSubtractModePending(new Map());
@@ -620,6 +678,28 @@ export const InventoryProvider = ({ children }) => {
     return false;
   }, [subtractModePending]);
 
+  const handleSubtractFreeDotClick = useCallback(
+    (supplyLocationId) => {
+      const itemName = subtractModeItemRef.current;
+      if (!itemName) return;
+      const qty = subtractModeQtyPerClickRef.current;
+      setSubtractModePending((prev) => {
+        const placements = freePlacementsBySupplyName.get(itemName) || [];
+        const dot = placements.find((p) => p.id === supplyLocationId);
+        if (!dot) return prev;
+        const key = `${FREE_SUBTRACT_DOT_PREFIX}||${supplyLocationId}`;
+        const existing = prev.get(key) || 0;
+        const maxSubtractable = (dot.qty || 0) - existing;
+        const toSubtract = Math.min(qty, maxSubtractable);
+        if (toSubtract <= 0) return prev;
+        const next = new Map(prev);
+        next.set(key, existing + toSubtract);
+        return next;
+      });
+    },
+    [freePlacementsBySupplyName]
+  );
+
   const finishSubtractMode = useCallback(async () => {
     const currentItem = subtractModeItemRef.current;
     const pending = subtractModePendingRef.current;
@@ -630,6 +710,8 @@ export const InventoryProvider = ({ children }) => {
       setSubtractModePending(new Map());
       return;
     }
+
+    const restorePreviewItem = () => setSelectedMasterItem(currentItem);
 
     // Get supply_id for the item
     const supplyId = supplyNameToId.get(currentItem);
@@ -646,9 +728,23 @@ export const InventoryProvider = ({ children }) => {
     
     pending.forEach((pendingQty, key) => {
       const parts = key.split('||');
+      if (parts[0] === FREE_SUBTRACT_DOT_PREFIX && parts[1] != null && parts[1] !== '') {
+        const locId = parseInt(parts[1], 10);
+        const floorDots = freePlacementsBySupplyName.get(currentItem) || [];
+        const dot = floorDots.find((d) => d.id === locId);
+        if (!dot || pendingQty <= 0) return;
+        subtractions.push({
+          id: locId,
+          kind: 'free',
+          amount: pendingQty,
+          currentQty: dot.qty || 0
+        });
+        return;
+      }
+
       const boxTitle = parts[0];
       const shelf = parts.length > 1 ? parseInt(parts[1], 10) : null;
-      
+
       // Find the supply_location_id for this item at this location
       const boxData = currentInventoryData.get(boxTitle);
       if (!boxData) return;
@@ -666,6 +762,7 @@ export const InventoryProvider = ({ children }) => {
           const subtractQty = Math.min(remainingToSubtract, item.qty);
           subtractions.push({
             id: item.id,
+            kind: 'box',
             location: boxTitle,
             shelf: shelf,
             amount: subtractQty
@@ -679,23 +776,31 @@ export const InventoryProvider = ({ children }) => {
       setSubtractModeItem(null);
       setSubtractModeQtyPerClick(1);
       setSubtractModePending(new Map());
+      restorePreviewItem();
       return;
     }
 
     try {
       // Subtract items via API
       for (const subtraction of subtractions) {
-        // Get the item from current state to check quantity
+        if (subtraction.kind === 'free') {
+          const qty = subtraction.currentQty;
+          if (qty <= subtraction.amount) {
+            await api.deleteSupplyLocation(subtraction.id);
+          } else {
+            await api.updateSupplyLocation(subtraction.id, { amount: qty - subtraction.amount });
+          }
+          continue;
+        }
+
         const boxData = currentInventoryData.get(subtraction.location);
-        const item = boxData?.inventory.find(i => i.id === subtraction.id);
-        
+        const item = boxData?.inventory.find((i) => i.id === subtraction.id);
+
         if (!item) continue;
-        
+
         if (item.qty <= subtraction.amount) {
-          // Delete the entire entry (no items left in this box)
           await api.deleteSupplyLocation(subtraction.id);
         } else {
-          // Reduce the quantity
           await api.updateSupplyLocation(subtraction.id, { amount: item.qty - subtraction.amount });
         }
       }
@@ -710,6 +815,7 @@ export const InventoryProvider = ({ children }) => {
       setSubtractModeItem(null);
       setSubtractModeQtyPerClick(1);
       setSubtractModePending(new Map());
+      restorePreviewItem();
     } catch (error) {
       console.error('Error finishing subtract mode:', error);
       // Only set error if not panning (to avoid breaking pan)
@@ -722,42 +828,63 @@ export const InventoryProvider = ({ children }) => {
         }
       }
     }
-  }, [inventoryData, supplyNameToId, reloadSupplyLocations, reloadMasterItems]);
+  }, [inventoryData, supplyNameToId, reloadSupplyLocations, reloadMasterItems, freePlacementsBySupplyName]);
 
   const cancelSubtractMode = useCallback(() => {
+    const restore = subtractModeItemRef.current;
     setSubtractModeItem(null);
     setSubtractModeQtyPerClick(1);
     setSubtractModePending(new Map());
+    if (restore) setSelectedMasterItem(restore);
   }, []);
 
   // Move Mode functions
   const startMoveMode = useCallback((itemName) => {
+    setFreePlaceModeItem(null);
+    moveModeDotDragLiveByIdRef.current.clear();
     setMoveModeItem(itemName);
     setMoveModeDragging(null);
     setMoveModePending([]);
     moveModePendingRef.current = [];
+    setMoveModeFreeCoordById(new Map());
     setSelectedBox(null); // Clear box selection when entering move mode
   }, []);
 
   const finishMoveMode = useCallback(async () => {
-    // Apply moves - reload master items to update last_modified timestamp
-    await reloadMasterItems();
-    
+    try {
+      if (moveModeFreeCoordById.size > 0) {
+        for (const [id, { x, y }] of moveModeFreeCoordById) {
+          await api.updateSupplyLocation(id, { coord_x: x, coord_y: y });
+        }
+        await reloadSupplyLocations();
+      }
+      await reloadMasterItems();
+    } catch (error) {
+      console.error('Error finishing move mode (floor coords):', error);
+      if (!isPanningRef.current) {
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) setConflictError(errorInfo);
+        else setError(errorInfo.message || 'Failed to save floor moves');
+      }
+      return;
+    }
+
+    moveModeDotDragLiveByIdRef.current.clear();
+    setMoveModeFreeCoordById(new Map());
     setMoveModeItem(null);
     setMoveModeDragging(null);
     setMoveModePending([]);
     moveModePendingRef.current = [];
     setCurrentDragOverBox(null);
     isDraggingMoveBoxRef.current = false;
-  }, [reloadMasterItems]);
+  }, [moveModeFreeCoordById, reloadMasterItems, reloadSupplyLocations]);
 
   const cancelMoveMode = useCallback(async () => {
-    // Undo all pending moves by reversing them
+    // Undo all pending box moves by reversing them (floor dots were never saved)
     const pending = moveModePendingRef.current;
     if (pending.length > 0) {
       try {
-        // Reverse each move (move items back from destination to source)
-        for (const move of pending.reverse()) { // Reverse array to undo in reverse order
+        for (const move of pending.reverse()) {
           await api.moveSupplyLocations({
             from_location: move.to,
             to_location: move.from,
@@ -767,14 +894,14 @@ export const InventoryProvider = ({ children }) => {
             amount: move.qty
           });
         }
-        // Reload supply locations after undoing
         await reloadSupplyLocations();
       } catch (error) {
         console.error('Error undoing moves:', error);
-        // Still clear move mode even if undo fails
       }
     }
-    
+
+    moveModeDotDragLiveByIdRef.current.clear();
+    setMoveModeFreeCoordById(new Map());
     setMoveModeItem(null);
     setMoveModeDragging(null);
     setMoveModePending([]);
@@ -782,6 +909,238 @@ export const InventoryProvider = ({ children }) => {
     setCurrentDragOverBox(null);
     isDraggingMoveBoxRef.current = false;
   }, [reloadSupplyLocations]);
+
+  const requestMasterArrowsRedraw = useCallback(() => {
+    window.dispatchEvent(new CustomEvent(MASTER_ARROWS_REDRAW_EVENT));
+  }, []);
+
+  const updateMoveModeDotDragLiveForArrows = useCallback((id, worldX, worldY) => {
+    const { x, y } = clampPointToRoom(worldX, worldY);
+    moveModeDotDragLiveByIdRef.current.set(id, { x, y });
+    window.dispatchEvent(new CustomEvent(MASTER_ARROWS_REDRAW_EVENT));
+  }, []);
+
+  const updateMoveModeFreeDotPosition = useCallback((id, worldX, worldY) => {
+    const { x, y } = clampPointToRoom(worldX, worldY);
+    setMoveModeFreeCoordById((prev) => {
+      const next = new Map(prev);
+      next.set(id, { x, y });
+      return next;
+    });
+  }, []);
+
+  const freePlaceVisualDots = useMemo(() => {
+    if (!freePlaceModeItem) return null;
+    const server = freePlacementsBySupplyName.get(freePlaceModeItem) || [];
+    const visible = server
+      .filter((d) => !freePlacePendingDeletes.has(d.id))
+      .map((d) => {
+        const o = freePlacePendingCoordById.get(d.id);
+        return o ? { ...d, x: o.x, y: o.y } : d;
+      });
+    const adds = freePlacePendingAdds.map((a) => ({
+      id: a.tempId,
+      x: a.x,
+      y: a.y,
+      qty: a.qty
+    }));
+    return [...visible, ...adds];
+  }, [
+    freePlaceModeItem,
+    freePlacementsBySupplyName,
+    freePlacePendingDeletes,
+    freePlacePendingCoordById,
+    freePlacePendingAdds
+  ]);
+
+  /** Floor dots for arrows in subtract mode (hides fully pending-removed markers). */
+  const subtractModeVisualFreeDots = useMemo(() => {
+    if (!subtractModeItem) return null;
+    const server = freePlacementsBySupplyName.get(subtractModeItem) || [];
+    return server
+      .map((d) => {
+        const key = `${FREE_SUBTRACT_DOT_PREFIX}||${d.id}`;
+        const pending = subtractModePending.get(key) || 0;
+        if ((d.qty || 0) - pending <= 0) return null;
+        return d;
+      })
+      .filter(Boolean);
+  }, [subtractModeItem, subtractModePending, freePlacementsBySupplyName]);
+
+  /** Floor dots for arrows in move mode (follows pending coord drags). */
+  const moveModeVisualFreeDots = useMemo(() => {
+    if (!moveModeItem) return null;
+    const server = freePlacementsBySupplyName.get(moveModeItem) || [];
+    return server.map((d) => {
+      const o = moveModeFreeCoordById.get(d.id);
+      return o ? { ...d, x: o.x, y: o.y } : d;
+    });
+  }, [moveModeItem, freePlacementsBySupplyName, moveModeFreeCoordById]);
+
+  const clearFreePlaceSession = useCallback(() => {
+    setFreePlacePendingDeletes(new Set());
+    setFreePlacePendingCoordById(new Map());
+    setFreePlacePendingAdds([]);
+    setFreePlaceModeItem(null);
+  }, []);
+
+  const startFreePlaceMode = useCallback(
+    (itemName) => {
+      cancelAddMode();
+      cancelSubtractMode();
+      void cancelMoveMode();
+      setFreePlacePendingDeletes(new Set());
+      setFreePlacePendingCoordById(new Map());
+      setFreePlacePendingAdds([]);
+      setFreePlaceModeItem(itemName);
+      setSelectedBox(null);
+    },
+    [cancelMoveMode, cancelAddMode, cancelSubtractMode]
+  );
+
+  const cancelFreePlaceMode = useCallback(() => {
+    clearFreePlaceSession();
+  }, [clearFreePlaceSession]);
+
+  const finishFreePlaceMode = useCallback(async () => {
+    const name = freePlaceModeItemRef.current;
+    if (!name) {
+      clearFreePlaceSession();
+      return;
+    }
+
+    const hasWork =
+      freePlacePendingDeletes.size > 0 ||
+      freePlacePendingCoordById.size > 0 ||
+      freePlacePendingAdds.length > 0;
+
+    if (!hasWork) {
+      clearFreePlaceSession();
+      return;
+    }
+
+    const supplyId = supplyNameToId.get(name);
+    if (!supplyId) {
+      setError(`Supply ID not found for item: ${name}`);
+      return;
+    }
+
+    try {
+      for (const id of freePlacePendingDeletes) {
+        await api.deleteSupplyLocation(id);
+      }
+      for (const [id, { x, y }] of freePlacePendingCoordById) {
+        if (freePlacePendingDeletes.has(id)) continue;
+        await api.updateSupplyLocation(id, { coord_x: x, coord_y: y });
+      }
+      for (const a of freePlacePendingAdds) {
+        await api.addSupplyLocation({
+          supply_id: supplyId,
+          coord_x: a.x,
+          coord_y: a.y,
+          amount: a.qty || 1
+        });
+      }
+      await reloadSupplyLocations();
+      await reloadMasterItems();
+    } catch (error) {
+      console.error('Error finishing free place mode:', error);
+      if (!isPanningRef.current) {
+        const errorInfo = await handleApiError(error);
+        if (errorInfo.isConflict) setConflictError(errorInfo);
+        else setError(errorInfo.message || 'Failed to save floor placements');
+      }
+      return;
+    }
+
+    clearFreePlaceSession();
+  }, [
+    supplyNameToId,
+    reloadSupplyLocations,
+    reloadMasterItems,
+    freePlacePendingDeletes,
+    freePlacePendingCoordById,
+    freePlacePendingAdds,
+    clearFreePlaceSession
+  ]);
+
+  const handleFreePlaceWorldClick = useCallback(
+    (worldX, worldY) => {
+      const name = freePlaceModeItemRef.current;
+      if (!name) return;
+      const sid = supplyNameToId.get(name);
+      if (!sid) return;
+      const { x, y } = clampPointToRoom(worldX, worldY);
+      setFreePlacePendingAdds((prev) => [
+        ...prev,
+        { tempId: newTempFreePlaceId(), x, y, qty: 1 }
+      ]);
+    },
+    [supplyNameToId]
+  );
+
+  const updateFreePlaceSessionCoord = useCallback((id, worldX, worldY) => {
+    const { x, y } = clampPointToRoom(worldX, worldY);
+    if (typeof id === 'string' && id.startsWith('fp-')) {
+      setFreePlacePendingAdds((prev) =>
+        prev.map((a) => (a.tempId === id ? { ...a, x, y } : a))
+      );
+      return;
+    }
+    setFreePlacePendingCoordById((prev) => {
+      const next = new Map(prev);
+      next.set(id, { x, y });
+      return next;
+    });
+  }, []);
+
+  const handleFreePlaceSessionDotDelete = useCallback((id) => {
+    if (typeof id === 'string' && id.startsWith('fp-')) {
+      setFreePlacePendingAdds((prev) => prev.filter((a) => a.tempId !== id));
+      return;
+    }
+    setFreePlacePendingDeletes((prev) => new Set([...prev, id]));
+    setFreePlacePendingCoordById((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const updateFreePlacementCoords = useCallback(
+    async (id, worldX, worldY) => {
+      const { x, y } = clampPointToRoom(worldX, worldY);
+      try {
+        await api.updateSupplyLocation(id, { coord_x: x, coord_y: y });
+        await reloadSupplyLocations();
+        await reloadMasterItems();
+      } catch (error) {
+        if (!isPanningRef.current) {
+          const errorInfo = await handleApiError(error);
+          if (errorInfo.isConflict) setConflictError(errorInfo);
+          else setError(errorInfo.message || 'Failed to move placement');
+        }
+      }
+    },
+    [reloadSupplyLocations, reloadMasterItems]
+  );
+
+  const deleteFreePlacement = useCallback(
+    async (id) => {
+      try {
+        await api.deleteSupplyLocation(id);
+        await reloadSupplyLocations();
+        await reloadMasterItems();
+      } catch (error) {
+        if (!isPanningRef.current) {
+          const errorInfo = await handleApiError(error);
+          if (errorInfo.isConflict) setConflictError(errorInfo);
+          else setError(errorInfo.message || 'Failed to delete placement');
+        }
+      }
+    },
+    [reloadSupplyLocations, reloadMasterItems]
+  );
   
   const clearMoveModeDragging = useCallback(() => {
     setMoveModeDragging(null);
@@ -955,14 +1314,22 @@ export const InventoryProvider = ({ children }) => {
 
   const computeMasterQuantities = useCallback(() => {
     const quantities = new Map();
-    inventoryData.forEach((boxData, boxTitle) => {
+    inventoryData.forEach((boxData) => {
       boxData.inventory.forEach(item => {
         const currentQty = quantities.get(item.name) || 0;
         quantities.set(item.name, currentQty + (item.qty || 0));
       });
     });
+    freePlacementsBySupplyName.forEach((placements, name) => {
+      let list = placements;
+      if (freePlaceModeItem === name && freePlaceVisualDots != null) {
+        list = freePlaceVisualDots;
+      }
+      const sum = list.reduce((s, p) => s + (p.qty || 0), 0);
+      quantities.set(name, (quantities.get(name) || 0) + sum);
+    });
     return quantities;
-  }, [inventoryData]);
+  }, [inventoryData, freePlacementsBySupplyName, freePlaceModeItem, freePlaceVisualDots]);
 
   const getItemLocations = useCallback((itemName) => {
     const locations = [];
@@ -1235,6 +1602,7 @@ export const InventoryProvider = ({ children }) => {
     finishSubtractMode,
     cancelSubtractMode,
     handleBoxClickSubtractMode,
+    handleSubtractFreeDotClick,
     boxHasAnySubtractPending,
     // Move Mode
     moveModeItem,
@@ -1247,6 +1615,24 @@ export const InventoryProvider = ({ children }) => {
     handleMoveModeDragMove,
     handleMoveModeDrop,
     isDraggingMoveBoxRef,
+    moveModeFreeCoordById,
+    moveModeDotDragLiveByIdRef,
+    updateMoveModeFreeDotPosition,
+    updateMoveModeDotDragLiveForArrows,
+    requestMasterArrowsRedraw,
+    freePlaceModeItem,
+    freePlacementsBySupplyName,
+    startFreePlaceMode,
+    cancelFreePlaceMode,
+    finishFreePlaceMode,
+    handleFreePlaceWorldClick,
+    freePlaceVisualDots,
+    subtractModeVisualFreeDots,
+    moveModeVisualFreeDots,
+    updateFreePlaceSessionCoord,
+    handleFreePlaceSessionDotDelete,
+    updateFreePlacementCoords,
+    deleteFreePlacement,
   };
 
   return (

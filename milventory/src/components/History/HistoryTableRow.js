@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatEasternDateTime } from '../../utils/appTimeZone';
 import './HistoryTableRow.css';
 
 const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
@@ -7,7 +8,8 @@ const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    return date.toLocaleString();
+    if (Number.isNaN(date.getTime())) return 'N/A';
+    return formatEasternDateTime(date);
   };
 
   const getActionBadgeClass = (actionType) => {

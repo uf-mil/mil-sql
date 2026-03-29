@@ -244,23 +244,25 @@ def snapshot_supply_locations_before_delete(conn, supply_id, supply_name, change
     batch_id = str(uuid.uuid4())
     try:
         cur.execute("""
-            SELECT location_name, shelf, amount
+            SELECT location_name, shelf, amount, coord_x, coord_y
             FROM supplies_location
             WHERE supply_id = %s
         """, (supply_id,))
         rows = cur.fetchall()
         for row in rows:
+            is_free = row['location_name'] is None and row.get('coord_x') is not None
             log_location_history(
                 conn,
                 action_type='CASCADED_SUBTRACT',
                 supply_id=supply_id,
                 supply_name=supply_name,
-                location_name=row['location_name'],
+                location_name='Free Coordinate' if is_free else row['location_name'],
                 shelf=row['shelf'],
                 old_amount=row['amount'],
                 new_amount=None,
                 changed_by=changed_by,
-                batch_id=batch_id
+                batch_id=batch_id,
+                related_location=f"{row['coord_x']},{row['coord_y']}" if is_free else None,
             )
         return batch_id   # return so caller can attach to the supplies_history row too
     finally:

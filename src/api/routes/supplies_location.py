@@ -18,8 +18,11 @@ from src.api.helpers.unique_type_qty import (
     map_total_qty_for_supply,
     check_unique_type_map_qty,
 )
+from src.api.helpers.map_bounds import coords_in_room, clamp_coords_to_room
 
 supplies_location_bp = Blueprint('supplies_location', __name__)
+
+FREE_COORD_HISTORY_LABEL = 'Free Coordinate'
 
 
 @supplies_location_bp.route('', methods=['GET'])
@@ -44,7 +47,7 @@ def get_all_supply_locations(current_user_id=None):
         cur = conn.cursor()
         
         query = """
-            SELECT sl.id, sl.supply_id, sl.location_name, sl.shelf, sl.amount, 
+            SELECT sl.id, sl.supply_id, sl.location_name, sl.coord_x, sl.coord_y, sl.shelf, sl.amount,
                    sl.last_modified, sl.last_modified_by, sl.created_at,
                    s.name as supply_name
             FROM supplies_location sl
@@ -61,27 +64,16 @@ def get_all_supply_locations(current_user_id=None):
             query += " AND sl.supply_id = %s"
             params.append(int(supply_id_filter))
         
-        query += " ORDER BY sl.location_name, sl.shelf, s.name"
+        query += " ORDER BY COALESCE(sl.location_name, ''), sl.shelf, s.name"
         
         cur.execute(query, params)
         rows = cur.fetchall()
         
-        # Convert to SupplyLocation objects (need to adjust for JOIN)
         locations = []
         for row in rows:
-            # row: (id, supply_id, location_name, shelf, amount, last_modified, last_modified_by, created_at, supply_name)
-            loc = SupplyLocation(
-                id=row[0],
-                supply_id=row[1],
-                location_name=row[2],
-                shelf=row[3],
-                amount=row[4],
-                last_modified=row[5],
-                last_modified_by=row[6],
-                created_at=row[7]
-            )
+            loc = SupplyLocation.from_db_row(row[:10])
             loc_dict = loc.to_dict()
-            loc_dict['supply_name'] = row[8]  # Add supply name from JOIN
+            loc_dict['supply_name'] = row[10]
             locations.append(loc_dict)
         
         cur.close()
@@ -109,7 +101,7 @@ def get_supply_location(location_id, current_user_id=None):
         cur = conn.cursor()
         
         cur.execute("""
-            SELECT id, supply_id, location_name, shelf, amount, last_modified, last_modified_by, created_at
+            SELECT id, supply_id, location_name, coord_x, coord_y, shelf, amount, last_modified, last_modified_by, created_at
             FROM supplies_location
             WHERE id = %s
         """, (location_id,))
@@ -145,7 +137,7 @@ def get_location_supplies(name, current_user_id=None):
         cur = conn.cursor()
         
         cur.execute("""
-            SELECT sl.id, sl.supply_id, sl.location_name, sl.shelf, sl.amount, 
+            SELECT sl.id, sl.supply_id, sl.location_name, sl.coord_x, sl.coord_y, sl.shelf, sl.amount,
                    sl.last_modified, sl.last_modified_by, sl.created_at,
                    s.name as supply_name
             FROM supplies_location sl
@@ -158,18 +150,9 @@ def get_location_supplies(name, current_user_id=None):
         
         locations = []
         for row in rows:
-            loc = SupplyLocation(
-                id=row[0],
-                supply_id=row[1],
-                location_name=row[2],
-                shelf=row[3],
-                amount=row[4],
-                last_modified=row[5],
-                last_modified_by=row[6],
-                created_at=row[7]
-            )
+            loc = SupplyLocation.from_db_row(row[:10])
             loc_dict = loc.to_dict()
-            loc_dict['supply_name'] = row[8]
+            loc_dict['supply_name'] = row[10]
             locations.append(loc_dict)
         
         cur.close()
@@ -202,19 +185,33 @@ def add_supply_location(current_user_id=None):
         if not data:
             return jsonify({'error': 'Request body is required'}), 400
         
-        required_fields = ['supply_id', 'location', 'amount']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
+        if 'supply_id' not in data:
+            return jsonify({'error': 'Missing required field: supply_id'}), 400
         
-        if data['amount'] <= 0:
-            return jsonify({'error': 'Amount must be positive'}), 400
+        supply_id = data['supply_id']
+        cx_raw, cy_raw = data.get('coord_x'), data.get('coord_y')
+        has_free = cx_raw is not None and cy_raw is not None
+        has_box = bool(data.get('location'))
+        
+        if has_free and has_box:
+            return jsonify({'error': 'Send either location (box) or coord_x/coord_y (free place), not both'}), 400
+        
+        if not has_free:
+            required_fields = ['location', 'amount']
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({'error': f'Missing required field: {field}'}), 400
+            if data['amount'] <= 0:
+                return jsonify({'error': 'Amount must be positive'}), 400
+        else:
+            amount = int(data.get('amount', 1))
+            if amount <= 0:
+                return jsonify({'error': 'Amount must be positive'}), 400
         
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Check if supply exists (conflict detection)
-        cur.execute("SELECT id, name FROM supplies WHERE id = %s", (data['supply_id'],))
+        cur.execute("SELECT id, name FROM supplies WHERE id = %s", (supply_id,))
         supply = cur.fetchone()
         if not supply:
             cur.close()
@@ -222,76 +219,133 @@ def add_supply_location(current_user_id=None):
             return jsonify({
                 'error': 'Supply not found',
                 'error_type': 'SUPPLY_DELETED',
-                'supply_id': data['supply_id'],
+                'supply_id': supply_id,
                 'supply_name': data.get('supply_name', 'Unknown'),
                 'message': 'This item was deleted by another user. Please refresh the page to see the latest data.'
             }), 404
         
-        cur = conn.cursor()  # Switch back to regular cursor for rest of function
-        shelf = data.get('shelf')
-        location_name = data['location']
-        supply_id = data['supply_id']
-        amount = data['amount']
-
-        total_now = map_total_qty_for_supply(cur, supply_id)
-        ok_qty, err_qty = check_unique_type_map_qty(cur, supply_id, total_now + amount)
-        if not ok_qty:
-            cur.close()
-            conn.close()
-            return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
-        
-        # Check if entry already exists
-        cur.execute("""
-            SELECT id, amount FROM supplies_location
-            WHERE supply_id = %s AND location_name = %s AND (shelf = %s OR (shelf IS NULL AND %s IS NULL))
-        """, (supply_id, location_name, shelf, shelf))
-        
-        existing = cur.fetchone()
+        cur = conn.cursor()
         
         batch_id = str(uuid.uuid4())
-        if existing:
-            # Update existing entry (increment amount)
-            old_amount = existing[1]
-            new_amount = old_amount + amount
-            cur.execute("""
-                UPDATE supplies_location
-                SET amount = %s, last_modified_by = %s
-                WHERE id = %s
-            """, (new_amount, current_user_id, existing[0]))
-            location_id = existing[0]
-            # Log history: ADD action (incrementing existing)
-            log_location_history(
-                conn, 'ADD',
-                supply_id=supply_id,
-                supply_name=supply['name'],
-                location_name=location_name,
-                shelf=shelf,
-                old_amount=old_amount,
-                new_amount=new_amount,
-                changed_by=current_user_id,
-                batch_id=batch_id
-            )
-        else:
-            # Insert new entry
-            cur.execute("""
-                INSERT INTO supplies_location (supply_id, location_name, shelf, amount, last_modified_by)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (supply_id, location_name, shelf, amount, current_user_id))
-            location_id = cur.lastrowid
-            # Log history: ADD action (new entry)
-            log_location_history(
-                conn, 'ADD',
-                supply_id=supply_id,
-                supply_name=supply['name'],
-                location_name=location_name,
-                shelf=shelf,
-                old_amount=None,
-                new_amount=amount,
-                changed_by=current_user_id,
-                batch_id=batch_id
-            )
         
-        # Update the master supply's last_modified timestamp
+        if has_free:
+            cx, cy = clamp_coords_to_room(cx_raw, cy_raw)
+            if not coords_in_room(cx, cy):
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Coordinates must be inside the map room bounds'}), 400
+            
+            total_now = map_total_qty_for_supply(cur, supply_id)
+            ok_qty, err_qty = check_unique_type_map_qty(cur, supply_id, total_now + amount)
+            if not ok_qty:
+                cur.close()
+                conn.close()
+                return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
+            
+            cur.execute("""
+                SELECT id, amount FROM supplies_location
+                WHERE supply_id = %s AND location_name IS NULL
+                  AND coord_x = %s AND coord_y = %s
+            """, (supply_id, cx, cy))
+            existing = cur.fetchone()
+            
+            if existing:
+                old_amount = existing[1]
+                new_amount = old_amount + amount
+                cur.execute("""
+                    UPDATE supplies_location
+                    SET amount = %s, last_modified_by = %s
+                    WHERE id = %s
+                """, (new_amount, current_user_id, existing[0]))
+                location_id = existing[0]
+                log_location_history(
+                    conn, 'ADD',
+                    supply_id=supply_id,
+                    supply_name=supply['name'],
+                    location_name=FREE_COORD_HISTORY_LABEL,
+                    shelf=None,
+                    old_amount=old_amount,
+                    new_amount=new_amount,
+                    changed_by=current_user_id,
+                    batch_id=batch_id,
+                    related_location=f'{cx},{cy}',
+                )
+            else:
+                cur.execute("""
+                    INSERT INTO supplies_location
+                    (supply_id, location_name, coord_x, coord_y, shelf, amount, last_modified_by)
+                    VALUES (%s, NULL, %s, %s, NULL, %s, %s)
+                """, (supply_id, cx, cy, amount, current_user_id))
+                location_id = cur.lastrowid
+                log_location_history(
+                    conn, 'ADD',
+                    supply_id=supply_id,
+                    supply_name=supply['name'],
+                    location_name=FREE_COORD_HISTORY_LABEL,
+                    shelf=None,
+                    old_amount=None,
+                    new_amount=amount,
+                    changed_by=current_user_id,
+                    batch_id=batch_id,
+                    related_location=f'{cx},{cy}',
+                )
+        else:
+            shelf = data.get('shelf')
+            location_name = data['location']
+            amount = data['amount']
+
+            total_now = map_total_qty_for_supply(cur, supply_id)
+            ok_qty, err_qty = check_unique_type_map_qty(cur, supply_id, total_now + amount)
+            if not ok_qty:
+                cur.close()
+                conn.close()
+                return jsonify({'error': err_qty, 'error_type': 'UNIQUE_TYPE_QTY'}), 400
+            
+            cur.execute("""
+                SELECT id, amount FROM supplies_location
+                WHERE supply_id = %s AND location_name = %s AND (shelf = %s OR (shelf IS NULL AND %s IS NULL))
+            """, (supply_id, location_name, shelf, shelf))
+            
+            existing = cur.fetchone()
+            
+            if existing:
+                old_amount = existing[1]
+                new_amount = old_amount + amount
+                cur.execute("""
+                    UPDATE supplies_location
+                    SET amount = %s, last_modified_by = %s
+                    WHERE id = %s
+                """, (new_amount, current_user_id, existing[0]))
+                location_id = existing[0]
+                log_location_history(
+                    conn, 'ADD',
+                    supply_id=supply_id,
+                    supply_name=supply['name'],
+                    location_name=location_name,
+                    shelf=shelf,
+                    old_amount=old_amount,
+                    new_amount=new_amount,
+                    changed_by=current_user_id,
+                    batch_id=batch_id
+                )
+            else:
+                cur.execute("""
+                    INSERT INTO supplies_location (supply_id, location_name, shelf, amount, last_modified_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (supply_id, location_name, shelf, amount, current_user_id))
+                location_id = cur.lastrowid
+                log_location_history(
+                    conn, 'ADD',
+                    supply_id=supply_id,
+                    supply_name=supply['name'],
+                    location_name=location_name,
+                    shelf=shelf,
+                    old_amount=None,
+                    new_amount=amount,
+                    changed_by=current_user_id,
+                    batch_id=batch_id
+                )
+        
         cur.execute("""
             UPDATE supplies
             SET last_modified = CURRENT_TIMESTAMP, last_modified_by = %s
@@ -300,9 +354,8 @@ def add_supply_location(current_user_id=None):
         
         conn.commit()
         
-        # Fetch the created/updated location
         cur.execute("""
-            SELECT id, supply_id, location_name, shelf, amount, last_modified, last_modified_by, created_at
+            SELECT id, supply_id, location_name, coord_x, coord_y, shelf, amount, last_modified, last_modified_by, created_at
             FROM supplies_location WHERE id = %s
         """, (location_id,))
         
@@ -351,9 +404,8 @@ def update_supply_location(location_id, current_user_id=None):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Fetch current location data (for history)
         cur.execute("""
-            SELECT sl.id, sl.supply_id, sl.location_name, sl.shelf, sl.amount,
+            SELECT sl.id, sl.supply_id, sl.location_name, sl.coord_x, sl.coord_y, sl.shelf, sl.amount,
                    s.name as supply_name
             FROM supplies_location sl
             JOIN supplies s ON sl.supply_id = s.id
@@ -365,15 +417,17 @@ def update_supply_location(location_id, current_user_id=None):
             conn.close()
             return jsonify({'error': 'Supply location not found'}), 404
         
-        cur = conn.cursor()  # Switch to regular cursor for updates
+        cur = conn.cursor()
         
-        # Build update query
         updates = []
         values = []
         
         old_amount = old_location['amount']
         old_location_name = old_location['location_name']
         old_shelf = old_location['shelf']
+        is_free = old_location_name is None and old_location.get('coord_x') is not None
+        
+        hist_location = FREE_COORD_HISTORY_LABEL if is_free else old_location_name
         
         if 'amount' in data:
             if data['amount'] < 0:
@@ -383,21 +437,38 @@ def update_supply_location(location_id, current_user_id=None):
             updates.append("amount = %s")
             values.append(data['amount'])
         
-        if 'shelf' in data:
+        if 'shelf' in data and not is_free:
             updates.append("shelf = %s")
             values.append(data['shelf'])
         
         if 'location' in data:
+            if is_free:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Cannot change box location on a free-coordinate row'}), 400
             updates.append("location_name = %s")
             values.append(data['location'])
         
-        # Always update last_modified_by
+        if 'coord_x' in data and 'coord_y' in data:
+            if not is_free:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'coord_x/coord_y only for free-coordinate placements'}), 400
+            cx, cy = clamp_coords_to_room(data['coord_x'], data['coord_y'])
+            if not coords_in_room(cx, cy):
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Coordinates must be inside the map room bounds'}), 400
+            updates.append("coord_x = %s")
+            updates.append("coord_y = %s")
+            values.extend([cx, cy])
+        
         updates.append("last_modified_by = %s")
         values.append(current_user_id)
         
         values.append(location_id)
         
-        if updates:
+        if len(updates) > 1:
             if 'amount' in data:
                 total_now = map_total_qty_for_supply(cur, old_location['supply_id'])
                 proposed = total_now - old_amount + int(data['amount'])
@@ -410,22 +481,36 @@ def update_supply_location(location_id, current_user_id=None):
             query = f"UPDATE supplies_location SET {', '.join(updates)} WHERE id = %s"
             cur.execute(query, values)
             
-            # Log history: UPDATE action (only if amount changed)
             if 'amount' in data:
-                new_amount = data['amount']
                 log_location_history(
                     conn, 'UPDATE',
                     supply_id=old_location['supply_id'],
                     supply_name=old_location['supply_name'],
-                    location_name=old_location_name,
+                    location_name=hist_location,
                     shelf=old_shelf,
                     old_amount=old_amount,
-                    new_amount=new_amount,
+                    new_amount=data['amount'],
                     changed_by=current_user_id,
-                    batch_id=str(uuid.uuid4())
+                    batch_id=str(uuid.uuid4()),
+                    related_location=(
+                        f"{old_location['coord_x']},{old_location['coord_y']}"
+                        if is_free else None
+                    ),
+                )
+            elif 'coord_x' in data:
+                log_location_history(
+                    conn, 'UPDATE',
+                    supply_id=old_location['supply_id'],
+                    supply_name=old_location['supply_name'],
+                    location_name=hist_location,
+                    shelf=old_shelf,
+                    old_amount=old_amount,
+                    new_amount=old_amount,
+                    changed_by=current_user_id,
+                    batch_id=str(uuid.uuid4()),
+                    related_location=f"{old_location['coord_x']},{old_location['coord_y']}",
                 )
             
-            # Update the master supply's last_modified timestamp
             cur.execute("""
                 UPDATE supplies
                 SET last_modified = CURRENT_TIMESTAMP, last_modified_by = %s
@@ -434,9 +519,8 @@ def update_supply_location(location_id, current_user_id=None):
             
             conn.commit()
         
-        # Fetch updated location
         cur.execute("""
-            SELECT id, supply_id, location_name, shelf, amount, last_modified, last_modified_by, created_at
+            SELECT id, supply_id, location_name, coord_x, coord_y, shelf, amount, last_modified, last_modified_by, created_at
             FROM supplies_location WHERE id = %s
         """, (location_id,))
         
@@ -474,9 +558,8 @@ def delete_supply_location(location_id, current_user_id=None):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
         
-        # Fetch location details before deleting (for history)
         cur.execute("""
-            SELECT sl.id, sl.supply_id, sl.location_name, sl.shelf, sl.amount,
+            SELECT sl.id, sl.supply_id, sl.location_name, sl.coord_x, sl.coord_y, sl.shelf, sl.amount,
                    s.name as supply_name
             FROM supplies_location sl
             JOIN supplies s ON sl.supply_id = s.id
@@ -488,17 +571,20 @@ def delete_supply_location(location_id, current_user_id=None):
             conn.close()
             return jsonify({'error': 'Supply location not found'}), 404
         
-        # Log history: REMOVE action
+        del_free = location_data['location_name'] is None and location_data.get('coord_x') is not None
         log_location_history(
             conn, 'REMOVE',
             supply_id=location_data['supply_id'],
             supply_name=location_data['supply_name'],
-            location_name=location_data['location_name'],
+            location_name=FREE_COORD_HISTORY_LABEL if del_free else location_data['location_name'],
             shelf=location_data['shelf'],
             old_amount=location_data['amount'],
             new_amount=None,
             changed_by=current_user_id,
-            batch_id=str(uuid.uuid4())
+            batch_id=str(uuid.uuid4()),
+            related_location=(
+                f"{location_data['coord_x']},{location_data['coord_y']}" if del_free else None
+            ),
         )
         
         cur = conn.cursor()  # Switch back to regular cursor
