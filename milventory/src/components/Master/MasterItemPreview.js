@@ -333,7 +333,7 @@ const MasterItemPreview = () => {
             )}
             {isInMoveMode && (
               <p className="master-preview-actions-hint">
-                Dropping on a box moves stock immediately. Drag floor markers to preview; Apply Move saves those positions. Cancel Move reverts box moves and discards floor drags.
+                Box drops update the map only until you choose Apply Move, which saves box and floor moves. Cancel Move reloads from the server and discards unsaved changes.
               </p>
             )}
             <div className="master-preview-actions-buttons">

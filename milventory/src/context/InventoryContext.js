@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import * as d3 from 'd3';
 import { api, admin, handleApiError } from '../api';
 import { clampPointToRoom } from '../constants/mapBounds';
+import { LEFT_PANE_MIN_WIDTH, LEFT_PANE_MAX_WIDTH } from '../constants/leftPaneLayout';
 
 export const MASTER_ARROWS_REDRAW_EVENT = 'milventory-master-arrows-redraw';
 
@@ -36,6 +37,70 @@ function locationsListFromSupplyLocs(locations) {
     out.push(freeN === 1 ? 'Free Coordinate' : `Free Coordinates (${freeN})`);
   }
   return out;
+}
+
+/** Treat undefined/null shelf as the same for regular (non–tall-cabinet) rows. */
+function shelvesMatchForMove(invShelf, locShelf) {
+  const a = invShelf === undefined || invShelf === null ? null : invShelf;
+  const b = locShelf === undefined || locShelf === null ? null : locShelf;
+  return a === b;
+}
+
+/**
+ * Apply a box-to-box move only in local `inventoryData` (no API).
+ * Mirrors server merge/split rules for a single item name and quantity.
+ */
+function applyOptimisticMoveBetweenBoxes(
+  inventoryMap,
+  itemName,
+  sourceBox,
+  sourceShelf,
+  targetBox,
+  targetShelf,
+  moveQty
+) {
+  const src = inventoryMap.get(sourceBox);
+  const dst = inventoryMap.get(targetBox);
+  if (!src || !dst || moveQty <= 0) return inventoryMap;
+
+  const next = new Map(inventoryMap);
+  let rem = moveQty;
+  const newSrc = [];
+
+  for (const it of src.inventory) {
+    if (rem <= 0 || it.name !== itemName || !shelvesMatchForMove(it.shelf, sourceShelf)) {
+      newSrc.push({ ...it });
+      continue;
+    }
+    const take = Math.min(rem, it.qty);
+    if (it.qty > take) {
+      newSrc.push({ ...it, qty: it.qty - take });
+    }
+    rem -= take;
+  }
+
+  const dstInv = dst.inventory.map((i) => ({ ...i }));
+  let merged = false;
+  for (let i = 0; i < dstInv.length; i++) {
+    const it = dstInv[i];
+    if (it.name === itemName && shelvesMatchForMove(it.shelf, targetShelf)) {
+      dstInv[i] = { ...it, qty: it.qty + moveQty };
+      merged = true;
+      break;
+    }
+  }
+  if (!merged) {
+    const shelfVal = targetShelf === undefined || targetShelf === null ? undefined : targetShelf;
+    dstInv.push({
+      name: itemName,
+      qty: moveQty,
+      shelf: shelfVal
+    });
+  }
+
+  next.set(sourceBox, { ...src, inventory: newSrc });
+  next.set(targetBox, { ...dst, inventory: dstInv });
+  return next;
 }
 
 export const useInventory = () => {
@@ -96,7 +161,7 @@ export const InventoryProvider = ({ children }) => {
   // Move Mode state
   const [moveModeItem, setMoveModeItem] = useState(null);
   const [moveModeDragging, setMoveModeDragging] = useState(null); // { boxTitle, shelf, qty, x, y }
-  const [moveModePending, setMoveModePending] = useState([]); // Array of { from, to, shelfFrom, shelfTo, qty, supplyId } for undo
+  const [moveModePending, setMoveModePending] = useState([]); // Box moves queued until Apply Move (no API until then)
   /** Pending floor-dot positions in move mode (applied on Finish; discarded on Cancel). */
   const [moveModeFreeCoordById, setMoveModeFreeCoordById] = useState(() => new Map());
   /** Live world coords during floor-dot drag (React state updates only on drag end so D3 is not torn down). */
@@ -367,7 +432,12 @@ export const InventoryProvider = ({ children }) => {
   useEffect(() => {
     const savedLeftWidth = localStorage.getItem('leftPaneWidth');
     const savedLeftCollapsed = localStorage.getItem('leftPaneCollapsed');
-    if (savedLeftWidth) setLeftPaneWidth(parseInt(savedLeftWidth, 10));
+    if (savedLeftWidth) {
+      const w = parseInt(savedLeftWidth, 10);
+      if (!Number.isNaN(w)) {
+        setLeftPaneWidth(Math.max(LEFT_PANE_MIN_WIDTH, Math.min(LEFT_PANE_MAX_WIDTH, w)));
+      }
+    }
     if (savedLeftCollapsed === 'true') setLeftPaneCollapsed(true);
   }, []);
 
@@ -863,19 +933,32 @@ export const InventoryProvider = ({ children }) => {
 
   const finishMoveMode = useCallback(async () => {
     try {
+      const pending = [...moveModePendingRef.current];
+      for (const move of pending) {
+        await api.moveSupplyLocations({
+          from_location: move.from,
+          to_location: move.to,
+          supply_id: move.supplyId,
+          shelf_from: move.shelfFrom,
+          shelf_to: move.shelfTo,
+          amount: move.qty
+        });
+      }
       if (moveModeFreeCoordById.size > 0) {
         for (const [id, { x, y }] of moveModeFreeCoordById) {
           await api.updateSupplyLocation(id, { coord_x: x, coord_y: y });
         }
+      }
+      if (pending.length > 0 || moveModeFreeCoordById.size > 0) {
         await reloadSupplyLocations();
       }
       await reloadMasterItems();
     } catch (error) {
-      console.error('Error finishing move mode (floor coords):', error);
+      console.error('Error finishing move mode:', error);
       if (!isPanningRef.current) {
         const errorInfo = await handleApiError(error);
         if (errorInfo.isConflict) setConflictError(errorInfo);
-        else setError(errorInfo.message || 'Failed to save floor moves');
+        else setError(errorInfo.message || 'Failed to save moves');
       }
       return;
     }
@@ -891,26 +974,6 @@ export const InventoryProvider = ({ children }) => {
   }, [moveModeFreeCoordById, reloadMasterItems, reloadSupplyLocations]);
 
   const cancelMoveMode = useCallback(async () => {
-    // Undo all pending box moves by reversing them (floor dots were never saved)
-    const pending = moveModePendingRef.current;
-    if (pending.length > 0) {
-      try {
-        for (const move of pending.reverse()) {
-          await api.moveSupplyLocations({
-            from_location: move.to,
-            to_location: move.from,
-            supply_id: move.supplyId,
-            shelf_from: move.shelfTo,
-            shelf_to: move.shelfFrom,
-            amount: move.qty
-          });
-        }
-        await reloadSupplyLocations();
-      } catch (error) {
-        console.error('Error undoing moves:', error);
-      }
-    }
-
     moveModeDotDragLiveByIdRef.current.clear();
     setMoveModeFreeCoordById(new Map());
     setMoveModeItem(null);
@@ -919,6 +982,11 @@ export const InventoryProvider = ({ children }) => {
     moveModePendingRef.current = [];
     setCurrentDragOverBox(null);
     isDraggingMoveBoxRef.current = false;
+    try {
+      await reloadSupplyLocations();
+    } catch (error) {
+      console.error('Error reloading after cancel move mode:', error);
+    }
   }, [reloadSupplyLocations]);
 
   const requestMasterArrowsRedraw = useCallback(() => {
@@ -1178,66 +1246,53 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [moveModeDragging]);
 
-  const handleMoveModeDrop = useCallback(async (targetBoxTitle, targetShelf) => {
+  const handleMoveModeDrop = useCallback((targetBoxTitle, targetShelf) => {
     if (!moveModeDragging || !moveModeItemRef.current) return;
-    
+
+    const itemName = moveModeItemRef.current;
     const { boxTitle: sourceBoxTitle, shelf: sourceShelf, qty } = moveModeDragging;
-    
-    // Don't allow dropping on the same location
+
     if (sourceBoxTitle === targetBoxTitle && sourceShelf === targetShelf) {
       setMoveModeDragging(null);
+      isDraggingMoveBoxRef.current = false;
       return;
     }
 
-    const supplyId = supplyNameToId.get(moveModeItemRef.current);
+    const supplyId = supplyNameToId.get(itemName);
     if (!supplyId) {
-      console.error(`Supply ID not found for item: ${moveModeItemRef.current}`);
-      setError(`Supply ID not found for item: ${moveModeItemRef.current}`);
+      console.error(`Supply ID not found for item: ${itemName}`);
+      setError(`Supply ID not found for item: ${itemName}`);
       setMoveModeDragging(null);
+      isDraggingMoveBoxRef.current = false;
       return;
     }
 
-    try {
-      await api.moveSupplyLocations({
-        from_location: sourceBoxTitle,
-        to_location: targetBoxTitle,
-        supply_id: supplyId,
-        shelf_from: sourceShelf !== undefined ? sourceShelf : null,
-        shelf_to: targetShelf !== undefined ? targetShelf : null,
-        amount: qty
-      });
+    setInventoryData((prev) =>
+      applyOptimisticMoveBetweenBoxes(
+        prev,
+        itemName,
+        sourceBoxTitle,
+        sourceShelf,
+        targetBoxTitle,
+        targetShelf,
+        qty
+      )
+    );
 
-      // Track this move for potential undo
-      const moveEntry = {
-        from: sourceBoxTitle,
-        to: targetBoxTitle,
-        shelfFrom: sourceShelf !== undefined ? sourceShelf : null,
-        shelfTo: targetShelf !== undefined ? targetShelf : null,
-        qty: qty,
-        supplyId: supplyId
-      };
-      setMoveModePending(prev => [...prev, moveEntry]);
-      moveModePendingRef.current = [...moveModePendingRef.current, moveEntry];
+    const moveEntry = {
+      from: sourceBoxTitle,
+      to: targetBoxTitle,
+      shelfFrom: sourceShelf !== undefined ? sourceShelf : null,
+      shelfTo: targetShelf !== undefined ? targetShelf : null,
+      qty,
+      supplyId
+    };
+    setMoveModePending((prev) => [...prev, moveEntry]);
+    moveModePendingRef.current = [...moveModePendingRef.current, moveEntry];
 
-      // Reload supply locations to ensure UI reflects actual server state
-      await reloadSupplyLocations();
-
-      setMoveModeDragging(null);
-      isDraggingMoveBoxRef.current = false;
-    } catch (error) {
-      console.error('Error moving item:', error);
-      if (!isPanningRef.current) {
-        const errorInfo = await handleApiError(error);
-        if (errorInfo.isConflict) {
-          setConflictError(errorInfo);
-        } else {
-          setError(errorInfo.message || 'Failed to move item');
-        }
-      }
-      setMoveModeDragging(null);
-      isDraggingMoveBoxRef.current = false;
-    }
-  }, [moveModeDragging, supplyNameToId, reloadSupplyLocations]);
+    setMoveModeDragging(null);
+    isDraggingMoveBoxRef.current = false;
+  }, [moveModeDragging, supplyNameToId]);
 
   const handleDragStart = useCallback((boxTitle, index, isMultiple, selectedIndices) => {
     const boxData = inventoryData.get(boxTitle);

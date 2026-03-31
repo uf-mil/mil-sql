@@ -641,7 +641,7 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
                     ref={nameInputRef}
                     type="text"
                     className="modal-field-composite__input"
-                    placeholder="Must stay unique"
+                    placeholder="Rest of Name (required)"
                     value={nameSuffix}
                     onChange={(e) => setNameSuffix(e.target.value)}
                   />
@@ -650,7 +650,7 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
                 <input
                   ref={nameInputRef}
                   type="text"
-                  placeholder="Must stay unique"
+                  placeholder="Rest of Name (required)"
                   value={nameSuffix}
                   onChange={(e) => setNameSuffix(e.target.value)}
                 />
@@ -668,7 +668,7 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
                   <div className="modal-field-composite__prefix-block">{descFix}</div>
                   <textarea
                     className="modal-field-composite__textarea"
-                    placeholder="Optional"
+                    placeholder="Rest ofDescription (optional)"
                     value={descSuffix}
                     onChange={(e) => setDescSuffix(e.target.value)}
                     rows={3}

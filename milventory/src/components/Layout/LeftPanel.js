@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useInventory } from '../../context/InventoryContext';
+import { LEFT_PANE_MIN_WIDTH, LEFT_PANE_MAX_WIDTH } from '../../constants/leftPaneLayout';
 import MasterInventoryTable from '../Master/MasterInventoryTable';
 
 const LeftPanel = () => {
@@ -16,7 +17,7 @@ const LeftPanel = () => {
   React.useEffect(() => {
     const handleMouseMove = (e) => {
       if (isResizing) {
-        const newWidth = Math.max(200, Math.min(600, e.clientX));
+        const newWidth = Math.max(LEFT_PANE_MIN_WIDTH, Math.min(LEFT_PANE_MAX_WIDTH, e.clientX));
         setLeftPaneWidth(newWidth);
       }
     };
