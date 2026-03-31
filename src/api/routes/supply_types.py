@@ -1,5 +1,5 @@
 """
-Supply types (item templates): public GET; leader CRUD.
+Supply types (item templates): authenticated read; any member may create/update; delete is leader-only.
 """
 import sys
 import json
@@ -199,7 +199,7 @@ def create_supply_type(current_user_id=None):
 
 
 @supply_types_bp.route('/<int:type_id>', methods=['PUT'])
-@require_leader
+@require_auth
 def update_supply_type(type_id, current_user_id=None):
     try:
         data = request.json or {}
@@ -302,14 +302,6 @@ def update_supply_type(type_id, current_user_id=None):
                 return jsonify({
                     'error': 'Updating prefixes would create duplicate item names for this type.',
                 }), 400
-            for sid, nm, dc in updates:
-                if repo.select_supply_id_by_name_excluding(cur, nm, sid):
-                    conn.rollback()
-                    cur.close()
-                    conn.close()
-                    return jsonify({
-                        'error': f'Item name "{nm}" is already used by another supply.',
-                    }), 400
             for sid, nm, dc in updates:
                 repo.update_supply_name_description(cur, sid, nm, dc)
 

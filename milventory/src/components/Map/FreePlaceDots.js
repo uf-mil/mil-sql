@@ -9,7 +9,7 @@ const FreePlaceDots = () => {
     subtractModeItem,
     moveModeItem,
     freePlaceModeItem,
-    freePlacementsBySupplyName,
+    freePlacementsBySupplyPublicId,
     freePlaceVisualDots,
     subtractModePending,
     moveModeFreeCoordById,
@@ -30,8 +30,8 @@ const FreePlaceDots = () => {
     if (freePlaceModeItem && dotItemName === freePlaceModeItem && freePlaceVisualDots != null) {
       return freePlaceVisualDots;
     }
-    return freePlacementsBySupplyName.get(dotItemName) || [];
-  }, [dotItemName, freePlaceModeItem, freePlaceVisualDots, freePlacementsBySupplyName]);
+    return freePlacementsBySupplyPublicId.get(dotItemName) || [];
+  }, [dotItemName, freePlaceModeItem, freePlaceVisualDots, freePlacementsBySupplyPublicId]);
 
   const displayDots = useMemo(() => {
     if (!subtractModeItem || dotItemName !== subtractModeItem) return dots;

@@ -12,6 +12,7 @@ from src.api.helpers.datetime_json import db_datetime_to_utc_iso
 class Supply:
     """Supply catalog/reference model."""
     id: Optional[int] = None
+    public_id: Optional[str] = None
     name: str = ""
     description: Optional[str] = None
     image: Optional[str] = None  # Base64 data URI (LONGTEXT)
@@ -35,7 +36,7 @@ class Supply:
             last_order_date=row[4],
             last_modified=row[5],
             last_modified_by=row[6],
-            created_at=row[7]
+            created_at=row[7],
         )
     
     @classmethod
@@ -47,13 +48,14 @@ class Supply:
         """
         return cls(
             id=data.get('id'),
+            public_id=data.get('public_id'),
             name=data.get('name', ''),
             description=data.get('description'),
             image=data.get('image'),
             last_order_date=data.get('last_order_date'),
             last_modified=data.get('last_modified'),
             last_modified_by=data.get('last_modified_by'),
-            created_at=data.get('created_at')
+            created_at=data.get('created_at'),
         )
     
     def to_dict(self):
@@ -64,6 +66,8 @@ class Supply:
             'description': self.description,
             'image': self.image,
         }
+        if self.public_id:
+            result['public_id'] = self.public_id
         if self.last_order_date:
             serialized = db_datetime_to_utc_iso(self.last_order_date)
             result['last_order_date'] = serialized if serialized is not None else str(self.last_order_date)

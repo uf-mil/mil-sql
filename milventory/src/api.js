@@ -293,6 +293,50 @@ export const api = {
       return r.json();
     }),
 
+  createSupplyType: (body) =>
+    fetch(`${API_BASE}/supply-types`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify(body)
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+
+  updateSupplyType: (id, body) =>
+    fetch(`${API_BASE}/supply-types/${id}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify(body)
+    }).then(r => {
+      if (r.status === 401) {
+        const error = new Error('Authentication required');
+        error.response = { status: 401 };
+        throw error;
+      }
+      if (!r.ok) {
+        return r.json().then(data => {
+          const error = new Error(data.error || 'Request failed');
+          error.response = r;
+          throw error;
+        });
+      }
+      return r.json();
+    }),
+
   // History
   getSupplyHistory: (filters = {}) => {
     const params = new URLSearchParams();

@@ -13,6 +13,7 @@ def list_supplies_aggregate_rows(cur) -> List[dict]:
         """
             SELECT
                 s.id,
+                s.public_id,
                 s.name,
                 s.description,
                 s.image,
@@ -28,7 +29,7 @@ def list_supplies_aggregate_rows(cur) -> List[dict]:
             FROM supplies s
             LEFT JOIN supply_types st ON s.supply_type_id = st.id
             LEFT JOIN supplies_location sl ON s.id = sl.supply_id
-            GROUP BY s.id, s.name, s.description, s.image, s.custom_fields, s.supply_type_id,
+            GROUP BY s.id, s.public_id, s.name, s.description, s.image, s.custom_fields, s.supply_type_id,
                      st.name, st.image, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
             ORDER BY s.name
         """
@@ -119,6 +120,7 @@ def fetch_supply_detail_aggregate_row(cur, supply_id: int) -> Optional[dict]:
         """
             SELECT
                 s.id,
+                s.public_id,
                 s.name,
                 s.description,
                 s.image,
@@ -135,7 +137,7 @@ def fetch_supply_detail_aggregate_row(cur, supply_id: int) -> Optional[dict]:
             LEFT JOIN supply_types st ON s.supply_type_id = st.id
             LEFT JOIN supplies_location sl ON s.id = sl.supply_id
             WHERE s.id = %s
-            GROUP BY s.id, s.name, s.description, s.image, s.custom_fields, s.supply_type_id,
+            GROUP BY s.id, s.public_id, s.name, s.description, s.image, s.custom_fields, s.supply_type_id,
                      st.name, st.image, s.last_order_date, s.last_modified, s.last_modified_by, s.created_at
         """,
         (supply_id,),
@@ -164,9 +166,21 @@ def fetch_supply_type_row(cur, type_id: int) -> Optional[dict]:
 
 
 def select_supply_id_by_name(cur, name: str) -> Optional[int]:
-    cur.execute("SELECT id FROM supplies WHERE name = %s", (name,))
+    """First matching id when multiple supplies share a name (avoid for new code)."""
+    cur.execute("SELECT id FROM supplies WHERE name = %s ORDER BY id LIMIT 1", (name,))
     row = cur.fetchone()
-    return row["id"] if row else None
+    if not row:
+        return None
+    return row["id"] if isinstance(row, dict) else row[0]
+
+
+def select_supply_ids_by_name(cur, name: str) -> List[int]:
+    cur.execute("SELECT id FROM supplies WHERE name = %s ORDER BY id", (name,))
+    rows = cur.fetchall()
+    out: List[int] = []
+    for row in rows:
+        out.append(row["id"] if isinstance(row, dict) else row[0])
+    return out
 
 
 def name_exists_excluding(cur, name: str, exclude_id: Optional[int]) -> bool:
@@ -187,6 +201,7 @@ def fetch_supply_id_type(cur, supply_id: int) -> Optional[dict]:
 
 def insert_supply(
     cur,
+    public_id: str,
     name: str,
     description: Optional[str],
     image: Optional[str],
@@ -197,10 +212,10 @@ def insert_supply(
 ) -> int:
     cur.execute(
         """
-            INSERT INTO supplies (name, description, image, custom_fields, last_order_date, last_modified_by, supply_type_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO supplies (public_id, name, description, image, custom_fields, last_order_date, last_modified_by, supply_type_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
-        (name, description, image, custom_fields_json, last_order_date, last_modified_by, supply_type_id),
+        (public_id, name, description, image, custom_fields_json, last_order_date, last_modified_by, supply_type_id),
     )
     return cur.lastrowid
 
@@ -222,7 +237,7 @@ def insert_supply_category_ignore(cur, supply_id: int, category_id: int) -> None
 def fetch_supply_with_type_join(cur, supply_id: int) -> Optional[dict]:
     cur.execute(
         """
-            SELECT s.id, s.name, s.description, s.image, s.custom_fields, s.last_order_date,
+            SELECT s.id, s.public_id, s.name, s.description, s.image, s.custom_fields, s.last_order_date,
                    s.last_modified, s.last_modified_by, s.created_at,
                    s.supply_type_id, st.name AS type_name, st.image AS type_image
             FROM supplies s
@@ -411,6 +426,7 @@ def delete_history_by_id(cur, history_id: int) -> None:
 def insert_supply_with_id(
     cur,
     supply_id: int,
+    public_id: str,
     name: Any,
     description: Any,
     image: Any,
@@ -419,15 +435,16 @@ def insert_supply_with_id(
 ) -> None:
     cur.execute(
         """
-            INSERT INTO supplies (id, name, description, image, last_order_date, last_modified_by)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO supplies (id, public_id, name, description, image, last_order_date, last_modified_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """,
-        (supply_id, name, description, image, last_order_date, last_modified_by),
+        (supply_id, public_id, name, description, image, last_order_date, last_modified_by),
     )
 
 
 def insert_supply_without_id(
     cur,
+    public_id: str,
     name: Any,
     description: Any,
     image: Any,
@@ -436,10 +453,10 @@ def insert_supply_without_id(
 ) -> int:
     cur.execute(
         """
-            INSERT INTO supplies (name, description, image, last_order_date, last_modified_by)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO supplies (public_id, name, description, image, last_order_date, last_modified_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """,
-        (name, description, image, last_order_date, last_modified_by),
+        (public_id, name, description, image, last_order_date, last_modified_by),
     )
     return cur.lastrowid
 

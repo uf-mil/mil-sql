@@ -113,7 +113,16 @@ def verify_specific_table_schemas(cur, database_name):
         column_names = [col[0] for col in columns]
         
         # Required columns for new schema
-        required_columns = ['id', 'name', 'description', 'image', 'last_modified', 'last_modified_by', 'created_at']
+        required_columns = [
+            'id',
+            'public_id',
+            'name',
+            'description',
+            'image',
+            'last_modified',
+            'last_modified_by',
+            'created_at',
+        ]
         # Optional but should exist
         optional_columns = ['last_order_date']
         # Old columns that should NOT exist
@@ -133,10 +142,10 @@ def verify_specific_table_schemas(cur, database_name):
             image_col = next((col for col in columns if col[0] == 'image'), None)
             if image_col and 'longtext' not in str(image_col[1]).lower():
                 print(f"⚠ supplies: image column should be LONGTEXT, found: {image_col[1]}")
-            # Check that name is UNIQUE (col[3] is COLUMN_KEY, should be 'UNI' or 'PRI')
-            name_col = next((col for col in columns if col[0] == 'name'), None)
-            if name_col and 'uni' not in str(name_col[3]).lower() and 'pri' not in str(name_col[3]).lower():
-                print(f"⚠ supplies: name column should be UNIQUE")
+            # public_id should be unique (stable external id)
+            pid_col = next((col for col in columns if col[0] == 'public_id'), None)
+            if pid_col and 'uni' not in str(pid_col[3]).lower() and 'pri' not in str(pid_col[3]).lower():
+                print(f"⚠ supplies: public_id column should be UNIQUE")
             print(f"✓ supplies: Schema validated ({len(columns)} columns)")
     else:
         print(f"✗ supplies: Table not found")

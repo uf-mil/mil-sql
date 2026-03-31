@@ -122,7 +122,12 @@ const MoveModeBoxes = () => {
     const boxData = inventoryData.get(box.title);
     if (!boxData) return;
 
-    const matchingItems = boxData.inventory.filter(item => item.name === moveModeItem);
+    const matchingItems = boxData.inventory.filter((item) => {
+      const pid =
+        item.supplyPublicId ||
+        (item.supplyId != null ? `__legacy_id_${item.supplyId}` : null);
+      return pid === moveModeItem;
+    });
     if (matchingItems.length === 0) return;
 
     const isTallCabinet = box.title.startsWith('Tall Cabinet');

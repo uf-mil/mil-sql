@@ -69,8 +69,8 @@ const MasterInventoryTable = () => {
   }, [inventoryData]);
 
   // Helper function to get item categories (convert IDs to names)
-  const getItemCategories = useCallback((itemName) => {
-    const itemData = masterInventoryItems.get(itemName);
+  const getItemCategories = useCallback((supplyPublicId) => {
+    const itemData = masterInventoryItems.get(supplyPublicId);
     if (!itemData || !itemData.categories || itemData.categories.length === 0) {
       return [];
     }
@@ -81,8 +81,8 @@ const MasterInventoryTable = () => {
   }, [masterInventoryItems, categoryIdToName]);
 
   // Helper function to get item teams (capitalize first letter)
-  const getItemTeams = useCallback((itemName) => {
-    const itemData = masterInventoryItems.get(itemName);
+  const getItemTeams = useCallback((supplyPublicId) => {
+    const itemData = masterInventoryItems.get(supplyPublicId);
     if (!itemData || !itemData.teams || itemData.teams.length === 0) {
       return [];
     }
@@ -169,8 +169,9 @@ const MasterInventoryTable = () => {
     let filtered = itemsArray;
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(([name, itemData]) => {
-        if (name.toLowerCase().includes(query)) return true;
+      filtered = filtered.filter(([, itemData]) => {
+        const nm = (itemData?.name || '').toLowerCase();
+        if (nm.includes(query)) return true;
         const tn = (itemData?.type_name || '').toLowerCase();
         return tn.includes(query);
       });
@@ -178,13 +179,13 @@ const MasterInventoryTable = () => {
     
     // Filter by location OR category (not both)
     if (filterType === 'location' && selectedLocations.size > 0) {
-      filtered = filtered.filter(([itemName]) => {
-        const itemLocations = getItemLocations(itemName);
+      filtered = filtered.filter(([supplyPublicId]) => {
+        const itemLocations = getItemLocations(supplyPublicId);
         // Show item if it appears in at least one selected location
         return itemLocations.some(loc => selectedLocations.has(loc));
       });
     } else if (filterType === 'category' && selectedCategories.size > 0) {
-      filtered = filtered.filter(([itemName, itemData]) => {
+      filtered = filtered.filter(([, itemData]) => {
         if (!itemData.categories || itemData.categories.length === 0) {
           return false; // Item has no categories, exclude if categories are selected
         }
@@ -305,21 +306,23 @@ const MasterInventoryTable = () => {
     
     if (items.length === 0) return items;
     
-    return items.sort(([nameA, itemDataA], [nameB, itemDataB]) => {
+    return items.sort(([pidA, itemDataA], [pidB, itemDataB]) => {
       let comparison = 0;
       
       switch (sortColumn) {
-        case 'name':
-          comparison = nameA.localeCompare(nameB);
+        case 'name': {
+          comparison = (itemDataA?.name || '').localeCompare(itemDataB?.name || '');
+          if (comparison === 0) comparison = pidA.localeCompare(pidB);
           break;
+        }
         case 'qty':
-          const qtyA = quantities.get(nameA) || 0;
-          const qtyB = quantities.get(nameB) || 0;
+          const qtyA = quantities.get(pidA) || 0;
+          const qtyB = quantities.get(pidB) || 0;
           comparison = qtyA - qtyB;
           break;
         case 'location':
-          const locsA = getItemLocations(nameA);
-          const locsB = getItemLocations(nameB);
+          const locsA = getItemLocations(pidA);
+          const locsB = getItemLocations(pidB);
           // Sort by first location name, or by count if no locations
           if (locsA.length === 0 && locsB.length === 0) {
             comparison = 0;
@@ -332,8 +335,8 @@ const MasterInventoryTable = () => {
           }
           break;
         case 'category':
-          const catsA = getItemCategories(nameA);
-          const catsB = getItemCategories(nameB);
+          const catsA = getItemCategories(pidA);
+          const catsB = getItemCategories(pidB);
           // Sort by first category name, or by count if no categories
           if (catsA.length === 0 && catsB.length === 0) {
             comparison = 0;
@@ -346,8 +349,8 @@ const MasterInventoryTable = () => {
           }
           break;
         case 'team':
-          const teamsA = getItemTeams(nameA);
-          const teamsB = getItemTeams(nameB);
+          const teamsA = getItemTeams(pidA);
+          const teamsB = getItemTeams(pidB);
           // Sort by first team name, or by count if no teams
           if (teamsA.length === 0 && teamsB.length === 0) {
             comparison = 0;

@@ -364,7 +364,7 @@ const SupplyTypeSearchSelect = ({ supplyTypes, value, onChange }) => {
 };
 
 const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
-  const { createMasterItem, masterInventoryItems } = useInventory();
+  const { createMasterItem } = useInventory();
   const { showAlert } = useBlockingDialog();
   
   const [name, setName] = useState('');
@@ -542,10 +542,6 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
     const fullDesc = fullDescRaw.trim() ? fullDescRaw.trim() : null;
 
     if (fullName.trim()) {
-      if (masterInventoryItems.has(fullName.trim())) {
-        await showAlert('An item with this name already exists. Please use a different name.');
-        return;
-      }
       if (!areNumberCustomFieldsValid(customFields, customFieldDefinitions)) {
         await showAlert('Please enter a valid number in all number fields (or leave them empty).');
         return;

@@ -151,6 +151,11 @@ try:
 except Exception as e:
     print(f"⚠ Warning: Could not run supplies custom_fields migration: {e}")
 try:
+    from src.scripts.migrate_supplies_public_id import migrate_supplies_public_id
+    migrate_supplies_public_id()
+except Exception as e:
+    print(f"⚠ Warning: Could not run supplies public_id migration: {e}")
+try:
     from src.scripts.migrate_supply_types import migrate_supply_types
     migrate_supply_types()
 except Exception as e:

@@ -8,7 +8,8 @@ def fetch_joined_filtered(
     query = """
             SELECT sl.id, sl.supply_id, sl.location_name, sl.coord_x, sl.coord_y, sl.shelf, sl.amount,
                    sl.last_modified, sl.last_modified_by, sl.created_at,
-                   s.name as supply_name
+                   s.name AS supply_name,
+                   s.public_id AS supply_public_id
             FROM supplies_location sl
             JOIN supplies s ON sl.supply_id = s.id
             WHERE 1=1
@@ -43,7 +44,8 @@ def fetch_by_location_name_joined(cur, name: str) -> List[Tuple]:
         """
             SELECT sl.id, sl.supply_id, sl.location_name, sl.coord_x, sl.coord_y, sl.shelf, sl.amount,
                    sl.last_modified, sl.last_modified_by, sl.created_at,
-                   s.name as supply_name
+                   s.name AS supply_name,
+                   s.public_id AS supply_public_id
             FROM supplies_location sl
             JOIN supplies s ON sl.supply_id = s.id
             WHERE sl.location_name = %s

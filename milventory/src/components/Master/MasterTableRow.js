@@ -68,7 +68,7 @@ const MasterTableRow = ({ itemName, itemData, quantity, locations, categories, t
           {itemData.type_name || '—'}
         </td>
       )}
-      <td className="name-cell">{itemName}</td>
+      <td className="name-cell">{itemData?.name ?? itemName}</td>
       {showQty && (
         <td className="qty-cell">{quantity}</td>
       )}

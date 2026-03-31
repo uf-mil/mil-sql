@@ -48,27 +48,33 @@ function shelvesMatchForMove(invShelf, locShelf) {
 
 /**
  * Apply a box-to-box move only in local `inventoryData` (no API).
- * Mirrors server merge/split rules for a single item name and quantity.
+ * Identifies the stock line by supplyPublicId (stable); display name may be duplicated.
  */
 function applyOptimisticMoveBetweenBoxes(
   inventoryMap,
+  supplyPublicId,
   itemName,
   sourceBox,
   sourceShelf,
   targetBox,
   targetShelf,
-  moveQty
+  moveQty,
+  numericSupplyId
 ) {
   const src = inventoryMap.get(sourceBox);
   const dst = inventoryMap.get(targetBox);
-  if (!src || !dst || moveQty <= 0) return inventoryMap;
+  if (!src || !dst || moveQty <= 0 || !supplyPublicId) return inventoryMap;
 
   const next = new Map(inventoryMap);
   let rem = moveQty;
   const newSrc = [];
 
   for (const it of src.inventory) {
-    if (rem <= 0 || it.name !== itemName || !shelvesMatchForMove(it.shelf, sourceShelf)) {
+    if (
+      rem <= 0 ||
+      it.supplyPublicId !== supplyPublicId ||
+      !shelvesMatchForMove(it.shelf, sourceShelf)
+    ) {
       newSrc.push({ ...it });
       continue;
     }
@@ -83,7 +89,7 @@ function applyOptimisticMoveBetweenBoxes(
   let merged = false;
   for (let i = 0; i < dstInv.length; i++) {
     const it = dstInv[i];
-    if (it.name === itemName && shelvesMatchForMove(it.shelf, targetShelf)) {
+    if (it.supplyPublicId === supplyPublicId && shelvesMatchForMove(it.shelf, targetShelf)) {
       dstInv[i] = { ...it, qty: it.qty + moveQty };
       merged = true;
       break;
@@ -94,7 +100,9 @@ function applyOptimisticMoveBetweenBoxes(
     dstInv.push({
       name: itemName,
       qty: moveQty,
-      shelf: shelfVal
+      shelf: shelfVal,
+      supplyId: numericSupplyId,
+      supplyPublicId
     });
   }
 
@@ -127,6 +135,7 @@ export const InventoryProvider = ({ children }) => {
   
   // Master Inventory Table state
   const [masterInventoryItems, setMasterInventoryItems] = useState(new Map());
+  /** Selected master row: supplies.public_id (UUID string), not display name */
   const [selectedMasterItem, setSelectedMasterItem] = useState(null);
   const [leftPaneWidth, setLeftPaneWidth] = useState(300);
   const [leftPaneCollapsed, setLeftPaneCollapsed] = useState(false);
@@ -136,9 +145,6 @@ export const InventoryProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [conflictError, setConflictError] = useState(null);
-  
-  // Supply name to ID mapping (for API calls)
-  const [supplyNameToId, setSupplyNameToId] = useState(new Map());
   
   // Add Mode state
   const [addModeItem, setAddModeItem] = useState(null);
@@ -172,7 +178,7 @@ export const InventoryProvider = ({ children }) => {
 
   const [freePlaceModeItem, setFreePlaceModeItem] = useState(null);
   const freePlaceModeItemRef = useRef(null);
-  const [freePlacementsBySupplyName, setFreePlacementsBySupplyName] = useState(new Map());
+  const [freePlacementsBySupplyPublicId, setFreePlacementsBySupplyPublicId] = useState(new Map());
   const [freePlacePendingDeletes, setFreePlacePendingDeletes] = useState(() => new Set());
   const [freePlacePendingCoordById, setFreePlacePendingCoordById] = useState(() => new Map());
   const [freePlacePendingAdds, setFreePlacePendingAdds] = useState([]);
@@ -239,10 +245,13 @@ export const InventoryProvider = ({ children }) => {
       const freeMap = new Map();
 
       supplyLocations.forEach((sl) => {
+        const pid =
+          sl.supply_public_id ||
+          (sl.supply_id != null ? `__legacy_id_${sl.supply_id}` : '');
         if (sl.free_place || (sl.coord_x != null && sl.coord_y != null)) {
-          const name = sl.supply_name || '';
-          if (!freeMap.has(name)) freeMap.set(name, []);
-          freeMap.get(name).push({
+          if (!pid) return;
+          if (!freeMap.has(pid)) freeMap.set(pid, []);
+          freeMap.get(pid).push({
             id: sl.id,
             x: sl.coord_x,
             y: sl.coord_y,
@@ -258,12 +267,14 @@ export const InventoryProvider = ({ children }) => {
         locationMap.get(key).push({
           id: sl.id,
           name: sl.supply_name || '',
+          supplyId: sl.supply_id,
+          supplyPublicId: sl.supply_public_id || null,
           qty: sl.qty,
           shelf: sl.shelf !== null ? sl.shelf : undefined
         });
       });
 
-      setFreePlacementsBySupplyName(freeMap);
+      setFreePlacementsBySupplyPublicId(freeMap);
 
       setInventoryData((prev) => {
         const next = new Map(prev);
@@ -385,15 +396,16 @@ export const InventoryProvider = ({ children }) => {
         const supplies = await api.getSupplies();
         
         const newMasterItems = new Map();
-        const nameToIdMap = new Map();
-        
-        supplies.forEach(supply => {
-          // Build name to ID mapping
-          nameToIdMap.set(supply.name, supply.id);
-          
+
+        supplies.forEach((supply) => {
+          const rowKey =
+            supply.public_id || (supply.id != null ? `__legacy_id_${supply.id}` : null);
+          if (!rowKey) return;
+
           const locations = locationsListFromSupplyLocs(supply.locations);
-          
-          newMasterItems.set(supply.name, {
+
+          newMasterItems.set(rowKey, {
+            public_id: supply.public_id || null,
             name: supply.name,
             description: supply.description || '',
             image: supply.image || null,
@@ -407,19 +419,17 @@ export const InventoryProvider = ({ children }) => {
             lastModified: supply.lastModified || null,
             last_modified_by: supply.last_modified_by || null,
             last_modified_by_name: supply.last_modified_by_name || null,
-            id: supply.id // Store ID for API calls
+            id: supply.id
           });
         });
-        
+
         setMasterInventoryItems(newMasterItems);
-        setSupplyNameToId(nameToIdMap);
       } catch (error) {
         console.error('Error loading Master inventory items from API:', error);
         if (error.message === 'Authentication required') {
           setError('Authentication required. Please login.');
         }
         setMasterInventoryItems(new Map());
-        setSupplyNameToId(new Map());
       }
     };
     
@@ -478,16 +488,24 @@ export const InventoryProvider = ({ children }) => {
       
       // Build maps for comparison
       const currentMap = new Map();
-      currentLocations.forEach(sl => {
-        const key = `${sl.supply_name}||${sl.shelf !== null ? sl.shelf : 'null'}`;
+      currentLocations.forEach((sl) => {
+        const rowPid = sl.supply_public_id || `__legacy_id_${sl.supply_id}`;
+        const key = `${rowPid}||${sl.shelf !== null ? sl.shelf : 'null'}`;
         currentMap.set(key, { id: sl.id, qty: sl.qty });
       });
-      
+
       const newMap = new Map();
-      newInventory.forEach(item => {
-        const key = `${item.name}||${item.shelf !== undefined ? item.shelf : 'null'}`;
-        const supplyId = supplyNameToId.get(item.name);
-        if (supplyId) {
+      newInventory.forEach((item) => {
+        const rowPid =
+          item.supplyPublicId ||
+          (item.supplyId != null ? `__legacy_id_${item.supplyId}` : null);
+        if (!rowPid) return;
+        const key = `${rowPid}||${item.shelf !== undefined ? item.shelf : 'null'}`;
+        const supplyId =
+          item.supplyId != null
+            ? item.supplyId
+            : masterInventoryItems.get(rowPid)?.id;
+        if (supplyId != null) {
           newMap.set(key, { supplyId, qty: item.qty, shelf: item.shelf });
         }
       });
@@ -546,20 +564,23 @@ export const InventoryProvider = ({ children }) => {
         }
       }
     }
-  }, [supplyNameToId, reloadSupplyLocations]);
+  }, [masterInventoryItems, reloadSupplyLocations]);
 
   // Function to reload master items from API
   const reloadMasterItems = useCallback(async () => {
     try {
       const supplies = await api.getSupplies();
-      
+
       const newMasterItems = new Map();
-      const nameToIdMap = new Map();
-      
-      supplies.forEach(supply => {
-        nameToIdMap.set(supply.name, supply.id);
+
+      supplies.forEach((supply) => {
+        const rowKey =
+          supply.public_id || (supply.id != null ? `__legacy_id_${supply.id}` : null);
+        if (!rowKey) return;
+
         const locations = locationsListFromSupplyLocs(supply.locations);
-        newMasterItems.set(supply.name, {
+        newMasterItems.set(rowKey, {
+          public_id: supply.public_id || null,
           name: supply.name,
           description: supply.description || '',
           image: supply.image || null,
@@ -576,9 +597,8 @@ export const InventoryProvider = ({ children }) => {
           id: supply.id
         });
       });
-      
+
       setMasterInventoryItems(newMasterItems);
-      setSupplyNameToId(nameToIdMap);
     } catch (error) {
       console.error('Error reloading Master inventory items:', error);
     }
@@ -640,8 +660,7 @@ export const InventoryProvider = ({ children }) => {
       if (currentItem) setSelectedMasterItem(currentItem);
     };
 
-    // Get supply_id for the item
-    const supplyId = supplyNameToId.get(currentItem);
+    const supplyId = masterInventoryItems.get(currentItem)?.id;
     if (!supplyId) {
       console.error(`Supply ID not found for item: ${currentItem}`);
       setError(`Supply ID not found for item: ${currentItem}`);
@@ -699,7 +718,7 @@ export const InventoryProvider = ({ children }) => {
         }
       }
     }
-  }, [supplyNameToId, reloadSupplyLocations, reloadMasterItems]);
+  }, [masterInventoryItems, reloadSupplyLocations, reloadMasterItems]);
 
   const cancelAddMode = useCallback(() => {
     const restore = addModeItemRef.current;
@@ -728,11 +747,15 @@ export const InventoryProvider = ({ children }) => {
         const boxData = inventoryData.get(boxTitle);
         if (!boxData) return;
 
-    const matchingItems = boxData.inventory.filter(item => {
-      if (item.name !== subtractModeItemRef.current) return false;
-            if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
+    const pid = subtractModeItemRef.current;
+    const matchingItems = boxData.inventory.filter((item) => {
+      const itemPid =
+        item.supplyPublicId ||
+        (item.supplyId != null ? `__legacy_id_${item.supplyId}` : null);
+      if (itemPid !== pid) return false;
+      if (shelf !== undefined) return (item.shelf ?? 0) === shelf;
       return item.shelf === undefined;
-          });
+    });
 
     const currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
     const existingPending = subtractModePendingRef.current.get(key) || 0;
@@ -765,7 +788,7 @@ export const InventoryProvider = ({ children }) => {
       if (!itemName) return;
       const qty = subtractModeQtyPerClickRef.current;
       setSubtractModePending((prev) => {
-        const placements = freePlacementsBySupplyName.get(itemName) || [];
+        const placements = freePlacementsBySupplyPublicId.get(itemName) || [];
         const dot = placements.find((p) => p.id === supplyLocationId);
         if (!dot) return prev;
         const key = `${FREE_SUBTRACT_DOT_PREFIX}||${supplyLocationId}`;
@@ -778,7 +801,7 @@ export const InventoryProvider = ({ children }) => {
         return next;
       });
     },
-    [freePlacementsBySupplyName]
+    [freePlacementsBySupplyPublicId]
   );
 
   const finishSubtractMode = useCallback(async () => {
@@ -794,8 +817,7 @@ export const InventoryProvider = ({ children }) => {
 
     const restorePreviewItem = () => setSelectedMasterItem(currentItem);
 
-    // Get supply_id for the item
-    const supplyId = supplyNameToId.get(currentItem);
+    const supplyId = masterInventoryItems.get(currentItem)?.id;
     if (!supplyId) {
       console.error(`Supply ID not found for item: ${currentItem}`);
       setError(`Supply ID not found for item: ${currentItem}`);
@@ -811,7 +833,7 @@ export const InventoryProvider = ({ children }) => {
       const parts = key.split('||');
       if (parts[0] === FREE_SUBTRACT_DOT_PREFIX && parts[1] != null && parts[1] !== '') {
         const locId = parseInt(parts[1], 10);
-        const floorDots = freePlacementsBySupplyName.get(currentItem) || [];
+        const floorDots = freePlacementsBySupplyPublicId.get(currentItem) || [];
         const dot = floorDots.find((d) => d.id === locId);
         if (!dot || pendingQty <= 0) return;
         subtractions.push({
@@ -830,8 +852,11 @@ export const InventoryProvider = ({ children }) => {
       const boxData = currentInventoryData.get(boxTitle);
       if (!boxData) return;
       
-      const matchingItems = boxData.inventory.filter(item => {
-        if (item.name !== currentItem) return false;
+      const matchingItems = boxData.inventory.filter((item) => {
+        const itemPid =
+          item.supplyPublicId ||
+          (item.supplyId != null ? `__legacy_id_${item.supplyId}` : null);
+        if (itemPid !== currentItem) return false;
         if (shelf !== null && shelf !== undefined) return (item.shelf ?? 0) === shelf;
         return item.shelf === undefined;
       });
@@ -909,7 +934,7 @@ export const InventoryProvider = ({ children }) => {
         }
       }
     }
-  }, [inventoryData, supplyNameToId, reloadSupplyLocations, reloadMasterItems, freePlacementsBySupplyName]);
+  }, [inventoryData, masterInventoryItems, reloadSupplyLocations, reloadMasterItems, freePlacementsBySupplyPublicId]);
 
   const cancelSubtractMode = useCallback(() => {
     const restore = subtractModeItemRef.current;
@@ -1010,7 +1035,7 @@ export const InventoryProvider = ({ children }) => {
 
   const freePlaceVisualDots = useMemo(() => {
     if (!freePlaceModeItem) return null;
-    const server = freePlacementsBySupplyName.get(freePlaceModeItem) || [];
+    const server = freePlacementsBySupplyPublicId.get(freePlaceModeItem) || [];
     const visible = server
       .filter((d) => !freePlacePendingDeletes.has(d.id))
       .map((d) => {
@@ -1026,7 +1051,7 @@ export const InventoryProvider = ({ children }) => {
     return [...visible, ...adds];
   }, [
     freePlaceModeItem,
-    freePlacementsBySupplyName,
+    freePlacementsBySupplyPublicId,
     freePlacePendingDeletes,
     freePlacePendingCoordById,
     freePlacePendingAdds
@@ -1035,7 +1060,7 @@ export const InventoryProvider = ({ children }) => {
   /** Floor dots for arrows in subtract mode (hides fully pending-removed markers). */
   const subtractModeVisualFreeDots = useMemo(() => {
     if (!subtractModeItem) return null;
-    const server = freePlacementsBySupplyName.get(subtractModeItem) || [];
+    const server = freePlacementsBySupplyPublicId.get(subtractModeItem) || [];
     return server
       .map((d) => {
         const key = `${FREE_SUBTRACT_DOT_PREFIX}||${d.id}`;
@@ -1044,17 +1069,17 @@ export const InventoryProvider = ({ children }) => {
         return d;
       })
       .filter(Boolean);
-  }, [subtractModeItem, subtractModePending, freePlacementsBySupplyName]);
+  }, [subtractModeItem, subtractModePending, freePlacementsBySupplyPublicId]);
 
   /** Floor dots for arrows in move mode (follows pending coord drags). */
   const moveModeVisualFreeDots = useMemo(() => {
     if (!moveModeItem) return null;
-    const server = freePlacementsBySupplyName.get(moveModeItem) || [];
+    const server = freePlacementsBySupplyPublicId.get(moveModeItem) || [];
     return server.map((d) => {
       const o = moveModeFreeCoordById.get(d.id);
       return o ? { ...d, x: o.x, y: o.y } : d;
     });
-  }, [moveModeItem, freePlacementsBySupplyName, moveModeFreeCoordById]);
+  }, [moveModeItem, freePlacementsBySupplyPublicId, moveModeFreeCoordById]);
 
   const clearFreePlaceSession = useCallback(() => {
     setFreePlacePendingDeletes(new Set());
@@ -1098,7 +1123,7 @@ export const InventoryProvider = ({ children }) => {
       return;
     }
 
-    const supplyId = supplyNameToId.get(name);
+    const supplyId = masterInventoryItems.get(name)?.id;
     if (!supplyId) {
       setError(`Supply ID not found for item: ${name}`);
       return;
@@ -1134,7 +1159,7 @@ export const InventoryProvider = ({ children }) => {
 
     clearFreePlaceSession();
   }, [
-    supplyNameToId,
+    masterInventoryItems,
     reloadSupplyLocations,
     reloadMasterItems,
     freePlacePendingDeletes,
@@ -1147,11 +1172,11 @@ export const InventoryProvider = ({ children }) => {
     (worldX, worldY) => {
       const name = freePlaceModeItemRef.current;
       if (!name) return;
-      const sid = supplyNameToId.get(name);
+      const sid = masterInventoryItems.get(name)?.id;
       if (!sid) return;
       const { x, y } = clampPointToRoom(worldX, worldY);
       setFreePlacePendingAdds((prev) => {
-        const existing = freePlacementsBySupplyName.get(name) || [];
+        const existing = freePlacementsBySupplyPublicId.get(name) || [];
         const onServer = existing.some(
           (p) => Math.round(p.x) === x && Math.round(p.y) === y
         );
@@ -1163,7 +1188,7 @@ export const InventoryProvider = ({ children }) => {
         return [...prev, { tempId: newTempFreePlaceId(), x, y, qty: 1 }];
       });
     },
-    [supplyNameToId, freePlacementsBySupplyName, setError]
+    [masterInventoryItems, freePlacementsBySupplyPublicId, setError]
   );
 
   const updateFreePlaceSessionCoord = useCallback((id, worldX, worldY) => {
@@ -1237,8 +1262,20 @@ export const InventoryProvider = ({ children }) => {
 
   const handleMoveModeDragStart = useCallback((boxTitle, shelf, qty, x, y) => {
     isDraggingMoveBoxRef.current = true;
-    setMoveModeDragging({ boxTitle, shelf, qty, x, y, originalX: x, originalY: y });
-  }, []);
+    const supplyPublicId = moveModeItemRef.current;
+    const meta = supplyPublicId ? masterInventoryItems.get(supplyPublicId) : null;
+    setMoveModeDragging({
+      boxTitle,
+      shelf,
+      qty,
+      x,
+      y,
+      originalX: x,
+      originalY: y,
+      supplyPublicId,
+      itemName: meta?.name || ''
+    });
+  }, [masterInventoryItems]);
   
   const handleMoveModeDragMove = useCallback((x, y) => {
     if (moveModeDragging) {
@@ -1249,7 +1286,8 @@ export const InventoryProvider = ({ children }) => {
   const handleMoveModeDrop = useCallback((targetBoxTitle, targetShelf) => {
     if (!moveModeDragging || !moveModeItemRef.current) return;
 
-    const itemName = moveModeItemRef.current;
+    const supplyPublicId = moveModeDragging.supplyPublicId || moveModeItemRef.current;
+    const itemName = moveModeDragging.itemName || '';
     const { boxTitle: sourceBoxTitle, shelf: sourceShelf, qty } = moveModeDragging;
 
     if (sourceBoxTitle === targetBoxTitle && sourceShelf === targetShelf) {
@@ -1258,10 +1296,10 @@ export const InventoryProvider = ({ children }) => {
       return;
     }
 
-    const supplyId = supplyNameToId.get(itemName);
+    const supplyId = masterInventoryItems.get(supplyPublicId)?.id;
     if (!supplyId) {
-      console.error(`Supply ID not found for item: ${itemName}`);
-      setError(`Supply ID not found for item: ${itemName}`);
+      console.error(`Supply ID not found for item: ${supplyPublicId}`);
+      setError(`Supply ID not found for item: ${supplyPublicId}`);
       setMoveModeDragging(null);
       isDraggingMoveBoxRef.current = false;
       return;
@@ -1270,12 +1308,14 @@ export const InventoryProvider = ({ children }) => {
     setInventoryData((prev) =>
       applyOptimisticMoveBetweenBoxes(
         prev,
+        supplyPublicId,
         itemName,
         sourceBoxTitle,
         sourceShelf,
         targetBoxTitle,
         targetShelf,
-        qty
+        qty,
+        supplyId
       )
     );
 
@@ -1292,7 +1332,7 @@ export const InventoryProvider = ({ children }) => {
 
     setMoveModeDragging(null);
     isDraggingMoveBoxRef.current = false;
-  }, [moveModeDragging, supplyNameToId]);
+  }, [moveModeDragging, masterInventoryItems]);
 
   const handleDragStart = useCallback((boxTitle, index, isMultiple, selectedIndices) => {
     const boxData = inventoryData.get(boxTitle);
@@ -1327,7 +1367,12 @@ export const InventoryProvider = ({ children }) => {
       // Use move API for each item
       if (draggedItemData.isMultiple) {
         for (const item of draggedItemData.items) {
-          const supplyId = supplyNameToId.get(item.name);
+          const supplyId =
+            item.supplyId ??
+            masterInventoryItems.get(
+              item.supplyPublicId ||
+                (item.supplyId != null ? `__legacy_id_${item.supplyId}` : '')
+            )?.id;
           if (!supplyId) {
             console.error(`Supply ID not found for item: ${item.name}`);
             continue;
@@ -1342,9 +1387,15 @@ export const InventoryProvider = ({ children }) => {
           });
         }
       } else {
-        const supplyId = supplyNameToId.get(draggedItemData.item.name);
+        const it = draggedItemData.item;
+        const supplyId =
+          it.supplyId ??
+          masterInventoryItems.get(
+            it.supplyPublicId ||
+              (it.supplyId != null ? `__legacy_id_${it.supplyId}` : '')
+          )?.id;
         if (!supplyId) {
-          throw new Error(`Supply ID not found for item: ${draggedItemData.item.name}`);
+          throw new Error(`Supply ID not found for item: ${it.name}`);
         }
         await api.moveSupplyLocations({
           from_location: draggedItemData.sourceBox,
@@ -1379,36 +1430,44 @@ export const InventoryProvider = ({ children }) => {
       }
       }
     }
-  }, [draggedItemData, supplyNameToId, reloadSupplyLocations]);
+  }, [draggedItemData, masterInventoryItems, reloadSupplyLocations]);
 
-  // Master Item helper functions
-  const resolveMasterItem = useCallback((itemName) => {
-    return masterInventoryItems.get(itemName) || null;
+  // Master Item helper functions (lookup by supplies.public_id)
+  const resolveMasterItem = useCallback((supplyPublicId) => {
+    return masterInventoryItems.get(supplyPublicId) || null;
   }, [masterInventoryItems]);
 
   const computeMasterQuantities = useCallback(() => {
     const quantities = new Map();
     inventoryData.forEach((boxData) => {
-      boxData.inventory.forEach(item => {
-        const currentQty = quantities.get(item.name) || 0;
-        quantities.set(item.name, currentQty + (item.qty || 0));
+      boxData.inventory.forEach((item) => {
+        const rowKey =
+          item.supplyPublicId ||
+          (item.supplyId != null ? `__legacy_id_${item.supplyId}` : item.name);
+        const currentQty = quantities.get(rowKey) || 0;
+        quantities.set(rowKey, currentQty + (item.qty || 0));
       });
     });
-    freePlacementsBySupplyName.forEach((placements, name) => {
+    freePlacementsBySupplyPublicId.forEach((placements, pid) => {
       let list = placements;
-      if (freePlaceModeItem === name && freePlaceVisualDots != null) {
+      if (freePlaceModeItem === pid && freePlaceVisualDots != null) {
         list = freePlaceVisualDots;
       }
       const sum = list.reduce((s, p) => s + (p.qty || 0), 0);
-      quantities.set(name, (quantities.get(name) || 0) + sum);
+      quantities.set(pid, (quantities.get(pid) || 0) + sum);
     });
     return quantities;
-  }, [inventoryData, freePlacementsBySupplyName, freePlaceModeItem, freePlaceVisualDots]);
+  }, [inventoryData, freePlacementsBySupplyPublicId, freePlaceModeItem, freePlaceVisualDots]);
 
-  const getItemLocations = useCallback((itemName) => {
+  const getItemLocations = useCallback((supplyPublicId) => {
     const locations = [];
     inventoryData.forEach((boxData, boxTitle) => {
-      const hasItem = boxData.inventory.some(item => item.name === itemName);
+      const hasItem = boxData.inventory.some((item) => {
+        const k =
+          item.supplyPublicId ||
+          (item.supplyId != null ? `__legacy_id_${item.supplyId}` : null);
+        return k === supplyPublicId;
+      });
       if (hasItem) {
         locations.push(boxTitle);
       }
@@ -1428,14 +1487,21 @@ export const InventoryProvider = ({ children }) => {
         supply_type_id: item.supply_type_id != null ? item.supply_type_id : undefined
       });
       
-      // Update local state
-      setMasterInventoryItems(prev => {
+      const rowKey =
+        created.public_id || (created.id != null ? `__legacy_id_${created.id}` : null);
+      if (!rowKey) {
+        throw new Error('Created supply missing public_id');
+      }
+
+      setMasterInventoryItems((prev) => {
         const next = new Map(prev);
-        next.set(created.name, {
+        const locations = locationsListFromSupplyLocs(created.locations);
+        next.set(rowKey, {
+          public_id: created.public_id || null,
           name: created.name,
           description: created.description || '',
           image: created.image || null,
-          locations: created.locations || [],
+          locations,
           teams: created.teams || [],
           categories: created.categories || [],
           custom_fields: created.custom_fields || {},
@@ -1447,13 +1513,6 @@ export const InventoryProvider = ({ children }) => {
           last_modified_by_name: created.last_modified_by_name || null,
           id: created.id
         });
-        return next;
-      });
-      
-      // Update name to ID mapping
-      setSupplyNameToId(prev => {
-        const next = new Map(prev);
-        next.set(created.name, created.id);
         return next;
       });
     } catch (error) {
@@ -1471,13 +1530,13 @@ export const InventoryProvider = ({ children }) => {
     }
   }, []);
 
-  const updateMasterItem = useCallback(async (oldName, newItem) => {
+  const updateMasterItem = useCallback(async (supplyPublicId, newItem) => {
     try {
-      const oldItem = masterInventoryItems.get(oldName);
+      const oldItem = masterInventoryItems.get(supplyPublicId);
       if (!oldItem || !oldItem.id) {
-        throw new Error(`Item ${oldName} not found or missing ID`);
+        throw new Error(`Item ${supplyPublicId} not found or missing ID`);
       }
-      
+
       const payload = {
         name: newItem.name,
         description: newItem.description || '',
@@ -1490,18 +1549,16 @@ export const InventoryProvider = ({ children }) => {
         payload.unlink_from_type = true;
       }
       const updated = await api.updateSupply(oldItem.id, payload);
-      
-      // Update local state
-      setMasterInventoryItems(prev => {
+
+      setMasterInventoryItems((prev) => {
         const next = new Map(prev);
-        if (oldName !== newItem.name) {
-          next.delete(oldName);
-        }
-        next.set(updated.name, {
+        const locations = locationsListFromSupplyLocs(updated.locations);
+        next.set(supplyPublicId, {
+          public_id: updated.public_id || oldItem.public_id || null,
           name: updated.name,
           description: updated.description || '',
           image: updated.image || null,
-          locations: updated.locations || [],
+          locations,
           teams: updated.teams || [],
           categories: updated.categories || [],
           custom_fields: updated.custom_fields || {},
@@ -1515,17 +1572,7 @@ export const InventoryProvider = ({ children }) => {
         });
         return next;
       });
-      
-      // Update name to ID mapping if name changed
-      if (oldName !== newItem.name) {
-        setSupplyNameToId(prev => {
-          const next = new Map(prev);
-          next.delete(oldName);
-          next.set(updated.name, updated.id);
-          return next;
-        });
-      }
-      
+
       // Reload supply locations to get updated item names in boxes
       // (supply locations API JOINs with supplies table, so names will be updated)
       await reloadSupplyLocations();
@@ -1544,35 +1591,24 @@ export const InventoryProvider = ({ children }) => {
     }
   }, [masterInventoryItems, reloadSupplyLocations]);
 
-  const deleteMasterItem = useCallback(async (itemName) => {
+  const deleteMasterItem = useCallback(async (supplyPublicId) => {
     try {
-      const item = masterInventoryItems.get(itemName);
+      const item = masterInventoryItems.get(supplyPublicId);
       if (!item || !item.id) {
-        throw new Error(`Item ${itemName} not found or missing ID`);
+        throw new Error(`Item ${supplyPublicId} not found or missing ID`);
       }
-      
+
       await api.deleteSupply(item.id);
-      
-      // Update local state
-      setMasterInventoryItems(prev => {
+
+      setMasterInventoryItems((prev) => {
         const next = new Map(prev);
-        next.delete(itemName);
+        next.delete(supplyPublicId);
         return next;
       });
-      
-      // Remove from name to ID mapping
-      setSupplyNameToId(prev => {
-        const next = new Map(prev);
-        next.delete(itemName);
-        return next;
-      });
-      
-      // Reload supply locations to ensure UI reflects actual server state
-      // (CASCADE in DB removes items from boxes, reload will reflect this)
+
       await reloadSupplyLocations();
-      
-      // Close preview if this item was selected
-      if (selectedMasterItem === itemName) {
+
+      if (selectedMasterItem === supplyPublicId) {
         setSelectedMasterItem(null);
       }
     } catch (error) {
@@ -1721,7 +1757,7 @@ export const InventoryProvider = ({ children }) => {
     updateMoveModeDotDragLiveForArrows,
     requestMasterArrowsRedraw,
     freePlaceModeItem,
-    freePlacementsBySupplyName,
+    freePlacementsBySupplyPublicId,
     startFreePlaceMode,
     cancelFreePlaceMode,
     finishFreePlaceMode,

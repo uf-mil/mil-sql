@@ -12,6 +12,7 @@ import ErrorToast from './components/Common/ErrorToast';
 import ConflictErrorModal from './components/Common/ConflictErrorModal';
 import { BlockingDialogProvider } from './components/Common/BlockingDialogContext';
 import HistoryModal from './components/History/HistoryModal';
+import UserItemTypesModal from './components/Master/UserItemTypesModal';
 import AdminDashboard from './components/Admin/AdminDashboard';
 import { auth } from './api';
 
@@ -141,6 +142,7 @@ function AppContent({ user, onLogout }) {
   } = useInventory();
   const navigate = useNavigate();
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showUserTypesModal, setShowUserTypesModal] = useState(false);
 
   // Handle 401 errors by logging out
   useEffect(() => {
@@ -194,6 +196,29 @@ function AppContent({ user, onLogout }) {
               )}
               <button
                 onClick={() => {
+                  void dismissMasterWorkbenchUI().then(() => setShowUserTypesModal(true));
+                }}
+                style={{
+                  marginLeft: '1rem',
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  background: 'rgba(0,0,0,.3)',
+                  color: 'var(--text, #e6ebf4)',
+                  border: '1px solid rgba(255,255,255,.15)',
+                  borderRadius: '4px',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(0,0,0,.3)';
+                }}
+              >
+                Item types
+              </button>
+              <button
+                onClick={() => {
                   void dismissMasterWorkbenchUI().then(() => setShowHistoryModal(true));
                 }}
                 style={{
@@ -245,6 +270,7 @@ function AppContent({ user, onLogout }) {
         onRefresh={() => window.location.reload()}
       />
       <HistoryModal isOpen={showHistoryModal} onClose={() => setShowHistoryModal(false)} />
+      <UserItemTypesModal isOpen={showUserTypesModal} onClose={() => setShowUserTypesModal(false)} />
     </>
   );
 }

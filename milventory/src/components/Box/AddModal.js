@@ -3,17 +3,15 @@ import { useInventory } from '../../context/InventoryContext';
 
 const AddModal = () => {
   const { currentAddingBox, currentAddingIndex, setCurrentAddingBox, setCurrentAddingIndex, inventoryData, updateInventory, masterInventoryItems } = useInventory();
-  
-  const [selectedItemName, setSelectedItemName] = useState('');
+
+  const [selectedSupplyPublicId, setSelectedSupplyPublicId] = useState('');
   const [qty, setQty] = useState(1);
   const [selectedShelf, setSelectedShelf] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const nameInputRef = useRef(null);
 
-  // Check if this is a Tall Cabinet
   const isFileCabinet = currentAddingBox && currentAddingBox.startsWith('Tall Cabinet');
-  
-  // Shelf definitions for file cabinets
+
   const SHELF_NAMES = [
     'Shelf 6 (Top)',
     'Shelf 5',
@@ -23,21 +21,36 @@ const AddModal = () => {
     'Shelf 1 (Bottom)'
   ];
 
+  const masterRows = useMemo(
+    () =>
+      Array.from(masterInventoryItems.entries()).map(([pid, data]) => ({
+        pid,
+        data,
+        label:
+          data.type_name != null && String(data.type_name).length > 0
+            ? `${data.name} (${data.type_name})`
+            : `${data.name} (#${data.id})`
+      })),
+    [masterInventoryItems]
+  );
+
   const filteredMasterItems = useMemo(() => {
-    const itemsArray = Array.from(masterInventoryItems.keys());
     if (!searchQuery.trim()) {
-      return itemsArray;
+      return masterRows;
     }
     const query = searchQuery.toLowerCase();
-    return itemsArray.filter(name => name.toLowerCase().includes(query));
-  }, [masterInventoryItems, searchQuery]);
+    return masterRows.filter(
+      (r) =>
+        r.data.name.toLowerCase().includes(query) ||
+        (r.data.type_name || '').toLowerCase().includes(query)
+    );
+  }, [masterRows, searchQuery]);
 
   useEffect(() => {
     if (currentAddingBox) {
-      setSelectedItemName('');
+      setSelectedSupplyPublicId('');
       setQty(1);
       setSearchQuery('');
-      // Set default shelf to first one if Tall Cabinet
       if (isFileCabinet) {
         setSelectedShelf(0);
       } else {
@@ -48,22 +61,25 @@ const AddModal = () => {
   }, [currentAddingBox, isFileCabinet]);
 
   const handleSave = () => {
-    if (currentAddingBox && selectedItemName.trim()) {
+    if (currentAddingBox && selectedSupplyPublicId) {
+      const row = masterInventoryItems.get(selectedSupplyPublicId);
+      if (!row) return;
+
       const boxData = inventoryData.get(currentAddingBox);
       if (boxData) {
         const newItem = {
-          name: selectedItemName.trim(),
-          qty: parseInt(qty) || 1
+          name: row.name,
+          supplyId: row.id,
+          supplyPublicId: row.public_id || selectedSupplyPublicId,
+          qty: parseInt(qty, 10) || 1
         };
-        
-        // Tag item with shelf number if Tall Cabinet
+
         if (isFileCabinet && selectedShelf !== null) {
           newItem.shelf = selectedShelf;
         }
-        
+
         const newInventory = [...boxData.inventory];
-        
-        // For file cabinets, insert after the last item in the same shelf
+
         if (isFileCabinet && selectedShelf !== null) {
           let lastIndexInShelf = -1;
           for (let i = newInventory.length - 1; i >= 0; i--) {
@@ -78,7 +94,7 @@ const AddModal = () => {
         } else {
           newInventory.push(newItem);
         }
-        
+
         updateInventory(currentAddingBox, newInventory);
         setCurrentAddingBox(null);
         setCurrentAddingIndex(null);
@@ -119,7 +135,7 @@ const AddModal = () => {
         {isFileCabinet && (
           <select
             value={selectedShelf !== null ? selectedShelf : 0}
-            onChange={(e) => setSelectedShelf(parseInt(e.target.value))}
+            onChange={(e) => setSelectedShelf(parseInt(e.target.value, 10))}
             className="styled-select"
           >
             {SHELF_NAMES.map((name, index) => (
@@ -137,15 +153,15 @@ const AddModal = () => {
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
-              if (e.target.value && filteredMasterItems.length > 0 && !selectedItemName) {
-                setSelectedItemName(filteredMasterItems[0]);
+              if (e.target.value && filteredMasterItems.length > 0 && !selectedSupplyPublicId) {
+                setSelectedSupplyPublicId(filteredMasterItems[0].pid);
               }
             }}
             list="master-items-list"
           />
           <datalist id="master-items-list">
-            {filteredMasterItems.map(itemName => (
-              <option key={itemName} value={itemName} />
+            {filteredMasterItems.map((r) => (
+              <option key={r.pid} value={r.label} />
             ))}
           </datalist>
           {filteredMasterItems.length === 0 && searchQuery && (
@@ -155,14 +171,14 @@ const AddModal = () => {
           )}
         </div>
         <select
-          value={selectedItemName}
-          onChange={(e) => setSelectedItemName(e.target.value)}
+          value={selectedSupplyPublicId}
+          onChange={(e) => setSelectedSupplyPublicId(e.target.value)}
           className="styled-select"
         >
           <option value="">Select Master item...</option>
-          {filteredMasterItems.map(itemName => (
-            <option key={itemName} value={itemName}>
-              {itemName}
+          {filteredMasterItems.map((r) => (
+            <option key={r.pid} value={r.pid}>
+              {r.label}
             </option>
           ))}
         </select>
@@ -177,7 +193,7 @@ const AddModal = () => {
           <button type="button" className="cancel" onClick={handleCancel}>
             Cancel
           </button>
-          <button type="button" className="save" onClick={handleSave} disabled={!selectedItemName}>
+          <button type="button" className="save" onClick={handleSave} disabled={!selectedSupplyPublicId}>
             Add
           </button>
         </div>
@@ -187,4 +203,3 @@ const AddModal = () => {
 };
 
 export default AddModal;
-

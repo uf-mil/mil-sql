@@ -21,7 +21,7 @@ const ArrowConnections = () => {
     moveModeItem,
     subtractModeItem,
     freePlaceModeItem,
-    freePlacementsBySupplyName,
+    freePlacementsBySupplyPublicId,
     freePlaceVisualDots,
     subtractModeVisualFreeDots,
     moveModeVisualFreeDots,
@@ -59,7 +59,7 @@ const ArrowConnections = () => {
     if (!arrowItem) return;
 
     const locations = getItemLocations(arrowItem);
-    let freeDots = freePlacementsBySupplyName.get(arrowItem) || [];
+    let freeDots = freePlacementsBySupplyPublicId.get(arrowItem) || [];
     if (freePlaceModeItem === arrowItem && freePlaceVisualDots != null) {
       freeDots = freePlaceVisualDots;
     } else if (subtractModeItem === arrowItem && subtractModeVisualFreeDots != null) {
@@ -142,7 +142,7 @@ const ArrowConnections = () => {
     inventoryData,
     svgRef,
     screenToWorld,
-    freePlacementsBySupplyName
+    freePlacementsBySupplyPublicId
   ]);
   
   const drawArrowToPoint = (previewX, previewY, boxX, boxY, arrowsGroup) => {

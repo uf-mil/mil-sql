@@ -17,6 +17,14 @@ const SHELF_NAMES = [
   'Shelf 1 (Bottom)'
 ];
 
+function inventoryRowMatchesSupplyPublicId(invItem, supplyPublicId) {
+  if (!supplyPublicId) return false;
+  const k =
+    invItem.supplyPublicId ||
+    (invItem.supplyId != null ? `__legacy_id_${invItem.supplyId}` : null);
+  return k === supplyPublicId;
+}
+
 const MapComponent = forwardRef((props, ref) => {
   const {
     worldRef,
@@ -224,7 +232,9 @@ const MapComponent = forwardRef((props, ref) => {
             if (subtractModeItem && isRegularBox) {
               const boxData = inventoryData.get(box.title);
               if (boxData) {
-                const matchingItems = boxData.inventory.filter(item => item.name === subtractModeItem);
+                const matchingItems = boxData.inventory.filter((item) =>
+                  inventoryRowMatchesSupplyPublicId(item, subtractModeItem)
+                );
                 currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
                 remainingQty = Math.max(0, currentQty - subtractPendingQty);
               }
@@ -313,8 +323,10 @@ const MapComponent = forwardRef((props, ref) => {
                   if (subtractModeItem) {
                     const boxData = inventoryData.get(box.title);
                     if (boxData) {
-                      const matchingItems = boxData.inventory.filter(item => 
-                        item.name === subtractModeItem && (item.shelf ?? 0) === idx
+                      const matchingItems = boxData.inventory.filter(
+                        (item) =>
+                          inventoryRowMatchesSupplyPublicId(item, subtractModeItem) &&
+                          (item.shelf ?? 0) === idx
                       );
                       currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
                       remainingQty = Math.max(0, currentQty - subtractPendingQty);

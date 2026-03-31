@@ -24,7 +24,7 @@ const MasterItemPreview = () => {
     leftPaneWidth,
     leftPaneCollapsed,
     freePlaceModeItem,
-    freePlacementsBySupplyName,
+    freePlacementsBySupplyPublicId,
     startFreePlaceMode,
     cancelFreePlaceMode,
     finishFreePlaceMode
@@ -79,7 +79,12 @@ const MasterItemPreview = () => {
     locations.forEach(boxTitle => {
       const boxData = inventoryData.get(boxTitle);
       if (!boxData) return;
-      const matchingItems = boxData.inventory.filter(i => i.name === selectedMasterItem);
+      const matchingItems = boxData.inventory.filter((i) => {
+        const k =
+          i.supplyPublicId ||
+          (i.supplyId != null ? `__legacy_id_${i.supplyId}` : null);
+        return k === selectedMasterItem;
+      });
       if (boxTitle.startsWith('Tall Cabinet')) {
         matchingItems.forEach(i => {
           const shelfIdx = i.shelf ?? 0;
@@ -91,7 +96,7 @@ const MasterItemPreview = () => {
         boxLocationDetails.push({ label: boxTitle, qty: totalQty });
       }
     });
-    const freeDots = freePlacementsBySupplyName.get(selectedMasterItem) || [];
+    const freeDots = freePlacementsBySupplyPublicId.get(selectedMasterItem) || [];
     freeDots.forEach((p) => {
       freeCoordinatePairs.push({ x: Math.round(p.x), y: Math.round(p.y) });
     });
@@ -103,7 +108,7 @@ const MasterItemPreview = () => {
   const positionY = 20;
 
   const handleDeleteItem = async () => {
-    const freeDots = freePlacementsBySupplyName.get(selectedMasterItem) || [];
+    const freeDots = freePlacementsBySupplyPublicId.get(selectedMasterItem) || [];
     const placeCount = locations.length + freeDots.length;
     if (placeCount > 0) {
       const confirmed = await showConfirm(

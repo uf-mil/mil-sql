@@ -55,6 +55,7 @@ def get_all_supply_locations(current_user_id=None):
             loc = SupplyLocation.from_db_row(row[:10])
             loc_dict = loc.to_dict()
             loc_dict['supply_name'] = row[10]
+            loc_dict['supply_public_id'] = row[11]
             locations.append(loc_dict)
         
         cur.close()
@@ -118,6 +119,7 @@ def get_location_supplies(name, current_user_id=None):
             loc = SupplyLocation.from_db_row(row[:10])
             loc_dict = loc.to_dict()
             loc_dict['supply_name'] = row[10]
+            loc_dict['supply_public_id'] = row[11]
             locations.append(loc_dict)
         
         cur.close()

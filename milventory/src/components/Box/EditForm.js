@@ -1,38 +1,77 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 
+function rowPublicId(item) {
+  if (!item) return null;
+  return (
+    item.supplyPublicId ||
+    (item.supplyId != null ? `__legacy_id_${item.supplyId}` : null)
+  );
+}
+
 const EditModal = () => {
-  const { currentEditingBox, currentEditingIndex, inventoryData, setCurrentEditingBox, setCurrentEditingIndex, setLastSelectedIndex, updateInventory, masterInventoryItems, resolveMasterItem } = useInventory();
-  
+  const {
+    currentEditingBox,
+    currentEditingIndex,
+    inventoryData,
+    setCurrentEditingBox,
+    setCurrentEditingIndex,
+    setLastSelectedIndex,
+    updateInventory,
+    masterInventoryItems,
+    resolveMasterItem
+  } = useInventory();
+
   const boxData = currentEditingBox ? inventoryData.get(currentEditingBox) : null;
   const item = boxData && currentEditingIndex !== null ? boxData.inventory[currentEditingIndex] : null;
-  const masterItem = item ? resolveMasterItem(item.name) : null;
-  
-  const [selectedItemName, setSelectedItemName] = useState('');
+  const itemPid = rowPublicId(item);
+  const masterItem = itemPid ? resolveMasterItem(itemPid) : null;
+
+  const masterRows = useMemo(
+    () =>
+      Array.from(masterInventoryItems.entries()).map(([pid, data]) => ({
+        pid,
+        data,
+        label:
+          data.type_name != null && String(data.type_name).length > 0
+            ? `${data.name} (${data.type_name})`
+            : `${data.name} (#${data.id})`
+      })),
+    [masterInventoryItems]
+  );
+
+  const [selectedSupplyPublicId, setSelectedSupplyPublicId] = useState('');
   const [qty, setQty] = useState(1);
   const nameInputRef = useRef(null);
 
   useEffect(() => {
     if (item) {
-      setSelectedItemName(item.name || '');
+      setSelectedSupplyPublicId(itemPid || '');
       setQty(item.qty || 1);
       setTimeout(() => nameInputRef.current?.focus(), 0);
     } else {
-      setSelectedItemName('');
+      setSelectedSupplyPublicId('');
       setQty(1);
     }
-  }, [item]);
+  }, [item, itemPid]);
+
+  const previewMaster = selectedSupplyPublicId
+    ? resolveMasterItem(selectedSupplyPublicId)
+    : masterItem;
 
   const handleSave = () => {
-    if (currentEditingBox !== null && currentEditingIndex !== null && selectedItemName.trim()) {
-      const boxData = inventoryData.get(currentEditingBox);
-      if (boxData) {
-        const newInventory = [...boxData.inventory];
+    if (currentEditingBox !== null && currentEditingIndex !== null && selectedSupplyPublicId) {
+      const boxDataInner = inventoryData.get(currentEditingBox);
+      const row = masterInventoryItems.get(selectedSupplyPublicId);
+      if (boxDataInner && row) {
+        const newInventory = [...boxDataInner.inventory];
         const existingItem = newInventory[currentEditingIndex];
         newInventory[currentEditingIndex] = {
-          name: selectedItemName.trim(),
-          qty: parseInt(qty) || 1,
-          shelf: existingItem.shelf // Preserve shelf if it exists
+          name: row.name,
+          supplyId: row.id,
+          supplyPublicId: row.public_id || selectedSupplyPublicId,
+          qty: parseInt(qty, 10) || 1,
+          shelf: existingItem.shelf
         };
         updateInventory(currentEditingBox, newInventory);
         setCurrentEditingBox(null);
@@ -75,26 +114,26 @@ const EditModal = () => {
         <h3>Edit Item</h3>
         <select
           ref={nameInputRef}
-          value={selectedItemName}
-          onChange={(e) => setSelectedItemName(e.target.value)}
+          value={selectedSupplyPublicId}
+          onChange={(e) => setSelectedSupplyPublicId(e.target.value)}
           className="styled-select"
         >
           <option value="">Select Master item...</option>
-          {Array.from(masterInventoryItems.keys()).map(itemName => (
-            <option key={itemName} value={itemName}>
-              {itemName}
+          {masterRows.map((r) => (
+            <option key={r.pid} value={r.pid}>
+              {r.label}
             </option>
           ))}
         </select>
-        {masterItem && (
+        {previewMaster && (
           <div style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: '-0.5rem', marginBottom: '0.5rem' }}>
-            {masterItem.description && <div>{masterItem.description}</div>}
-            {masterItem.image && (
+            {previewMaster.description && <div>{previewMaster.description}</div>}
+            {previewMaster.image && (
               <div className="edit-form-image-container" style={{ marginTop: '0.5rem' }}>
-                <img src={masterItem.image} alt={masterItem.name} />
+                <img src={previewMaster.image} alt={previewMaster.name} />
               </div>
-          )}
-        </div>
+            )}
+          </div>
         )}
         <input
           type="number"
@@ -107,7 +146,7 @@ const EditModal = () => {
           <button type="button" className="cancel" onClick={handleCancel}>
             Cancel
           </button>
-          <button type="button" className="save" onClick={handleSave} disabled={!selectedItemName}>
+          <button type="button" className="save" onClick={handleSave} disabled={!selectedSupplyPublicId}>
             Save
           </button>
         </div>
@@ -117,4 +156,3 @@ const EditModal = () => {
 };
 
 export default EditModal;
-

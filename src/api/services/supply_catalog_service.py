@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 import mysql.connector
@@ -183,6 +184,7 @@ def list_supplies() -> List[dict]:
             cf = parse_custom_fields_cell(row.get("custom_fields"))
             supply_dict = {
                 "id": sid,
+                "public_id": row["public_id"],
                 "name": row["name"],
                 "description": row["description"],
                 "image": effective_supply_image(row.get("image"), row.get("type_image")),
@@ -222,6 +224,7 @@ def get_supply(supply_id: int) -> dict:
         category_ids = repo.fetch_categories_for_supply_ordered(cur, supply_id)
         supply_dict = {
             "id": row["id"],
+            "public_id": row["public_id"],
             "name": row["name"],
             "description": row["description"],
             "image": effective_supply_image(row.get("image"), row.get("type_image")),
@@ -299,12 +302,11 @@ def create_supply(data: dict, current_user_id: str) -> dict:
             if not okp:
                 raise CatalogError(400, {"error": errp})
 
-        if repo.select_supply_id_by_name(cur, name_final):
-            raise CatalogError(400, {"error": "Supply with this name already exists"})
-
         cf_json = json.dumps(custom_fields) if custom_fields else None
+        new_public_id = str(uuid.uuid4())
         supply_id = repo.insert_supply(
             cur,
+            new_public_id,
             name_final,
             desc_final,
             image_final,
@@ -343,6 +345,7 @@ def create_supply(data: dict, current_user_id: str) -> dict:
         teams = repo.fetch_teams_for_supply_ordered(cur, supply_id)
         category_ids = repo.fetch_categories_for_supply_ordered(cur, supply_id)
         supply = Supply.from_dict(row).to_dict()
+        supply["public_id"] = row.get("public_id")
         supply["image"] = effective_supply_image(row.get("image"), row.get("type_image"))
         supply["type_has_template_image"] = bool(row.get("type_image"))
         supply["custom_fields"] = cf
@@ -445,10 +448,6 @@ def update_supply(supply_id: int, data: dict, current_user_id: str) -> dict:
             if not okp:
                 raise CatalogError(400, {"error": errp})
 
-        if "name" in data and data["name"]:
-            if repo.name_exists_excluding(cur, data["name"].strip(), supply_id):
-                raise CatalogError(400, {"error": "Supply with this name already exists"})
-
         updates = []
         values = []
         if "name" in data:
@@ -531,6 +530,7 @@ def update_supply(supply_id: int, data: dict, current_user_id: str) -> dict:
         row = repo.fetch_supply_with_type_join(cur, supply_id)
         cf = parse_custom_fields_cell(row.get("custom_fields"))
         supply = Supply.from_dict(row).to_dict()
+        supply["public_id"] = row.get("public_id")
         supply["image"] = effective_supply_image(row.get("image"), row.get("type_image"))
         supply["type_has_template_image"] = bool(row.get("type_image"))
         supply["custom_fields"] = cf
@@ -686,9 +686,17 @@ def undo_supply_history(history_id: int, current_user_id: str) -> dict:
         original_supply_id = history["supply_id"]
         if not original_supply_id and history["action_type"] == "DELETE":
             if history["old_name"]:
-                existing_id = repo.select_supply_id_by_name(cur, history["old_name"])
-                if existing_id:
-                    original_supply_id = existing_id
+                name_matches = repo.select_supply_ids_by_name(cur, history["old_name"])
+                if len(name_matches) > 1:
+                    raise CatalogError(
+                        400,
+                        {
+                            "error": "Cannot undo: multiple supplies share this name; disambiguation is not available for this history entry.",
+                            "error_type": "UNDO_AMBIGUOUS_NAME",
+                        },
+                    )
+                if len(name_matches) == 1:
+                    original_supply_id = name_matches[0]
 
         team_changes = repo.fetch_history_teams(cur, history_id)
         category_changes = repo.fetch_history_categories(cur, history_id)
@@ -738,10 +746,12 @@ def undo_supply_history(history_id: int, current_user_id: str) -> dict:
                         )
 
         elif history["action_type"] == "DELETE":
+            restore_public_id = str(uuid.uuid4())
             if original_supply_id:
                 repo.insert_supply_with_id(
                     cur,
                     original_supply_id,
+                    restore_public_id,
                     history["old_name"],
                     history["old_description"],
                     history["old_image"],
@@ -752,6 +762,7 @@ def undo_supply_history(history_id: int, current_user_id: str) -> dict:
             else:
                 restored_supply_id = repo.insert_supply_without_id(
                     cur,
+                    restore_public_id,
                     history["old_name"],
                     history["old_description"],
                     history["old_image"],

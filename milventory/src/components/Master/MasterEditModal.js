@@ -174,7 +174,7 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
 };
 
 const MasterEditModal = ({ isOpen, onClose, itemName }) => {
-  const { updateMasterItem, resolveMasterItem, masterInventoryItems } = useInventory();
+  const { updateMasterItem, resolveMasterItem } = useInventory();
   const { showAlert } = useBlockingDialog();
   
   const [name, setName] = useState('');
@@ -412,10 +412,6 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     }
 
     if (finalName && itemName) {
-      if (finalName !== itemName && masterInventoryItems.has(finalName)) {
-        await showAlert('An item with this name already exists. Please use a different name.');
-        return;
-      }
       if (!areNumberCustomFieldsValid(customFields, customFieldDefinitions)) {
         await showAlert('Please enter a valid number in all number fields (or leave them empty).');
         return;

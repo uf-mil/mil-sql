@@ -13,7 +13,7 @@ const SubtractModePreview = () => {
     leftPaneCollapsed,
     resolveMasterItem,
     subtractModePreviewRef,
-    freePlacementsBySupplyName
+    freePlacementsBySupplyPublicId
   } = useInventory();
 
   const item = subtractModeItem ? resolveMasterItem(subtractModeItem) : null;
@@ -54,7 +54,7 @@ const SubtractModePreview = () => {
     const parts = key.split('||');
     if (parts[0] === FREE_SUBTRACT_DOT_PREFIX && parts[1] != null && parts[1] !== '') {
       const id = parseInt(parts[1], 10);
-      const placements = freePlacementsBySupplyName.get(subtractModeItem) || [];
+      const placements = freePlacementsBySupplyPublicId.get(subtractModeItem) || [];
       const dot = placements.find((p) => p.id === id);
       if (dot) return `Floor (${Math.round(dot.x)}, ${Math.round(dot.y)})`;
       return 'Floor placement';
