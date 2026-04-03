@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { getCategories, getTeams, api } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
@@ -50,7 +50,17 @@ const areNumberCustomFieldsValid = (customFields, customFieldDefinitions) => {
 };
 
 // Reusable tag dropdown with fuzzy search
-const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onRemove, maxResults = 5, capitalize = false, onSearchChange }) => {
+const TagDropdown = ({
+  placeholder,
+  selectedItems,
+  availableItems,
+  onSelect,
+  onRemove,
+  maxResults = 5,
+  capitalize = false,
+  onSearchChange,
+  lockedItems = []
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef(null);
@@ -105,21 +115,51 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
             {placeholder}
           </span>
         )}
-        {selectedItems.map(item => (
-          <span key={item} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '0.24rem',
-            padding: '0.18rem 0.42rem', background: 'var(--accent)', color: 'white',
-            borderRadius: '4px', fontSize: '0.8rem',
-            ...(capitalize ? { textTransform: 'capitalize' } : {})
-          }}>
-            {item}
-            <button type="button" onClick={() => onRemove(item)} style={{
-              background: 'transparent', border: 'none', color: 'white', cursor: 'pointer',
-              padding: '0', marginLeft: '0.25rem', fontSize: '1rem', lineHeight: '1',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }} title={`Remove ${item}`}>×</button>
-          </span>
-        ))}
+        {selectedItems.map((item) => {
+          const isLocked = lockedItems.includes(item);
+          return (
+            <span
+              key={item}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.24rem',
+                padding: '0.18rem 0.42rem',
+                background: 'var(--accent)',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                ...(capitalize ? { textTransform: 'capitalize' } : {})
+              }}
+            >
+              {item}
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={() => {
+                  if (!isLocked) onRemove(item);
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'white',
+                  cursor: isLocked ? 'not-allowed' : 'pointer',
+                  opacity: isLocked ? 0.35 : 1,
+                  padding: '0',
+                  marginLeft: '0.25rem',
+                  fontSize: '1rem',
+                  lineHeight: '1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title={isLocked ? 'Required by item type' : `Remove ${item}`}
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
       </div>
 
       {/* Search input / dropdown trigger — 132% (120% + 10%) */}
@@ -464,9 +504,13 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
       setLockedFieldKeys([]);
       return;
     }
-    const t = supplyTypes.find(x => String(x.id) === String(selectedSupplyTypeId));
+    const t = supplyTypes.find((x) => String(x.id) === String(selectedSupplyTypeId));
     if (!selectedSupplyTypeId || !t) {
       setLockedFieldKeys([]);
+      if (!selectedSupplyTypeId) {
+        setSelectedCategories([]);
+        setSelectedTeams([]);
+      }
       return;
     }
     const defs = t.default_custom_fields || {};
@@ -482,7 +526,56 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
     if (t.image) {
       setCustomImage(null);
     }
+
+    const teamsLt = (Array.isArray(t.locked_team_names) ? t.locked_team_names : []).map((x) =>
+      String(x).toLowerCase()
+    );
+    setSelectedTeams(teamsLt);
   }, [selectedSupplyTypeId, supplyTypes, isOpen, showTypeSelector]);
+
+  useEffect(() => {
+    if (!isOpen || !showTypeSelector || !categoryNameToId.size) return;
+    const t = supplyTypes.find((x) => String(x.id) === String(selectedSupplyTypeId));
+    if (!selectedSupplyTypeId || !t) return;
+    const catIds = Array.isArray(t.locked_category_ids) ? t.locked_category_ids : [];
+    const catNames = catIds
+      .map((id) => {
+        for (const [name, cid] of categoryNameToId.entries()) {
+          if (Number(cid) === Number(id)) return name;
+        }
+        return null;
+      })
+      .filter(Boolean);
+    setSelectedCategories(catNames);
+  }, [categoryNameToId, selectedSupplyTypeId, isOpen, showTypeSelector]);
+
+  const effectiveTypeIdForLocks = showTypeSelector ? selectedSupplyTypeId : '';
+  const selectedTypeForLocks = effectiveTypeIdForLocks
+    ? supplyTypes.find((x) => String(x.id) === String(effectiveTypeIdForLocks))
+    : undefined;
+
+  const typeLockedCategoryNames = useMemo(() => {
+    if (!selectedTypeForLocks || !categoryNameToId.size) return [];
+    const ids = Array.isArray(selectedTypeForLocks.locked_category_ids)
+      ? selectedTypeForLocks.locked_category_ids
+      : [];
+    return ids
+      .map((id) => {
+        for (const [name, cid] of categoryNameToId.entries()) {
+          if (Number(cid) === Number(id)) return name;
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [selectedTypeForLocks, categoryNameToId]);
+
+  const typeLockedTeamLower = useMemo(() => {
+    if (!selectedTypeForLocks) return [];
+    return (Array.isArray(selectedTypeForLocks.locked_team_names)
+      ? selectedTypeForLocks.locked_team_names
+      : []
+    ).map((x) => String(x).toLowerCase());
+  }, [selectedTypeForLocks]);
 
   const handleImageChange = async (e) => {
     const tid = showTypeSelector ? selectedSupplyTypeId : '';
@@ -702,19 +795,21 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
           placeholder="Team Tags (Optional)"
           selectedItems={selectedTeams}
           availableItems={availableTeams}
-          onSelect={(team) => setSelectedTeams(prev => [...prev, team])}
-          onRemove={(team) => setSelectedTeams(prev => prev.filter(t => t !== team))}
+          onSelect={(team) => setSelectedTeams((prev) => [...prev, team])}
+          onRemove={(team) => setSelectedTeams((prev) => prev.filter((t) => t !== team))}
           capitalize
+          lockedItems={typeLockedTeamLower}
         />
 
         <TagDropdown
           placeholder="Category Tags (Optional)"
           selectedItems={selectedCategories}
           availableItems={availableCategories}
-          onSelect={(cat) => setSelectedCategories(prev => [...prev, cat])}
-          onRemove={(cat) => setSelectedCategories(prev => prev.filter(c => c !== cat))}
+          onSelect={(cat) => setSelectedCategories((prev) => [...prev, cat])}
+          onRemove={(cat) => setSelectedCategories((prev) => prev.filter((c) => c !== cat))}
           maxResults={5}
           onSearchChange={setCategorySearchQuery}
+          lockedItems={typeLockedCategoryNames}
         />
 
         {/* Custom fields: dropdown to add; each added field is a full-width row with gray X to remove */}

@@ -468,6 +468,19 @@ body {
   gap: 0.75rem;
 }
 
+.modal form {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.type-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* Master create/edit: cap height (40px inset top + bottom), scroll body */
 .modal.master-item-edit-modal,
 .modal.master-item-create-modal {

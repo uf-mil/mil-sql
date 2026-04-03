@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { api } from '../../api';
+import { api, getCategories, getTeams } from '../../api';
 import { useInventory } from '../../context/InventoryContext';
 import {
   areNumberCustomFieldsValid,
@@ -16,11 +16,17 @@ function formatDefaultValue(v) {
   return String(v);
 }
 
-function TypeDetailPane({ typeRow, customFieldDefinitions }) {
+function TypeDetailPane({ typeRow, customFieldDefinitions, categoryOptions = [] }) {
   const locked = Array.isArray(typeRow.locked_custom_field_keys) ? typeRow.locked_custom_field_keys : [];
   const defaults = typeRow.default_custom_fields && typeof typeRow.default_custom_fields === 'object'
     ? typeRow.default_custom_fields
     : {};
+  const lockedCatIds = Array.isArray(typeRow.locked_category_ids) ? typeRow.locked_category_ids : [];
+  const lockedCatLabels = lockedCatIds.map((id) => {
+    const c = categoryOptions.find((x) => Number(x.id) === Number(id));
+    return c ? c.name : `ID ${id}`;
+  });
+  const lockedTeams = Array.isArray(typeRow.locked_team_names) ? typeRow.locked_team_names : [];
 
   return (
     <div className="user-types-detail user-types-right-inner">
@@ -36,6 +42,12 @@ function TypeDetailPane({ typeRow, customFieldDefinitions }) {
         <dd>{typeRow.item_description_prefix?.trim() ? typeRow.item_description_prefix : '—'}</dd>
         <dt>Unique on map</dt>
         <dd>{typeRow.is_unique ? 'Yes' : 'No'}</dd>
+        <dt>Admin-only edits</dt>
+        <dd>{typeRow.prevent_user_edit ? 'Yes (only leaders can change this type)' : 'No'}</dd>
+        <dt>Required categories</dt>
+        <dd>{lockedCatLabels.length ? lockedCatLabels.join(', ') : '—'}</dd>
+        <dt>Required teams</dt>
+        <dd>{lockedTeams.length ? lockedTeams.join(', ') : '—'}</dd>
       </dl>
       {typeRow.image && (
         <div style={{ marginTop: '1rem' }}>
@@ -80,6 +92,8 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
   const [submitting, setSubmitting] = useState(false);
   const [addFieldDropdownOpen, setAddFieldDropdownOpen] = useState(false);
   const addFieldDropdownRef = useRef(null);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [teamOptions, setTeamOptions] = useState([]);
 
   const resetUi = useCallback(() => {
     setSearch('');
@@ -116,6 +130,17 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
       .getCustomFieldDefinitions()
       .then(setCustomFieldDefinitions)
       .catch(() => setCustomFieldDefinitions([]));
+    getCategories()
+      .then((cats) => {
+        const opts = (cats || [])
+          .filter((c) => c && typeof c === 'object' && c.id != null && c.name)
+          .map((c) => ({ id: c.id, name: c.name }));
+        setCategoryOptions(opts);
+      })
+      .catch(() => setCategoryOptions([]));
+    getTeams()
+      .then((teams) => setTeamOptions((teams || []).map((t) => String(t).toLowerCase())))
+      .catch(() => setTeamOptions([]));
   }, [isOpen, loadTypes, resetUi]);
 
   useEffect(() => {
@@ -223,7 +248,9 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
         image: form.image || null,
         default_custom_fields,
         locked_custom_field_keys,
-        is_unique: form.is_unique
+        is_unique: form.is_unique,
+        locked_category_ids: [...(form.locked_category_ids || [])].sort((a, b) => Number(a) - Number(b)),
+        locked_team_names: form.locked_team_names || []
       });
       await reloadMasterItems();
       try {
@@ -317,7 +344,11 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
               </div>
             )}
             {panelMode === 'detail' && selectedType && (
-              <TypeDetailPane typeRow={selectedType} customFieldDefinitions={customFieldDefinitions} />
+              <TypeDetailPane
+                typeRow={selectedType}
+                customFieldDefinitions={customFieldDefinitions}
+                categoryOptions={categoryOptions}
+              />
             )}
             {panelMode === 'detail' && !selectedType && !loadingTypes && (
               <div className="user-types-idle user-types-right-inner">Type not found. Try refreshing.</div>
@@ -336,6 +367,8 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
                     addFieldDropdownOpen={addFieldDropdownOpen}
                     setAddFieldDropdownOpen={setAddFieldDropdownOpen}
                     addFieldDropdownRef={addFieldDropdownRef}
+                    categoryOptions={categoryOptions}
+                    teamOptions={teamOptions}
                   />
                   <div className="modal-actions">
                     <button type="button" className="cancel" onClick={cancelCreate}>

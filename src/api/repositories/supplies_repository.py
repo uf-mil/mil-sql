@@ -157,7 +157,8 @@ def fetch_supply_type_row(cur, type_id: int) -> Optional[dict]:
     cur.execute(
         """
             SELECT id, name, item_name_prefix, item_description_prefix, image,
-                   default_custom_fields, locked_custom_field_keys, is_unique
+                   default_custom_fields, locked_custom_field_keys,
+                   locked_category_ids, locked_team_names, is_unique
             FROM supply_types WHERE id = %s
         """,
         (int(type_id),),

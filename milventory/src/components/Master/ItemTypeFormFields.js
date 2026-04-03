@@ -51,7 +51,10 @@ export const emptyForm = () => ({
   item_description_prefix: '',
   image: null,
   typeCustomFields: {},
-  is_unique: false
+  locked_category_ids: [],
+  locked_team_names: [],
+  is_unique: false,
+  prevent_user_edit: false
 });
 
 export const TypeFormBody = ({
@@ -62,9 +65,12 @@ export const TypeFormBody = ({
   customFieldDefinitions,
   addFieldDropdownOpen,
   setAddFieldDropdownOpen,
-  addFieldDropdownRef
+  addFieldDropdownRef,
+  showPreventUserEditCheckbox = false,
+  categoryOptions = [],
+  teamOptions = []
 }) => (
-  <>
+  <div className="type-form-fields">
     <input
       type="text"
       placeholder="Type name (shown in Type column)"
@@ -89,15 +95,185 @@ export const TypeFormBody = ({
       value={form.item_description_prefix}
       onChange={(e) => setForm((f) => ({ ...f, item_description_prefix: e.target.value }))}
     />
-    <label style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>
+    <label
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: '0.5rem',
+        fontSize: '0.85rem',
+        color: 'var(--muted)',
+        minWidth: 0,
+        maxWidth: '100%'
+      }}
+    >
       {imageLabel}
-      <input type="file" accept="image/*" onChange={onImagePick} style={{ marginLeft: '0.5rem' }} />
+      <input type="file" accept="image/*" onChange={onImagePick} style={{ maxWidth: '100%' }} />
     </label>
     {form.image && (
       <div className="edit-form-image-container">
         <img src={form.image} alt="" />
       </div>
     )}
+
+    <label
+      style={{
+        display: 'block',
+        marginTop: '0.5rem',
+        marginBottom: '0.25rem',
+        fontSize: '0.85rem',
+        color: 'var(--muted)'
+      }}
+    >
+      Required categories
+    </label>
+    <p style={{ fontSize: '0.8rem', color: 'var(--muted)', margin: '0 0 0.5rem', lineHeight: 1.35 }}>
+      Always applied to new items of this type; users may add more categories. Cannot be removed on the item.
+    </p>
+    {(form.locked_category_ids || []).map((cid) => {
+      const c = categoryOptions.find((x) => Number(x.id) === Number(cid));
+      const label = c ? c.name : `ID ${cid}`;
+      return (
+        <div
+          key={cid}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginBottom: '0.4rem',
+            fontSize: '0.85rem'
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
+          <button
+            type="button"
+            onClick={() =>
+              setForm((f) => ({
+                ...f,
+                locked_category_ids: (f.locked_category_ids || []).filter((x) => Number(x) !== Number(cid))
+              }))
+            }
+            style={{
+              flexShrink: 0,
+              background: 'transparent',
+              border: 'none',
+              color: '#888',
+              cursor: 'pointer',
+              padding: '0.25rem',
+              fontSize: '1.25rem',
+              lineHeight: 1
+            }}
+            title="Remove category"
+          >
+            ×
+          </button>
+        </div>
+      );
+    })}
+    <select
+      className="styled-select"
+      value=""
+      onChange={(e) => {
+        const v = e.target.value;
+        e.target.value = '';
+        if (!v) return;
+        const id = Number(v);
+        if (Number.isNaN(id)) return;
+        setForm((f) => {
+          const cur = f.locked_category_ids || [];
+          if (cur.some((x) => Number(x) === id)) return f;
+          return { ...f, locked_category_ids: [...cur, id].sort((a, b) => Number(a) - Number(b)) };
+        });
+      }}
+      style={{ width: '100%', marginBottom: '0.25rem' }}
+      aria-label="Add required category"
+    >
+      <option value="">+ Add category…</option>
+      {categoryOptions
+        .filter((c) => !(form.locked_category_ids || []).some((x) => Number(x) === Number(c.id)))
+        .map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+    </select>
+
+    <label
+      style={{
+        display: 'block',
+        marginTop: '0.65rem',
+        marginBottom: '0.25rem',
+        fontSize: '0.85rem',
+        color: 'var(--muted)'
+      }}
+    >
+      Required teams
+    </label>
+    <p style={{ fontSize: '0.8rem', color: 'var(--muted)', margin: '0 0 0.5rem', lineHeight: 1.35 }}>
+      Always applied to new items of this type; users may add more teams. Cannot be removed on the item.
+    </p>
+    {(form.locked_team_names || []).map((tn) => (
+      <div
+        key={tn}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          marginBottom: '0.4rem',
+          fontSize: '0.85rem',
+          textTransform: 'capitalize'
+        }}
+      >
+        <span style={{ flex: 1, minWidth: 0 }}>{tn}</span>
+        <button
+          type="button"
+          onClick={() =>
+            setForm((f) => ({
+              ...f,
+              locked_team_names: (f.locked_team_names || []).filter((x) => x !== tn)
+            }))
+          }
+          style={{
+            flexShrink: 0,
+            background: 'transparent',
+            border: 'none',
+            color: '#888',
+            cursor: 'pointer',
+            padding: '0.25rem',
+            fontSize: '1.25rem',
+            lineHeight: 1
+          }}
+          title="Remove team"
+        >
+          ×
+        </button>
+      </div>
+    ))}
+    <select
+      className="styled-select"
+      value=""
+      onChange={(e) => {
+        const v = e.target.value;
+        e.target.value = '';
+        if (!v) return;
+        setForm((f) => {
+          const cur = f.locked_team_names || [];
+          if (cur.includes(v)) return f;
+          return { ...f, locked_team_names: [...cur, v].sort((a, b) => a.localeCompare(b)) };
+        });
+      }}
+      style={{ width: '100%', marginBottom: '0.25rem' }}
+      aria-label="Add required team"
+    >
+      <option value="">+ Add team…</option>
+      {teamOptions
+        .filter((t) => !(form.locked_team_names || []).includes(t))
+        .map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+    </select>
 
     <label
       style={{
@@ -291,19 +467,49 @@ export const TypeFormBody = ({
     <label
       style={{
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         gap: '0.5rem',
         fontSize: '0.9rem',
         color: 'var(--text)',
-        marginTop: '0.75rem'
+        marginTop: '0.75rem',
+        minWidth: 0,
+        maxWidth: '100%'
       }}
     >
       <input
         type="checkbox"
         checked={form.is_unique}
         onChange={(e) => setForm((f) => ({ ...f, is_unique: e.target.checked }))}
+        style={{ flexShrink: 0, marginTop: '0.2em' }}
       />
-      Unique qty on map (each master item of this type may have at most 1 total quantity across locations)
+      <span style={{ minWidth: 0, flex: 1, lineHeight: 1.35 }}>
+        Unique qty on map (each master item of this type may have at most 1 total quantity across locations)
+      </span>
     </label>
-  </>
+
+    {showPreventUserEditCheckbox && (
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.5rem',
+          fontSize: '0.9rem',
+          color: 'var(--text)',
+          marginTop: '0.5rem',
+          minWidth: 0,
+          maxWidth: '100%'
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={!!form.prevent_user_edit}
+          onChange={(e) => setForm((f) => ({ ...f, prevent_user_edit: e.target.checked }))}
+          style={{ flexShrink: 0, marginTop: '0.2em' }}
+        />
+        <span style={{ minWidth: 0, flex: 1, lineHeight: 1.35 }}>
+          Mark as Admin (Prevent Users from Editing)
+        </span>
+      </label>
+    )}
+  </div>
 );

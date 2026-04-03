@@ -51,7 +51,10 @@ def migrate_supply_types():
                     image LONGTEXT NULL,
                     default_custom_fields JSON NULL,
                     locked_custom_field_keys JSON NULL,
+                    locked_category_ids JSON NULL,
+                    locked_team_names JSON NULL,
                     is_unique TINYINT(1) NOT NULL DEFAULT 0,
+                    prevent_user_edit TINYINT(1) NOT NULL DEFAULT 0,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     UNIQUE KEY uq_supply_types_name (name)
@@ -74,6 +77,41 @@ def migrate_supply_types():
             print("✓ Added supplies.supply_type_id")
         else:
             print("✓ supplies.supply_type_id already exists")
+
+        if check_table_exists(cur, 'supply_types') and not check_column_exists(
+            cur, 'supply_types', 'prevent_user_edit'
+        ):
+            cur.execute("""
+                ALTER TABLE supply_types
+                ADD COLUMN prevent_user_edit TINYINT(1) NOT NULL DEFAULT 0
+                AFTER is_unique
+            """)
+            conn.commit()
+            print("✓ Added supply_types.prevent_user_edit")
+        elif check_table_exists(cur, 'supply_types'):
+            print("✓ supply_types.prevent_user_edit already exists")
+
+        if check_table_exists(cur, 'supply_types') and not check_column_exists(
+            cur, 'supply_types', 'locked_category_ids'
+        ):
+            cur.execute(
+                "ALTER TABLE supply_types ADD COLUMN locked_category_ids JSON NULL AFTER locked_custom_field_keys"
+            )
+            conn.commit()
+            print("✓ Added supply_types.locked_category_ids")
+        elif check_table_exists(cur, 'supply_types'):
+            print("✓ supply_types.locked_category_ids already exists")
+
+        if check_table_exists(cur, 'supply_types') and not check_column_exists(
+            cur, 'supply_types', 'locked_team_names'
+        ):
+            cur.execute(
+                "ALTER TABLE supply_types ADD COLUMN locked_team_names JSON NULL AFTER locked_category_ids"
+            )
+            conn.commit()
+            print("✓ Added supply_types.locked_team_names")
+        elif check_table_exists(cur, 'supply_types'):
+            print("✓ supply_types.locked_team_names already exists")
 
         cur.close()
         conn.close()

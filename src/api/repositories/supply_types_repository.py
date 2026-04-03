@@ -3,7 +3,9 @@ from typing import List, Optional
 
 _SUPPLY_TYPE_SELECT = """
     id, name, template_description, item_name_prefix, item_description_prefix,
-    image, default_custom_fields, locked_custom_field_keys, is_unique,
+    image, default_custom_fields, locked_custom_field_keys,
+    locked_category_ids, locked_team_names,
+    is_unique, prevent_user_edit,
     created_at, updated_at
 """
 
@@ -32,14 +34,19 @@ def insert_supply_type(
     image,
     default_custom_fields_json,
     locked_keys_json,
+    locked_category_ids_json,
+    locked_team_names_json,
     is_unique: int,
+    prevent_user_edit: int,
 ) -> int:
     cur.execute(
         """
             INSERT INTO supply_types (
                 name, template_description, item_name_prefix, item_description_prefix,
-                image, default_custom_fields, locked_custom_field_keys, is_unique
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                image, default_custom_fields, locked_custom_field_keys,
+                locked_category_ids, locked_team_names,
+                is_unique, prevent_user_edit
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             name,
@@ -49,7 +56,10 @@ def insert_supply_type(
             image,
             default_custom_fields_json,
             locked_keys_json,
+            locked_category_ids_json,
+            locked_team_names_json,
             is_unique,
+            prevent_user_edit,
         ),
     )
     return cur.lastrowid

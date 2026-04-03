@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 
 from src.api.helpers.datetime_json import db_datetime_to_utc_iso
 import mysql.connector
@@ -15,8 +15,52 @@ from src.api.db import get_db
 from src.api.middleware.auth import require_auth, require_leader
 from src.api.helpers.unique_type_qty import type_has_supply_with_map_qty_over_one
 from src.api.repositories import supply_types_repository as repo
+from src.api.repositories import categories_repository as cat_repo
+from src.api.repositories import teams_repository as team_repo
+from src.api.services.supply_catalog_service import normalize_teams
 
 supply_types_bp = Blueprint('supply_types', __name__)
+
+
+def _parse_validate_locked_category_ids(cur, raw):
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError('locked_category_ids must be an array')
+    out = []
+    for x in raw:
+        try:
+            out.append(int(x))
+        except (TypeError, ValueError) as exc:
+            raise ValueError('locked_category_ids must contain integers') from exc
+    out = sorted(set(out))
+    if not out:
+        return []
+    rows = cat_repo.list_id_name_ordered(cur)
+    valid = {r['id'] for r in rows}
+    for i in out:
+        if i not in valid:
+            raise ValueError(f'Unknown category id: {i}')
+    return out
+
+
+def _parse_validate_locked_team_names(cur, raw):
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError('locked_team_names must be an array')
+    if not all(isinstance(x, str) for x in raw):
+        raise ValueError('locked_team_names must be an array of strings')
+    normalized = normalize_teams(raw)
+    db_names = team_repo.list_team_names_ordered(cur)
+    allowed = {n.lower(): n for n in db_names}
+    out = []
+    for t in normalized:
+        tl = t.lower()
+        if tl not in allowed:
+            raise ValueError(f'Unknown team: {t}')
+        out.append(allowed[tl])
+    return out
 
 
 def _row_to_dict(row):
@@ -40,6 +84,36 @@ def _row_to_dict(row):
         lck = []
     if not isinstance(lck, list):
         lck = []
+    lci = row.get('locked_category_ids')
+    if isinstance(lci, str) and lci.strip():
+        try:
+            lci = json.loads(lci)
+        except (TypeError, ValueError):
+            lci = []
+    elif lci is None:
+        lci = []
+    if not isinstance(lci, list):
+        lci = []
+    lci_out = []
+    for x in lci:
+        try:
+            lci_out.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    lci_out = sorted(set(lci_out))
+
+    ltn = row.get('locked_team_names')
+    if isinstance(ltn, str) and ltn.strip():
+        try:
+            ltn = json.loads(ltn)
+        except (TypeError, ValueError):
+            ltn = []
+    elif ltn is None:
+        ltn = []
+    if not isinstance(ltn, list):
+        ltn = []
+    ltn_out = normalize_teams([str(x) for x in ltn if x is not None])
+
     return {
         'id': row['id'],
         'name': row['name'],
@@ -49,7 +123,10 @@ def _row_to_dict(row):
         'image': row.get('image'),
         'default_custom_fields': dcf,
         'locked_custom_field_keys': lck,
+        'locked_category_ids': lci_out,
+        'locked_team_names': ltn_out,
         'is_unique': bool(row.get('is_unique')),
+        'prevent_user_edit': bool(row.get('prevent_user_edit')),
         'created_at': db_datetime_to_utc_iso(row.get('created_at')),
         'updated_at': db_datetime_to_utc_iso(row.get('updated_at')),
     }
@@ -166,6 +243,7 @@ def create_supply_type(current_user_id=None):
         if lck is not None and not isinstance(lck, list):
             return jsonify({'error': 'locked_custom_field_keys must be an array'}), 400
         is_unique = 1 if data.get('is_unique') else 0
+        prevent_user_edit = 1 if data.get('prevent_user_edit') else 0
 
         if image and str(image).startswith('data:image'):
             b64 = str(image).split(',', 1)[1] if ',' in str(image) else ''
@@ -174,6 +252,14 @@ def create_supply_type(current_user_id=None):
 
         conn = get_db()
         cur = conn.cursor(dictionary=True)
+        try:
+            lci = _parse_validate_locked_category_ids(cur, data.get('locked_category_ids'))
+            ltn = _parse_validate_locked_team_names(cur, data.get('locked_team_names'))
+        except ValueError as ve:
+            cur.close()
+            conn.close()
+            return jsonify({'error': str(ve)}), 400
+
         tid = repo.insert_supply_type(
             cur,
             name,
@@ -183,7 +269,10 @@ def create_supply_type(current_user_id=None):
             image,
             json.dumps(dcf) if dcf else None,
             json.dumps(lck) if lck else None,
+            json.dumps(lci) if lci else None,
+            json.dumps(ltn) if ltn else None,
             is_unique,
+            prevent_user_edit,
         )
         conn.commit()
         row = repo.fetch_by_id_dict(cur, tid)
@@ -205,11 +294,21 @@ def update_supply_type(type_id, current_user_id=None):
         data = request.json or {}
         conn = get_db()
         cur = conn.cursor(dictionary=True)
-        before = repo.fetch_prefixes_row(cur, type_id)
+        before = repo.fetch_by_id_dict(cur, type_id)
         if not before:
             cur.close()
             conn.close()
             return jsonify({'error': 'Type not found'}), 404
+
+        is_leader = session.get('is_leader', False)
+        if not is_leader and bool(before.get('prevent_user_edit')):
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'This item type can only be edited by a leader.'}), 403
+        if not is_leader and 'prevent_user_edit' in data:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Leader access required'}), 403
 
         old_np = (before.get('item_name_prefix') or '').strip()
         odp = before.get('item_description_prefix')
@@ -271,6 +370,27 @@ def update_supply_type(type_id, current_user_id=None):
         if 'is_unique' in data:
             fields.append('is_unique = %s')
             vals.append(1 if data.get('is_unique') else 0)
+        if 'prevent_user_edit' in data:
+            fields.append('prevent_user_edit = %s')
+            vals.append(1 if data.get('prevent_user_edit') else 0)
+        if 'locked_category_ids' in data:
+            try:
+                lci = _parse_validate_locked_category_ids(cur, data.get('locked_category_ids'))
+            except ValueError as ve:
+                cur.close()
+                conn.close()
+                return jsonify({'error': str(ve)}), 400
+            fields.append('locked_category_ids = %s')
+            vals.append(json.dumps(lci) if lci else None)
+        if 'locked_team_names' in data:
+            try:
+                ltn = _parse_validate_locked_team_names(cur, data.get('locked_team_names'))
+            except ValueError as ve:
+                cur.close()
+                conn.close()
+                return jsonify({'error': str(ve)}), 400
+            fields.append('locked_team_names = %s')
+            vals.append(json.dumps(ltn) if ltn else None)
 
         if fields:
             vals.append(type_id)

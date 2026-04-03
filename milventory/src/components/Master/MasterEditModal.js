@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { getCategories, getTeams, api } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
@@ -50,7 +50,17 @@ const areNumberCustomFieldsValid = (customFields, customFieldDefinitions) => {
 };
 
 // Reusable tag dropdown with fuzzy search
-const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onRemove, maxResults = 5, capitalize = false, onSearchChange }) => {
+const TagDropdown = ({
+  placeholder,
+  selectedItems,
+  availableItems,
+  onSelect,
+  onRemove,
+  maxResults = 5,
+  capitalize = false,
+  onSearchChange,
+  lockedItems = []
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef(null);
@@ -102,21 +112,51 @@ const TagDropdown = ({ placeholder, selectedItems, availableItems, onSelect, onR
             {placeholder}
           </span>
         )}
-        {selectedItems.map(item => (
-          <span key={item} style={{
-            display: 'inline-flex', alignItems: 'center', gap: '0.24rem',
-            padding: '0.18rem 0.42rem', background: 'var(--accent)', color: 'white',
-            borderRadius: '4px', fontSize: '0.8rem',
-            ...(capitalize ? { textTransform: 'capitalize' } : {})
-          }}>
-            {item}
-            <button type="button" onClick={() => onRemove(item)} style={{
-              background: 'transparent', border: 'none', color: 'white', cursor: 'pointer',
-              padding: '0', marginLeft: '0.25rem', fontSize: '1rem', lineHeight: '1',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }} title={`Remove ${item}`}>×</button>
-          </span>
-        ))}
+        {selectedItems.map((item) => {
+          const isLocked = lockedItems.includes(item);
+          return (
+            <span
+              key={item}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.24rem',
+                padding: '0.18rem 0.42rem',
+                background: 'var(--accent)',
+                color: 'white',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                ...(capitalize ? { textTransform: 'capitalize' } : {})
+              }}
+            >
+              {item}
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={() => {
+                  if (!isLocked) onRemove(item);
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'white',
+                  cursor: isLocked ? 'not-allowed' : 'pointer',
+                  opacity: isLocked ? 0.35 : 1,
+                  padding: '0',
+                  marginLeft: '0.25rem',
+                  fontSize: '1rem',
+                  lineHeight: '1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title={isLocked ? 'Required by item type' : `Remove ${item}`}
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
       </div>
 
       <div
@@ -321,6 +361,40 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     linkedType && !unlinkFromType && Array.isArray(linkedType.locked_custom_field_keys)
       ? linkedType.locked_custom_field_keys
       : [];
+
+  const typeLockedCategoryNames = useMemo(() => {
+    if (!linkedType || unlinkFromType) return [];
+    const ids = Array.isArray(linkedType.locked_category_ids) ? linkedType.locked_category_ids : [];
+    return ids.map((id) => categoryIdToName.get(id)).filter(Boolean);
+  }, [linkedType, unlinkFromType, categoryIdToName]);
+
+  const typeLockedTeamLower = useMemo(() => {
+    if (!linkedType || unlinkFromType) return [];
+    return (Array.isArray(linkedType.locked_team_names) ? linkedType.locked_team_names : []).map((x) =>
+      String(x).toLowerCase()
+    );
+  }, [linkedType, unlinkFromType]);
+
+  useEffect(() => {
+    if (!linkedType || unlinkFromType) return;
+    const tns = (Array.isArray(linkedType.locked_team_names) ? linkedType.locked_team_names : []).map((x) =>
+      String(x).toLowerCase()
+    );
+    setSelectedTeams((prev) => {
+      const s = new Set([...tns, ...prev]);
+      return Array.from(s);
+    });
+  }, [linkedType?.id, unlinkFromType]);
+
+  useEffect(() => {
+    if (!linkedType || unlinkFromType || !categoryIdToName.size) return;
+    const ids = Array.isArray(linkedType.locked_category_ids) ? linkedType.locked_category_ids : [];
+    const names = ids.map((id) => categoryIdToName.get(id)).filter(Boolean);
+    setSelectedCategories((prev) => {
+      const s = new Set([...names, ...prev]);
+      return Array.from(s);
+    });
+  }, [linkedType?.id, unlinkFromType, categoryIdToName]);
 
   const typePresetKeys =
     linkedType && !unlinkFromType && linkedType.default_custom_fields && typeof linkedType.default_custom_fields === 'object'
@@ -569,18 +643,20 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
           placeholder="Team Tags (Optional)"
           selectedItems={selectedTeams}
           availableItems={availableTeams}
-          onSelect={(team) => setSelectedTeams(prev => [...prev, team])}
-          onRemove={(team) => setSelectedTeams(prev => prev.filter(t => t !== team))}
+          onSelect={(team) => setSelectedTeams((prev) => [...prev, team])}
+          onRemove={(team) => setSelectedTeams((prev) => prev.filter((t) => t !== team))}
           capitalize
+          lockedItems={typeLockedTeamLower}
         />
 
         <TagDropdown
           placeholder="Category Tags (Optional)"
           selectedItems={selectedCategories}
           availableItems={availableCategories}
-          onSelect={(cat) => setSelectedCategories(prev => [...prev, cat])}
-          onRemove={(cat) => setSelectedCategories(prev => prev.filter(c => c !== cat))}
+          onSelect={(cat) => setSelectedCategories((prev) => [...prev, cat])}
+          onRemove={(cat) => setSelectedCategories((prev) => prev.filter((c) => c !== cat))}
           maxResults={5}
+          lockedItems={typeLockedCategoryNames}
         />
 
         {/* Custom fields: dropdown to add; each added field is a full-width row with gray X to remove */}

@@ -80,6 +80,75 @@ def merge_custom_fields_from_type(type_row, user_cf):
     return merged
 
 
+def json_load_int_list(val) -> List[int]:
+    if val is None:
+        return []
+    if isinstance(val, str) and val.strip():
+        try:
+            val = json.loads(val)
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(val, list):
+        return []
+    out: List[int] = []
+    for x in val:
+        try:
+            out.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    return sorted(set(out))
+
+
+def locked_team_names_from_type_row(type_row) -> List[str]:
+    if not type_row:
+        return []
+    raw = type_row.get("locked_team_names")
+    if isinstance(raw, str) and raw.strip():
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(raw, list):
+        return []
+    return normalize_teams([str(x) for x in raw if x is not None])
+
+
+def locked_category_ids_from_type_row(type_row) -> List[int]:
+    if not type_row:
+        return []
+    raw = type_row.get("locked_category_ids")
+    if isinstance(raw, str) and raw.strip():
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            return []
+    return json_load_int_list(raw)
+
+
+def merge_categories_with_type_locks(type_row, user_category_ids) -> List[int]:
+    locked = locked_category_ids_from_type_row(type_row)
+    user: List[int] = []
+    for x in user_category_ids or []:
+        try:
+            user.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    return sorted(set(locked + user))
+
+
+def merge_teams_with_type_locks(type_row, user_teams_raw) -> List[str]:
+    locked = locked_team_names_from_type_row(type_row)
+    user = normalize_teams(user_teams_raw or [])
+    seen = set()
+    out: List[str] = []
+    for t in locked + user:
+        tl = t.lower()
+        if tl not in seen:
+            seen.add(tl)
+            out.append(t)
+    return out
+
+
 def validate_custom_fields(custom_fields, allowed_names) -> Tuple[bool, Optional[str]]:
     if not custom_fields:
         return True, None
@@ -316,16 +385,14 @@ def create_supply(data: dict, current_user_id: str) -> dict:
             tid_insert,
         )
 
-        for team_name in normalize_teams(data.get("teams")):
+        cats_final = merge_categories_with_type_locks(type_row, data.get("categories"))
+        teams_final = merge_teams_with_type_locks(type_row, data.get("teams"))
+
+        for team_name in teams_final:
             repo.insert_supply_team_ignore(cur, supply_id, team_name)
 
-        if data.get("categories"):
-            for category_id in data["categories"]:
-                try:
-                    cat_id = int(category_id)
-                    repo.insert_supply_category_ignore(cur, supply_id, cat_id)
-                except (ValueError, TypeError):
-                    continue
+        for cat_id in cats_final:
+            repo.insert_supply_category_ignore(cur, supply_id, cat_id)
 
         new_values = {
             "name": name_final,
@@ -334,9 +401,8 @@ def create_supply(data: dict, current_user_id: str) -> dict:
             "last_order_date": data.get("last_order_date") or None,
         }
         history_id = log_supply_history(conn, supply_id, "CREATE", {}, new_values, current_user_id)
-        normalized_teams = normalize_teams(data.get("teams"))
-        log_team_changes(conn, history_id, [], normalized_teams)
-        log_category_changes(conn, history_id, [], data.get("categories") or [])
+        log_team_changes(conn, history_id, [], teams_final)
+        log_category_changes(conn, history_id, [], cats_final)
 
         conn.commit()
 
@@ -480,20 +546,19 @@ def update_supply(supply_id: int, data: dict, current_user_id: str) -> dict:
         if updates:
             repo.update_supply_columns(cur, updates, values)
 
+        type_for_team_cat_merge = None if unlink_from_type else type_row_update
+
         if "teams" in data:
             repo.delete_teams_for_supply(cur, supply_id)
-            for team_name in normalize_teams(data.get("teams")):
+            merged_teams = merge_teams_with_type_locks(type_for_team_cat_merge, data.get("teams"))
+            for team_name in merged_teams:
                 repo.insert_supply_team(cur, supply_id, team_name)
 
         if "categories" in data:
             repo.delete_categories_for_supply(cur, supply_id)
-            if data.get("categories"):
-                for category_id in data["categories"]:
-                    try:
-                        cat_id = int(category_id)
-                        repo.insert_supply_category(cur, supply_id, cat_id)
-                    except (ValueError, TypeError):
-                        continue
+            merged_cats = merge_categories_with_type_locks(type_for_team_cat_merge, data.get("categories"))
+            for cat_id in merged_cats:
+                repo.insert_supply_category(cur, supply_id, cat_id)
 
         if has_type_template_image:
             image_for_history = None
@@ -517,11 +582,14 @@ def update_supply(supply_id: int, data: dict, current_user_id: str) -> dict:
         history_id = log_supply_history(conn, supply_id, "UPDATE", old_values, new_values, current_user_id)
 
         if "teams" in data:
-            new_teams = normalize_teams(data.get("teams"))
+            new_teams = merge_teams_with_type_locks(type_for_team_cat_merge, data.get("teams"))
         else:
             new_teams = old_teams
 
-        new_categories = data.get("categories", old_categories) if "categories" in data else old_categories
+        if "categories" in data:
+            new_categories = merge_categories_with_type_locks(type_for_team_cat_merge, data.get("categories"))
+        else:
+            new_categories = old_categories
         log_team_changes(conn, history_id, old_teams, new_teams)
         log_category_changes(conn, history_id, old_categories, new_categories)
 

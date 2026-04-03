@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { admin, api } from '../../api';
+import { admin, api, getCategories, getTeams } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
 import { useInventory } from '../../context/InventoryContext';
 import {
@@ -24,6 +24,8 @@ const ItemTypesTable = () => {
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState([]);
   const [addFieldDropdownOpen, setAddFieldDropdownOpen] = useState(false);
   const addFieldDropdownRef = useRef(null);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [teamOptions, setTeamOptions] = useState([]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -59,6 +61,17 @@ const ItemTypesTable = () => {
       .getCustomFieldDefinitions()
       .then(setCustomFieldDefinitions)
       .catch(() => setCustomFieldDefinitions([]));
+    getCategories()
+      .then((cats) => {
+        const opts = (cats || [])
+          .filter((c) => c && typeof c === 'object' && c.id != null && c.name)
+          .map((c) => ({ id: c.id, name: c.name }));
+        setCategoryOptions(opts);
+      })
+      .catch(() => setCategoryOptions([]));
+    getTeams()
+      .then((teams) => setTeamOptions((teams || []).map((t) => String(t).toLowerCase())))
+      .catch(() => setTeamOptions([]));
   }, [showAddModal, editingId]);
 
   const closeAddModal = useCallback(() => {
@@ -115,7 +128,10 @@ const ItemTypesTable = () => {
         image: form.image || null,
         default_custom_fields,
         locked_custom_field_keys,
-        is_unique: form.is_unique
+        is_unique: form.is_unique,
+        prevent_user_edit: !!form.prevent_user_edit,
+        locked_category_ids: [...(form.locked_category_ids || [])].sort((a, b) => Number(a) - Number(b)),
+        locked_team_names: form.locked_team_names || []
       });
       closeAddModal();
       await loadTypes();
@@ -136,7 +152,12 @@ const ItemTypesTable = () => {
       item_description_prefix: t.item_description_prefix || '',
       image: t.image || null,
       typeCustomFields: typeCustomFieldsFromTypeRow(t),
-      is_unique: !!t.is_unique
+      is_unique: !!t.is_unique,
+      prevent_user_edit: !!t.prevent_user_edit,
+      locked_category_ids: Array.isArray(t.locked_category_ids) ? [...t.locked_category_ids] : [],
+      locked_team_names: Array.isArray(t.locked_team_names)
+        ? t.locked_team_names.map((x) => String(x).toLowerCase())
+        : []
     });
   };
 
@@ -164,7 +185,10 @@ const ItemTypesTable = () => {
         image: editForm.image,
         default_custom_fields,
         locked_custom_field_keys,
-        is_unique: editForm.is_unique
+        is_unique: editForm.is_unique,
+        prevent_user_edit: !!editForm.prevent_user_edit,
+        locked_category_ids: [...(editForm.locked_category_ids || [])].sort((a, b) => Number(a) - Number(b)),
+        locked_team_names: editForm.locked_team_names || []
       });
       await reloadMasterItems();
       try {
@@ -268,6 +292,9 @@ const ItemTypesTable = () => {
                 addFieldDropdownOpen={addFieldDropdownOpen}
                 setAddFieldDropdownOpen={setAddFieldDropdownOpen}
                 addFieldDropdownRef={addFieldDropdownRef}
+                showPreventUserEditCheckbox
+                categoryOptions={categoryOptions}
+                teamOptions={teamOptions}
               />
               <div className="modal-actions">
                 <button type="button" className="cancel" onClick={closeAddModal}>
@@ -307,6 +334,9 @@ const ItemTypesTable = () => {
               addFieldDropdownOpen={addFieldDropdownOpen}
               setAddFieldDropdownOpen={setAddFieldDropdownOpen}
               addFieldDropdownRef={addFieldDropdownRef}
+              showPreventUserEditCheckbox
+              categoryOptions={categoryOptions}
+              teamOptions={teamOptions}
             />
             <div className="modal-actions">
               <button type="button" className="cancel" onClick={closeEditModal}>
@@ -329,6 +359,9 @@ const ItemTypesTable = () => {
               <th>Name</th>
               <th>Prefix</th>
               <th title="Each catalog item may have at most 1 total quantity across map locations">Is unique</th>
+              <th title="Yes = non-leaders may update this type; No = only leaders may update it">
+                User Editable
+              </th>
               <th />
             </tr>
           </thead>
@@ -340,6 +373,15 @@ const ItemTypesTable = () => {
                   {t.item_name_prefix || '—'}
                 </td>
                 <td title="Each item of this type is limited to one total quantity on the map">{t.is_unique ? 'Yes' : 'No'}</td>
+                <td
+                  title={
+                    t.prevent_user_edit
+                      ? 'Only leaders may update this type'
+                      : 'Non-leaders may update this type'
+                  }
+                >
+                  {t.prevent_user_edit ? 'No' : 'Yes'}
+                </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button
                     type="button"
