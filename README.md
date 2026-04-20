@@ -48,7 +48,7 @@ Inventory management system for MIL with database-backed storage.
 
 - `milventory/` - React frontend application
 - `src/api/` - Flask backend API
-- `src/sql/` - Database schema definitions
+- `src/tables/` - Database schema definitions (`table_*.sql` per domain)
 - `src/scripts/` - Database seeding and utility scripts
 
 ## Development

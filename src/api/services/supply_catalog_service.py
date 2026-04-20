@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,6 +20,7 @@ from src.api.helpers.history import (
     snapshot_supply_locations_before_delete,
 )
 from src.api.models.supply import Supply
+from src.api.repositories import custom_field_definitions_repository as cf_repo
 from src.api.repositories import supplies_repository as repo
 
 
@@ -157,6 +159,65 @@ def validate_custom_fields(custom_fields, allowed_names) -> Tuple[bool, Optional
     for key in custom_fields:
         if key not in allowed_names:
             return False, f"Unknown custom field: {key}"
+    return True, None
+
+
+def _locked_custom_field_key_list(type_row) -> List[str]:
+    if not type_row:
+        return []
+    locked = type_row.get("locked_custom_field_keys")
+    if isinstance(locked, str) and locked.strip():
+        try:
+            locked = json.loads(locked)
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(locked, list):
+        return []
+    return [str(k) for k in locked if k is not None]
+
+
+def _merged_cf_value_is_present_for_type(field_type: str, val: Any) -> bool:
+    ft = (field_type or "text").strip().lower()
+    if ft == "number":
+        if val is None:
+            return False
+        if isinstance(val, bool):
+            return False
+        if isinstance(val, (int, float)):
+            return math.isfinite(float(val))
+        if isinstance(val, str):
+            s = val.strip()
+            if not s:
+                return False
+            try:
+                x = float(s)
+            except (TypeError, ValueError):
+                return False
+            return math.isfinite(x)
+        return False
+    if ft == "date":
+        if val is None:
+            return False
+        return bool(str(val).strip())
+    if val is None:
+        return False
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        return True
+    return bool(str(val).strip())
+
+
+def validate_locked_custom_fields_filled(type_row, merged_cf, cur) -> Tuple[bool, Optional[str]]:
+    """Every key in the type's locked_custom_field_keys must have a non-empty merged value."""
+    locked = _locked_custom_field_key_list(type_row)
+    if not locked:
+        return True, None
+    rows = cf_repo.list_id_name_type_ordered(cur)
+    name_to_type = {str(r[1]): str(r[2]) for r in rows}
+    cf: Dict[str, Any] = merged_cf if isinstance(merged_cf, dict) else {}
+    for key in locked:
+        ft = name_to_type.get(key, "text")
+        if not _merged_cf_value_is_present_for_type(ft, cf.get(key)):
+            return False, f'Custom field "{key}" is required for this item type.'
     return True, None
 
 
@@ -346,6 +407,10 @@ def create_supply(data: dict, current_user_id: str) -> dict:
         ok, err = validate_custom_fields(custom_fields, allowed)
         if not ok:
             raise CatalogError(400, {"error": err})
+        if type_row:
+            okl, errl = validate_locked_custom_fields_filled(type_row, custom_fields, cur)
+            if not okl:
+                raise CatalogError(400, {"error": errl})
 
         name_final = data["name"].strip()
         desc_final = data.get("description", "").strip() or None
@@ -497,6 +562,10 @@ def update_supply(supply_id: int, data: dict, current_user_id: str) -> dict:
             ok, err = validate_custom_fields(cf_work, allowed)
             if not ok:
                 raise CatalogError(400, {"error": err})
+            if type_row_update:
+                okl, errl = validate_locked_custom_fields_filled(type_row_update, cf_work, cur)
+                if not okl:
+                    raise CatalogError(400, {"error": errl})
             merged_cf_for_update = cf_work
 
         if type_row_update and ("name" in data or "description" in data):

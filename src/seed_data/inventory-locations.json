@@ -69,6 +69,7 @@
     { "title": "Table G"         , "x": 2100, "y": 2160, "width": 720, "height": 300, "fill": "var(--table)" },
     { "title": "Table H"         , "x": 2100, "y": 2465, "width": 720, "height": 300, "fill": "var(--table)" },
     { "title": "Table I"         , "x": 1400, "y": 3600, "width": 720, "height": 300, "fill": "var(--table)" },
-    { "title": "Table J"         , "x": 2170, "y": 3600, "width": 720, "height": 300, "fill": "var(--table)" }
+    { "title": "Table J"         , "x": 2170, "y": 3600, "width": 720, "height": 300, "fill": "var(--table)" },
+    { "title": "To Be Delivered", "x": 400, "y": 4000, "width": 800, "height": 800, "fill": "var(--table)" }
   ]
 }

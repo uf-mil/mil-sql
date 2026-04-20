@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { getCategories, getTeams, api } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
+import { areLockedCustomFieldsFilled } from './ItemTypeFormFields';
 
 // Levenshtein distance for fuzzy search
 const levenshteinDistance = (str1, str2) => {
@@ -490,6 +491,15 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
         await showAlert('Please enter a valid number in all number fields (or leave them empty).');
         return;
       }
+      if (
+        lockedFieldKeys.length > 0 &&
+        !areLockedCustomFieldsFilled(customFields, lockedFieldKeys, customFieldDefinitions)
+      ) {
+        await showAlert(
+          'This item type requires a value in each listed custom field. Fill any empty required fields before saving.'
+        );
+        return;
+      }
 
       // Convert category names to IDs
       const categoryIds = selectedCategories
@@ -821,7 +831,10 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
             disabled={
               !(useTypePrefixUi && linkedType
                 ? joinPrefixSuffix(linkedType.item_name_prefix, nameSuffix).trim()
-                : name.trim()) || !areNumberCustomFieldsValid(customFields, customFieldDefinitions)
+                : name.trim()) ||
+              !areNumberCustomFieldsValid(customFields, customFieldDefinitions) ||
+              (lockedFieldKeys.length > 0 &&
+                !areLockedCustomFieldsFilled(customFields, lockedFieldKeys, customFieldDefinitions))
             }
           >
             Save

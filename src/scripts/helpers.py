@@ -27,19 +27,28 @@ else:
 
 def get_sql_base_path(script_file):
     """
-    Get the SQL base path, works in both Docker and local environments.
-    
+    Root directory that contains nested `table_*.sql` DDL files.
+
+    Canonical layout: ``src/tables/<domain>/table_<name>.sql``.
+    Legacy ``src/sql/`` is still used if present and ``src/tables`` does not exist.
+
     Args:
-        script_file: The __file__ from the calling script
-        
+        script_file: The ``__file__`` of the caller (under ``src/api`` or ``src/scripts``).
+
     Returns:
-        Path object pointing to the SQL directory
+        Path to ``src/tables`` (or legacy ``src/sql``).
     """
-    if Path("/app/src/sql").exists():
-        return Path("/app/src/sql")  # Docker path
-    else:
-        # Local development path (relative to script location)
-        return Path(script_file).parent.parent / "sql"
+    src_root = Path(script_file).resolve().parent.parent
+    candidates = [
+        Path("/app/src/tables"),
+        src_root / "tables",
+        Path("/app/src/sql"),
+        src_root / "sql",
+    ]
+    for p in candidates:
+        if p.is_dir():
+            return p
+    return src_root / "tables"
 
 
 def discover_table_files(sql_base_path):

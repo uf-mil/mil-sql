@@ -7,6 +7,7 @@ import AddModeArrow from './AddModeArrow';
 import MoveModeBoxes from './MoveModeBoxes';
 import SubtractModePreview from './SubtractModePreview';
 import FreePlaceDots from './FreePlaceDots';
+import { svgMarkupToDataUrl } from '../../utils/svgDataUrl';
 
 const SHELF_NAMES = [
   'Shelf 6 (Top)',
@@ -240,15 +241,28 @@ const MapComponent = forwardRef((props, ref) => {
               }
             }
             
+            const svgHref = box.svgMarkup ? svgMarkupToDataUrl(box.svgMarkup) : null;
+
             return (
               <g key={idx}>
+                {svgHref ? (
+                  <image
+                    href={svgHref}
+                    x={box.x}
+                    y={box.y}
+                    width={box.width}
+                    height={box.height}
+                    preserveAspectRatio="xMidYMid meet"
+                    pointerEvents="none"
+                  />
+                ) : null}
                 <rect
                   className={`box ${!addModeItem && !subtractModeItem && selectedBox === box.title ? 'selected' : ''} ${currentDragOverBox === box.title ? 'drag-over-box' : ''} ${addModeItem && boxHasAnyPending(box.title) ? 'add-mode-affected' : ''} ${subtractModeItem && (boxHasAnySubtractPending(box.title) || hasSubtractItem) ? 'add-mode-affected' : ''} ${highlightedBoxes && highlightedBoxes.has(box.title) ? 'box-highlighted' : ''}`}
                   x={box.x}
                   y={box.y}
                   width={box.width}
                   height={box.height}
-                  fill={box.fill}
+                  fill={svgHref ? 'transparent' : box.fill}
                   data-title={box.title}
                   onClick={(e) => {
                     e.stopPropagation();

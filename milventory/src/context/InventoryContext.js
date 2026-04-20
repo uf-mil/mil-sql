@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import { api, admin, handleApiError } from '../api';
+import { LOCATION_SVG_MARKUP_BY_NAME } from '../components/locationSvgByName';
 import { clampPointToRoom } from '../constants/mapBounds';
 import { LEFT_PANE_MIN_WIDTH, LEFT_PANE_MAX_WIDTH } from '../constants/leftPaneLayout';
 
@@ -311,6 +312,7 @@ export const InventoryProvider = ({ children }) => {
         // Convert API locations to box format expected by map
         const newInventoryData = new Map();
         locations.forEach(location => {
+          const svgMarkup = LOCATION_SVG_MARKUP_BY_NAME[location.name];
           const boxData = {
             title: location.name,
             x: location.x,
@@ -319,9 +321,10 @@ export const InventoryProvider = ({ children }) => {
             height: location.height,
             fill: getFillForType(location.type),
             type: location.type,
-            inventory: [] // Will be populated from supply locations API
+            inventory: [], // Will be populated from supply locations API
+            ...(svgMarkup ? { svgMarkup } : {})
           };
-          
+
           newInventoryData.set(location.name, boxData);
         });
         

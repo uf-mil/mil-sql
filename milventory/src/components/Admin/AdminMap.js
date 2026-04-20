@@ -2,6 +2,7 @@ import React, { forwardRef, useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { useInventory } from '../../context/InventoryContext';
 import { admin } from '../../api';
+import { svgMarkupToDataUrl } from '../../utils/svgDataUrl';
 
 const AdminMap = forwardRef((props, ref) => {
   const { 
@@ -491,44 +492,68 @@ const AdminMap = forwardRef((props, ref) => {
           // When in moving state, offset selected boxes by the transform
           const displayX = isMoving ? box.x + moveDx : box.x;
           const displayY = isMoving ? box.y + moveDy : box.y;
+          const svgHref = box.svgMarkup ? svgMarkupToDataUrl(box.svgMarkup) : null;
 
           return (
-            <rect
-              key={idx}
-              className="box"
-              x={displayX}
-              y={displayY}
-              width={box.width}
-              height={box.height}
-              fill={box.fill}
-              data-title={box.title}
-              data-move-handle={isMoving ? 'true' : undefined}
-              style={{ 
-                cursor: isInMoveInteraction 
-                  ? (isMoving ? (isDraggingMove ? 'grabbing' : 'grab') : 'default')
-                  : (drawMode ? 'default' : 'pointer'),
-                pointerEvents: (drawMode || moveMode === 'selecting') ? 'none' : 'auto',
-                stroke: isMoving ? '#ffc107' : (isMoveSelected ? '#ffc107' : (isSelected ? 'var(--accent)' : 'none')),
-                strokeWidth: isMoving ? 3 : (isMoveSelected ? 2 : (isSelected ? 3 : 0)),
-                opacity: (moveMode === 'moving' && !isMoveSelected) ? 0.4 : (isSelected ? 0.9 : 1),
-                transition: isDraggingMove ? 'none' : 'opacity 0.2s'
-              }}
-              onMouseDown={(e) => {
-                if (moveMode === 'moving' && isMoveSelected) {
-                  handleMoveDragMouseDown(e);
-                }
-              }}
-              onClick={async (e) => {
-                if (isInMoveInteraction) return;
-                if (!drawMode && onLocationSelect) {
-                  e.stopPropagation();
-                  try {
-                    const location = await admin.getLocations().then(locations => 
-                      locations.find(loc => loc.name === box.title)
-                    );
-                    if (location) {
-                      onLocationSelect(location);
-                    } else {
+            <g key={idx}>
+              {svgHref ? (
+                <image
+                  href={svgHref}
+                  x={displayX}
+                  y={displayY}
+                  width={box.width}
+                  height={box.height}
+                  preserveAspectRatio="xMidYMid meet"
+                  pointerEvents="none"
+                />
+              ) : null}
+              <rect
+                className="box"
+                x={displayX}
+                y={displayY}
+                width={box.width}
+                height={box.height}
+                fill={svgHref ? 'transparent' : box.fill}
+                data-title={box.title}
+                data-move-handle={isMoving ? 'true' : undefined}
+                style={{
+                  cursor: isInMoveInteraction
+                    ? (isMoving ? (isDraggingMove ? 'grabbing' : 'grab') : 'default')
+                    : (drawMode ? 'default' : 'pointer'),
+                  pointerEvents: drawMode || moveMode === 'selecting' ? 'none' : 'auto',
+                  stroke: isMoving ? '#ffc107' : (isMoveSelected ? '#ffc107' : (isSelected ? 'var(--accent)' : 'none')),
+                  strokeWidth: isMoving ? 3 : (isMoveSelected ? 2 : (isSelected ? 3 : 0)),
+                  opacity: moveMode === 'moving' && !isMoveSelected ? 0.4 : (isSelected ? 0.9 : 1),
+                  transition: isDraggingMove ? 'none' : 'opacity 0.2s'
+                }}
+                onMouseDown={(e) => {
+                  if (moveMode === 'moving' && isMoveSelected) {
+                    handleMoveDragMouseDown(e);
+                  }
+                }}
+                onClick={async (e) => {
+                  if (isInMoveInteraction) return;
+                  if (!drawMode && onLocationSelect) {
+                    e.stopPropagation();
+                    try {
+                      const location = await admin.getLocations().then(locations =>
+                        locations.find(loc => loc.name === box.title)
+                      );
+                      if (location) {
+                        onLocationSelect(location);
+                      } else {
+                        const fallbackLocation = {
+                          name: box.title,
+                          x: box.x,
+                          y: box.y,
+                          width: box.width,
+                          height: box.height,
+                          type: 'drawer'
+                        };
+                        onLocationSelect(fallbackLocation);
+                      }
+                    } catch (err) {
+                      console.error('Error fetching location:', err);
                       const fallbackLocation = {
                         name: box.title,
                         x: box.x,
@@ -539,21 +564,10 @@ const AdminMap = forwardRef((props, ref) => {
                       };
                       onLocationSelect(fallbackLocation);
                     }
-                  } catch (err) {
-                    console.error('Error fetching location:', err);
-                    const fallbackLocation = {
-                      name: box.title,
-                      x: box.x,
-                      y: box.y,
-                      width: box.width,
-                      height: box.height,
-                      type: 'drawer'
-                    };
-                    onLocationSelect(fallbackLocation);
                   }
-                }
-              }}
-            />
+                }}
+              />
+            </g>
           );
         })}
 

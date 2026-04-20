@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 're
 import { useInventory } from '../../context/InventoryContext';
 import { getCategories, getTeams, api } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
+import { areLockedCustomFieldsFilled } from './ItemTypeFormFields';
 
 // Levenshtein distance for fuzzy search
 const levenshteinDistance = (str1, str2) => {
@@ -266,7 +267,7 @@ const SupplyTypeSearchSelect = ({ supplyTypes, value, onChange }) => {
 
   const selected = supplyTypes.find((x) => String(x.id) === String(value));
   const label = selected
-    ? `${selected.name}${selected.is_unique ? ' (max 1 on map)' : ''}`
+    ? `${selected.name}${selected.is_unique ? ' (max 1 qty per item)' : ''}`
     : 'None';
 
   const q = query.trim().toLowerCase();
@@ -391,7 +392,7 @@ const SupplyTypeSearchSelect = ({ supplyTypes, value, onChange }) => {
                     onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'rgba(255,255,255,.08)' : 'transparent'; }}
                   >
                     {t.name}
-                    {t.is_unique ? ' (max 1 on map)' : ''}
+                    {t.is_unique ? ' (max 1 qty per item)' : ''}
                   </div>
                 );
               })
@@ -639,6 +640,15 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
         await showAlert('Please enter a valid number in all number fields (or leave them empty).');
         return;
       }
+      if (
+        lockedFieldKeys.length > 0 &&
+        !areLockedCustomFieldsFilled(customFields, lockedFieldKeys, customFieldDefinitions)
+      ) {
+        await showAlert(
+          'This item type requires a value in each listed custom field. Fill any empty required fields before creating.'
+        );
+        return;
+      }
 
       // Convert category names to IDs
       const categoryIds = selectedCategories
@@ -757,7 +767,7 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
                   <div className="modal-field-composite__prefix-block">{descFix}</div>
                   <textarea
                     className="modal-field-composite__textarea"
-                    placeholder="Rest ofDescription (optional)"
+                    placeholder="Rest of Description (optional)"
                     value={descSuffix}
                     onChange={(e) => setDescSuffix(e.target.value)}
                     rows={3}
@@ -985,7 +995,10 @@ const MasterCreateModal = ({ isOpen, onClose, showTypeSelector = true }) => {
             disabled={
               !(effectiveTypeId
                 ? joinPrefixSuffix(selectedType?.item_name_prefix, nameSuffix).trim()
-                : name.trim()) || !areNumberCustomFieldsValid(customFields, customFieldDefinitions)
+                : name.trim()) ||
+              !areNumberCustomFieldsValid(customFields, customFieldDefinitions) ||
+              (lockedFieldKeys.length > 0 &&
+                !areLockedCustomFieldsFilled(customFields, lockedFieldKeys, customFieldDefinitions))
             }
           >
             Create

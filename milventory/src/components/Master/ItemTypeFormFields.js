@@ -11,6 +11,27 @@ export const areNumberCustomFieldsValid = (customFields, customFieldDefinitions)
   return true;
 };
 
+/** Keys listed on the type as required must each have a non-empty value (by field type). */
+export const areLockedCustomFieldsFilled = (customFields, lockedKeys, customFieldDefinitions) => {
+  if (!lockedKeys || lockedKeys.length === 0) return true;
+  for (const key of lockedKeys) {
+    const def = customFieldDefinitions.find((d) => d.name === key);
+    const t = def ? def.type : 'text';
+    const v = customFields[key];
+    if (t === 'number') {
+      if (v === undefined || v === null || v === '') return false;
+      const n = Number(v);
+      if (Number.isNaN(n) || !Number.isFinite(n)) return false;
+    } else if (t === 'date') {
+      if (v === undefined || v === null || String(v).trim() === '') return false;
+    } else {
+      if (v === undefined || v === null) return false;
+      if (String(v).trim() === '') return false;
+    }
+  }
+  return true;
+};
+
 /** Build API payload: every key in typeCustomFields is required; defaults only include nonempty presets. */
 export const buildCustomFieldsPayload = (typeCustomFields, definitions) => {
   const locked_custom_field_keys = Object.keys(typeCustomFields).sort();

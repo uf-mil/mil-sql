@@ -83,7 +83,7 @@ const Login = ({ onLoginSuccess }) => {
                 backgroundColor: 'var(--room, #1b1f2a)',
                 color: 'var(--text, #e6ebf4)',
               }}
-              placeholder="test@ufl.edu"
+              placeholder="Email"
             />
           </div>
 
@@ -112,7 +112,7 @@ const Login = ({ onLoginSuccess }) => {
                 backgroundColor: 'var(--room, #1b1f2a)',
                 color: 'var(--text, #e6ebf4)',
               }}
-              placeholder="test"
+              placeholder="Password"
             />
           </div>
 
