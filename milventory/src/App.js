@@ -8,6 +8,7 @@ import AddModal from './components/Box/AddModal';
 import EditModal from './components/Box/EditForm';
 import AddModePreview from './components/Map/AddModePreview';
 import Login from './components/Auth/Login';
+import SignUp from './components/Auth/SignUp';
 import ErrorToast from './components/Common/ErrorToast';
 import ConflictErrorModal from './components/Common/ConflictErrorModal';
 import { BlockingDialogProvider } from './components/Common/BlockingDialogContext';
@@ -59,6 +60,16 @@ function App() {
     <BrowserRouter>
       <BlockingDialogProvider>
       <Routes>
+        <Route
+          path="/signup"
+          element={
+            user ? (
+              <Navigate to="/" replace />
+            ) : (
+              <SignUp onSignUpSuccess={handleLoginSuccess} />
+            )
+          }
+        />
         <Route
           path="/"
           element={

@@ -7,12 +7,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import bcrypt
+import mysql.connector
+import secrets
 from flask import Blueprint, jsonify, request, session
 
 from src.api.db import get_db
 from src.api.repositories import members_repository as repo
 
 auth_bp = Blueprint("auth", __name__)
+
+_MIN_PASSWORD_LEN = 8
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -41,9 +45,6 @@ def login():
         if not user["password_hash"]:
             return jsonify({"error": "Invalid email or password"}), 401
 
-        if not user["is_leader"]:
-            return jsonify({"error": "Access denied. Leader status required."}), 403
-
         if not bcrypt.checkpw(password.encode("utf-8"), user["password_hash"].encode("utf-8")):
             return jsonify({"error": "Invalid email or password"}), 401
 
@@ -63,6 +64,81 @@ def login():
                 },
             }
         ), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@auth_bp.route("/register", methods=["POST"])
+def register():
+    """
+    POST /api/auth/register
+    Create an account (non-leader). Logs the user in on success.
+    """
+    try:
+        data = request.get_json() or {}
+        email = (data.get("email") or "").strip().lower()
+        password = data.get("password") or ""
+        confirm_password = data.get("confirm_password") or ""
+        first_name = (data.get("first_name") or "").strip()
+        last_name = (data.get("last_name") or "").strip()
+
+        if not email or not password or not first_name or not last_name:
+            return jsonify({"error": "First name, last name, email, and password are required"}), 400
+        if password != confirm_password:
+            return jsonify({"error": "Passwords do not match"}), 400
+        if len(password) < _MIN_PASSWORD_LEN:
+            return jsonify({"error": f"Password must be at least {_MIN_PASSWORD_LEN} characters"}), 400
+
+        token = secrets.token_hex(12)
+        discord_tag = f"{token[:24]}#0000"
+        github_user = f"signup-{secrets.token_hex(16)}"
+
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+        try:
+            uf_id = repo.allocate_uf_id(cur)
+            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            repo.insert_signup_member(
+                cur,
+                first_name=first_name,
+                last_name=last_name,
+                uf_id=uf_id,
+                uf_email=email,
+                password_hash=password_hash,
+                discord=discord_tag,
+                github=github_user,
+            )
+            conn.commit()
+
+            session["user_id"] = uf_id
+            session["user_email"] = email
+            session["is_leader"] = False
+
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "user": {
+                            "uf_id": uf_id,
+                            "email": email,
+                            "first_name": first_name,
+                            "last_name": last_name,
+                            "is_leader": False,
+                        },
+                    }
+                ),
+                201,
+            )
+        except mysql.connector.IntegrityError:
+            conn.rollback()
+            return jsonify({"error": "An account with this email already exists"}), 409
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+            conn.close()
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

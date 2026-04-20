@@ -30,6 +30,39 @@ export const auth = {
   },
 
   /**
+   * Register a new account (creates session on success).
+   * @param {Object} payload
+   * @param {string} payload.firstName
+   * @param {string} payload.lastName
+   * @param {string} payload.email
+   * @param {string} payload.password
+   * @param {string} payload.confirmPassword
+   * @returns {Promise<Object>} Same shape as login success
+   */
+  register: async ({ firstName, lastName, email, password, confirmPassword }) => {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        password,
+        confirm_password: confirmPassword,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Registration failed');
+    }
+
+    return data;
+  },
+
+  /**
    * Logout (destroy session).
    * @returns {Promise<void>}
    */
