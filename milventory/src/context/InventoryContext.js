@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import { api, admin, handleApiError } from '../api';
-import { LOCATION_SVG_MARKUP_BY_NAME } from '../components/locationSvgByName';
+import { LOCATION_SVG_MARKUP_BY_NAME } from '../constants/locationSvgByName';
 import { clampPointToRoom } from '../constants/mapBounds';
 import { LEFT_PANE_MIN_WIDTH, LEFT_PANE_MAX_WIDTH } from '../constants/leftPaneLayout';
 
