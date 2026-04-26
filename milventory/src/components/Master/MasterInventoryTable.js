@@ -1,11 +1,19 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import MasterTableRow from './MasterTableRow';
+import MasterTableRow, { formatCustomValue, formatDate } from './MasterTableRow';
 import MasterCreateModal from './MasterCreateModal';
 import { getCategories, api } from '../../api';
 
 /** Sentinel for filter: items with no template type */
 const TYPE_FILTER_NONE = '__NO_TYPE__';
+
+const summarizeList = (values) => {
+  if (!values.length) return '—';
+  if (values.length === 1) return values[0];
+  return `${values[0]}, ... +${values.length - 1}`;
+};
+
+const uniqueSorted = (values) => Array.from(new Set(values.filter(Boolean))).sort();
 
 const MasterInventoryTable = () => {
   const {
@@ -50,7 +58,6 @@ const MasterInventoryTable = () => {
   const [groupBy, setGroupBy] = useState(null);
   const [showGroupMenu, setShowGroupMenu] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
-  const [supplyTypes, setSupplyTypes] = useState([]);
   
   // Sorting state - default to lastModified ascending (earliest first)
   const [sortColumn, setSortColumn] = useState('lastModified');
@@ -159,17 +166,6 @@ const MasterInventoryTable = () => {
       .then(setCustomFieldDefinitions)
       .catch(() => setCustomFieldDefinitions([]));
   }, []);
-
-  // Lazy-fetch supply types when grouping by type is activated
-  useEffect(() => {
-    if (groupBy !== 'type') return;
-    if (!api.getSupplyTypes) return;
-    let cancelled = false;
-    api.getSupplyTypes()
-      .then((data) => { if (!cancelled) setSupplyTypes(Array.isArray(data) ? data : []); })
-      .catch(() => { if (!cancelled) setSupplyTypes([]); });
-    return () => { cancelled = true; };
-  }, [groupBy]);
 
   const toggleCustomColumn = useCallback((fieldName) => {
     setVisibleCustomColumns(prev => {
@@ -485,33 +481,10 @@ const MasterInventoryTable = () => {
     showLastModifiedColumn
   ].filter(Boolean).length + visibleCustomColumns.size;
 
-  // Total columns including the always-visible Name column (used for group-header colSpan)
-  const totalVisibleColumns = 1 + visibleColumnCount;
-
   const TYPE_GROUP_UNTYPED = '__NO_TYPE__';
-
-  const summarizeType = useCallback((typeRow) => {
-    if (!typeRow) return '';
-    const parts = [];
-    if (typeRow.item_name_prefix) parts.push(`Prefix "${typeRow.item_name_prefix}"`);
-    if (typeRow.item_description_prefix) parts.push(`Desc prefix "${typeRow.item_description_prefix}"`);
-    const locked = Array.isArray(typeRow.locked_custom_field_keys) ? typeRow.locked_custom_field_keys : [];
-    if (locked.length > 0) parts.push(`Required fields: ${locked.join(', ')}`);
-    const catIds = Array.isArray(typeRow.locked_category_ids) ? typeRow.locked_category_ids : [];
-    if (catIds.length > 0) {
-      const names = catIds.map((id) => categoryIdToName.get(id)).filter(Boolean);
-      if (names.length > 0) parts.push(`Categories: ${names.join(', ')}`);
-    }
-    const teamNames = Array.isArray(typeRow.locked_team_names) ? typeRow.locked_team_names : [];
-    if (teamNames.length > 0) parts.push(`Teams: ${teamNames.join(', ')}`);
-    if (typeRow.is_unique) parts.push('Unique');
-    if (typeRow.prevent_user_edit) parts.push('Admin-only edits');
-    return parts.join(' \u2022 ');
-  }, [categoryIdToName]);
 
   const groupedRows = useMemo(() => {
     if (groupBy !== 'type') return null;
-    const byName = new Map((supplyTypes || []).map((t) => [t.name, t]));
     const buckets = new Map();
     for (const entry of sortedItems) {
       const [, itemData] = entry;
@@ -524,13 +497,27 @@ const MasterInventoryTable = () => {
       if (b === TYPE_GROUP_UNTYPED) return -1;
       return a.localeCompare(b);
     });
-    return keys.map((key) => ({
-      key,
-      label: key === TYPE_GROUP_UNTYPED ? '(No type)' : key,
-      typeRow: key === TYPE_GROUP_UNTYPED ? null : byName.get(key) || null,
-      items: buckets.get(key),
-    }));
-  }, [groupBy, supplyTypes, sortedItems]);
+    return keys.map((key) => {
+      const items = buckets.get(key);
+      const lastModifiedDates = items
+        .map(([, itemData]) => itemData.lastModified ? new Date(itemData.lastModified) : null)
+        .filter((date) => date && !Number.isNaN(date.getTime()));
+      const latestLastModified = lastModifiedDates.length
+        ? new Date(Math.max(...lastModifiedDates.map((date) => date.getTime()))).toISOString()
+        : null;
+
+      return {
+        key,
+        label: key === TYPE_GROUP_UNTYPED ? '(No type)' : key,
+        items,
+        totalQty: items.reduce((sum, [itemName]) => sum + (quantities.get(itemName) || 0), 0),
+        locations: uniqueSorted(items.flatMap(([itemName]) => getItemLocations(itemName))),
+        categories: uniqueSorted(items.flatMap(([itemName]) => getItemCategories(itemName))),
+        teams: uniqueSorted(items.flatMap(([itemName]) => getItemTeams(itemName))),
+        latestLastModified
+      };
+    });
+  }, [groupBy, sortedItems, quantities, getItemLocations, getItemCategories, getItemTeams]);
 
   const toggleGroup = (key) => {
     setCollapsedGroups((prev) => {
@@ -1684,7 +1671,6 @@ const MasterInventoryTable = () => {
                 {groupBy === 'type' && groupedRows ? (
                   groupedRows.map((group) => {
                     const isCollapsed = collapsedGroups.has(group.key);
-                    const summary = summarizeType(group.typeRow);
                     return (
                       <React.Fragment key={`group-${group.key}`}>
                         <tr
@@ -1697,11 +1683,13 @@ const MasterInventoryTable = () => {
                             borderTop: '1px solid var(--stroke)',
                           }}
                         >
-                          <td
-                            colSpan={totalVisibleColumns}
-                            style={{ padding: '0.5rem 0.75rem' }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                          {showTypeColumn && (
+                            <td className="type-cell" title={group.label}>
+                              {group.label}
+                            </td>
+                          )}
+                          <td className="name-cell" title={`${group.label} (${group.items.length} item${group.items.length === 1 ? '' : 's'})`}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, fontWeight: 700 }}>
                               <svg
                                 width="12"
                                 height="12"
@@ -1722,28 +1710,42 @@ const MasterInventoryTable = () => {
                               <strong style={{ color: 'var(--text)', fontSize: '0.9rem' }}>
                                 {group.label}
                               </strong>
-                              <span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>
-                                ({group.items.length})
-                              </span>
-                              {summary && (
-                                <span
-                                  style={{
-                                    color: 'var(--muted)',
-                                    fontSize: '0.78rem',
-                                    marginLeft: '0.75rem',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                    minWidth: 0,
-                                    flex: 1,
-                                  }}
-                                  title={summary}
-                                >
-                                  {summary}
-                                </span>
-                              )}
                             </div>
                           </td>
+                          {showQtyColumn && (
+                            <td className="qty-cell">{group.totalQty}</td>
+                          )}
+                          {showLocationColumn && (
+                            <td className="location-cell" title={group.locations.join(', ')}>
+                              {summarizeList(group.locations)}
+                            </td>
+                          )}
+                          {showCategoryColumn && (
+                            <td className="category-cell" title={group.categories.join(', ')}>
+                              {summarizeList(group.categories)}
+                            </td>
+                          )}
+                          {showTeamColumn && (
+                            <td className="team-cell" title={group.teams.join(', ')}>
+                              {summarizeList(group.teams)}
+                            </td>
+                          )}
+                          {showLastModifiedColumn && (
+                            <td className="modified-cell" title={group.latestLastModified || ''}>
+                              {formatDate(group.latestLastModified)}
+                            </td>
+                          )}
+                          {customFieldDefinitions.filter(d => visibleCustomColumns.has(d.name)).map(d => {
+                            const values = uniqueSorted(
+                              group.items.map(([, itemData]) => formatCustomValue(itemData.custom_fields?.[d.name], d.type))
+                                .filter((value) => value !== '—')
+                            );
+                            return (
+                              <td key={d.id} className="custom-field-cell" title={values.join(', ')}>
+                                {summarizeList(values)}
+                              </td>
+                            );
+                          })}
                         </tr>
                         {!isCollapsed && group.items.map(([itemName, itemData]) => (
                           <MasterTableRow

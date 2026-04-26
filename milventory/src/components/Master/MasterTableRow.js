@@ -6,7 +6,7 @@ import {
   formatEasternTimeShort,
 } from '../../utils/appTimeZone';
 
-const formatDate = (isoString) => {
+export const formatDate = (isoString) => {
   if (!isoString) return '—';
   const date = new Date(isoString);
   if (Number.isNaN(date.getTime())) return '—';
