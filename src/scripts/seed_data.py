@@ -286,8 +286,12 @@ def seed_locations():
             
             json_names.add(name)
             location_type = derive_location_type(name)
-            shelf_count = 6 if location_type == 'tall_cabinet' else 0
-            
+            # shelf_count is authoritative from JSON (0 means "no shelves").
+            try:
+                shelf_count = max(0, int(box.get('shelf_count', 0) or 0))
+            except (TypeError, ValueError):
+                shelf_count = 0
+
             # Get coordinates from JSON box
             x = box.get('x', 0)
             y = box.get('y', 0)

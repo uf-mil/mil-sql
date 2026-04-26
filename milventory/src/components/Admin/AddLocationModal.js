@@ -18,7 +18,9 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
     topY: '',
     bottomY: '',
     leftX: '',
-    rightX: ''
+    rightX: '',
+    hasShelves: false,
+    shelfCount: 0
   });
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -88,10 +90,31 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    setFormData(prev => {
+      const next = { ...prev, [name]: value };
+      // Switching TO tall_cabinet pre-fills the standard 6-shelf layout unless
+      // the admin has already customized it; switching AWAY doesn't reset so
+      // any manually-configured shelves are preserved.
+      if (name === 'type' && value === 'tall_cabinet' && !prev.hasShelves) {
+        next.hasShelves = true;
+        next.shelfCount = 6;
+      }
+      return next;
+    });
+    setError(null);
+  };
+
+  const handleHasShelvesToggle = (checked) => {
     setFormData(prev => ({
       ...prev,
-      [name]: value // Store as string to allow empty values
+      hasShelves: checked,
+      shelfCount: checked ? Math.max(1, parseInt(prev.shelfCount, 10) || 6) : 0
     }));
+    setError(null);
+  };
+
+  const handleShelfCountChange = (value) => {
+    setFormData(prev => ({ ...prev, shelfCount: value }));
     setError(null);
   };
 
@@ -137,15 +160,33 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
       const width = rightX - leftX;
       const height = bottomY - topY;
 
+      // shelf_count is 0 unless the admin opted in via the toggle.
+      let shelfCount = 0;
+      if (formData.hasShelves) {
+        const parsed = parseInt(formData.shelfCount, 10);
+        if (!Number.isFinite(parsed) || parsed < 1) {
+          setError('Shelf count must be at least 1 when "Has shelves" is checked');
+          setSubmitting(false);
+          return;
+        }
+        if (parsed > 15) {
+          setError('Shelf count cannot exceed 15');
+          setSubmitting(false);
+          return;
+        }
+        shelfCount = parsed;
+      }
+
       await admin.createLocation({
         name: formData.name,
         type: formData.type,
         x: x,
         y: y,
         width: width,
-        height: height
+        height: height,
+        shelf_count: shelfCount
       });
-      
+
       // Reset form
       setFormData({
         name: '',
@@ -153,7 +194,9 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
         topY: '',
         bottomY: '',
         leftX: '',
-        rightX: ''
+        rightX: '',
+        hasShelves: false,
+        shelfCount: 0
       });
       
       // Clear preview
@@ -179,7 +222,9 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
       topY: '',
       bottomY: '',
       leftX: '',
-      rightX: ''
+      rightX: '',
+      hasShelves: false,
+      shelfCount: 0
     });
     setError(null);
     // Clear preview
@@ -275,7 +320,44 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
           ))}
         </select>
         </div>
-        <div style={{ marginTop: '0.5rem', marginBottom: '0.25rem', fontSize: '0.85rem', color: 'var(--text)', opacity: 0.8 }}>
+        <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={formData.hasShelves}
+              onChange={(e) => handleHasShelvesToggle(e.target.checked)}
+              disabled={submitting}
+            />
+            Has shelves
+          </label>
+          {formData.hasShelves && (
+            <input
+              type="number"
+              min="1"
+              max="15"
+              step="1"
+              aria-label="Number of shelves"
+              value={formData.shelfCount}
+              onChange={(e) => handleShelfCountChange(e.target.value)}
+              disabled={submitting}
+              style={{
+                width: '70px',
+                padding: '0.3rem 0.4rem',
+                background: '#27292E',
+                border: '1px solid var(--border)',
+                borderRadius: '4px',
+                color: 'var(--text)',
+                fontSize: '0.85rem'
+              }}
+            />
+          )}
+          {formData.hasShelves && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--text)', opacity: 0.7 }}>
+              shelves (top = 1, bottom = {Math.max(1, parseInt(formData.shelfCount, 10) || 1)})
+            </span>
+          )}
+        </div>
+        <div style={{ marginTop: '0.75rem', marginBottom: '0.25rem', fontSize: '0.85rem', color: 'var(--text)', opacity: 0.8 }}>
           Position & Size
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>

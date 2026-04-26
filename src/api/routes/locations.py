@@ -196,10 +196,15 @@ def create_location(current_user_id=None):
                 return jsonify({'error': f'Missing required field: {field}'}), 400
         
         location = Location.from_dict(data)
-        
-        # Determine shelf_count based on type
-        shelf_count = 6 if location.type == 'tall_cabinet' else 0
-        
+
+        # shelf_count is authoritative from the request (defaults to 0 via the model).
+        # Leaders explicitly control whether a location has shelves and how many.
+        # Capped at 15 for sanity — no real storage unit has more shelves than that,
+        # and the map rendering would become unreadable.
+        shelf_count = max(0, int(location.shelf_count or 0))
+        if shelf_count > 15:
+            return jsonify({'error': 'shelf_count cannot exceed 15'}), 400
+
         conn = get_db()
         cur = conn.cursor()
         repo.insert_location(
@@ -260,12 +265,12 @@ def update_location(name):
             return jsonify({'error': 'Request body is required'}), 400
         
         # Validate fields
-        updatable_fields = ['x', 'y', 'width', 'height', 'type', 'name']
+        updatable_fields = ['x', 'y', 'width', 'height', 'type', 'name', 'shelf_count']
         update_data = {k: v for k, v in data.items() if k in updatable_fields}
-        
+
         if not update_data:
             return jsonify({'error': 'No valid fields to update'}), 400
-        
+
         conn = get_db()
         cur = conn.cursor()
 
@@ -275,6 +280,51 @@ def update_location(name):
             return jsonify({'error': 'Location not found'}), 404
 
         new_name = update_data.pop('name', None)
+
+        # Normalize + validate shelf_count reductions BEFORE committing any change.
+        # A reduction that would orphan existing placements is rejected with 409 so
+        # the admin must move/delete those supplies first.
+        if 'shelf_count' in update_data:
+            try:
+                new_shelf_count = max(0, int(update_data['shelf_count'] or 0))
+            except (TypeError, ValueError):
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'shelf_count must be an integer'}), 400
+            if new_shelf_count > 15:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'shelf_count cannot exceed 15'}), 400
+            update_data['shelf_count'] = new_shelf_count
+
+            if new_shelf_count == 0:
+                # Fully unchecking "has shelves" demotes every placement at this
+                # location to a box-level placement (shelf = NULL). The admin
+                # confirmed this loss-of-shelf-info in the UI before we got
+                # here; partial reductions (0 < new < old) still hit the 409
+                # orphan-block path below.
+                cur.execute(
+                    "UPDATE supplies_location SET shelf = NULL "
+                    "WHERE location_name = %s AND shelf IS NOT NULL",
+                    (name,),
+                )
+            else:
+                orphan_count = repo.count_orphans_if_shelf_count(cur, name, new_shelf_count)
+                if orphan_count > 0:
+                    max_shelf = repo.max_used_shelf(cur, name)
+                    cur.close()
+                    conn.close()
+                    return jsonify({
+                        'error': (
+                            f'Cannot reduce shelf_count to {new_shelf_count}: '
+                            f'{orphan_count} placement(s) would be orphaned '
+                            f'(highest shelf in use is {max_shelf}). '
+                            f'Move or delete those supplies first.'
+                        ),
+                        'orphaned_count': orphan_count,
+                        'max_used_shelf': max_shelf,
+                        'requested_shelf_count': new_shelf_count,
+                    }), 409
 
         if update_data:
             set_clauses = []

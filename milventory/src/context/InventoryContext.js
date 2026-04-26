@@ -321,6 +321,7 @@ export const InventoryProvider = ({ children }) => {
             height: location.height,
             fill: getFillForType(location.type),
             type: location.type,
+            shelf_count: Math.max(0, parseInt(location.shelf_count, 10) || 0),
             inventory: [], // Will be populated from supply locations API
             ...(svgMarkup ? { svgMarkup } : {})
           };

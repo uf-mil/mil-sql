@@ -1,34 +1,24 @@
 import React, { useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { escapeHtml } from '../../utils';
+import { hasShelves, getShelfCount, getShelfLabels } from '../../utils/shelfLabels';
 
 const BoxInventoryOverlay = () => {
   const { selectedBox, inventoryData, addModeItem, setMasterFilterLocation } = useInventory();
-  
+
   const boxData = selectedBox ? inventoryData.get(selectedBox) : null;
   const inventory = boxData ? boxData.inventory : [];
-  const isFileCabinet = selectedBox && selectedBox.startsWith('Tall Cabinet');
+  const shelved = hasShelves(boxData);
 
-  const SHELF_NAMES = [
-    'Shelf 6 (Top)',
-    'Shelf 5',
-    'Shelf 4',
-    'Shelf 3',
-    'Shelf 2',
-    'Shelf 1 (Bottom)'
-  ];
-
-  // Group inventory items by shelf for file cabinets
+  // Group inventory items by shelf index (0 = top), using the authoritative shelf_count.
   const shelves = useMemo(() => {
-    if (!isFileCabinet) {
-      return null;
-    }
-    
-    return SHELF_NAMES.map((name, shelfNum) => {
+    if (!shelved) return null;
+    const labels = getShelfLabels(getShelfCount(boxData));
+    return labels.map((name, shelfNum) => {
       const items = inventory.filter(item => (item.shelf ?? 0) === shelfNum);
       return { name, shelfNum, items };
     });
-  }, [inventory, isFileCabinet]);
+  }, [inventory, shelved, boxData]);
 
   if (!selectedBox || !boxData || addModeItem) return null;
 
@@ -38,8 +28,8 @@ const BoxInventoryOverlay = () => {
   const overlayWidth = 250;
   const maxHeight = 400;
 
-  if (isFileCabinet && shelves) {
-    // Render shelves for Tall Cabinet
+  if (shelved && shelves) {
+    // Render one section per shelf, top-to-bottom.
     return (
       <g className="box-inventory-overlay" transform={`translate(${overlayX}, ${overlayY})`}>
         <foreignObject width={overlayWidth} height={maxHeight} x="0" y="0">

@@ -636,7 +636,7 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
             <input
               ref={nameInputRef}
               type="text"
-              placeholder="Item name (required, must be unique)"
+              placeholder="Item name (required)"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />

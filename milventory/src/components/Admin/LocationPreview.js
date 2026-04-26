@@ -27,6 +27,8 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
   const [editBottomY, setEditBottomY] = useState('');
   const [editLeftX, setEditLeftX] = useState('');
   const [editRightX, setEditRightX] = useState('');
+  const [editHasShelves, setEditHasShelves] = useState(false);
+  const [editShelfCount, setEditShelfCount] = useState(0);
 
   // Calculate position to the right of left pane
   const leftPaneActualWidth = leftPaneCollapsed ? 40 : leftPaneWidth;
@@ -89,6 +91,9 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
     setEditBottomY(String(location.y + location.height));
     setEditLeftX(String(location.x));
     setEditRightX(String(location.x + location.width));
+    const currentShelfCount = Math.max(0, parseInt(location.shelf_count, 10) || 0);
+    setEditHasShelves(currentShelfCount > 0);
+    setEditShelfCount(currentShelfCount > 0 ? currentShelfCount : 6);
 
     // Show preview box on map at current location
     if (onPreviewUpdate) {
@@ -153,9 +158,27 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
       const width = rightX - leftX;
       const height = bottomY - topY;
 
+      // Resolve the desired shelf_count from the toggle + numeric input.
+      let nextShelfCount = 0;
+      if (editHasShelves) {
+        const parsed = parseInt(editShelfCount, 10);
+        if (!Number.isFinite(parsed) || parsed < 1) {
+          setError('Shelf count must be at least 1 when "Has shelves" is checked');
+          setSaving(false);
+          return;
+        }
+        if (parsed > 15) {
+          setError('Shelf count cannot exceed 15');
+          setSaving(false);
+          return;
+        }
+        nextShelfCount = parsed;
+      }
+
       const updateData = {
         x, y, width, height,
-        type: editType
+        type: editType,
+        shelf_count: nextShelfCount
       };
 
       // Include name if it changed
@@ -163,7 +186,18 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
         updateData.name = editName.trim();
       }
 
-      await admin.updateLocation(location.name, updateData);
+      try {
+        await admin.updateLocation(location.name, updateData);
+      } catch (apiErr) {
+        // Surface the API's orphan-count message from a 409 response as-is; it
+        // already tells the admin how many placements are blocking the change.
+        if (apiErr && apiErr.response && apiErr.response.status === 409) {
+          setError(apiErr.message || 'Cannot reduce shelf count while placements use the removed shelves.');
+          setSaving(false);
+          return;
+        }
+        throw apiErr;
+      }
 
       // Clear preview and exit edit mode
       if (onPreviewUpdate) {
@@ -183,7 +217,7 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
     } finally {
       setSaving(false);
     }
-  }, [location, editName, editType, editTopY, editBottomY, editLeftX, editRightX, onPreviewUpdate, onEditEnd]);
+  }, [location, editName, editType, editTopY, editBottomY, editLeftX, editRightX, editHasShelves, editShelfCount, onPreviewUpdate, onEditEnd]);
 
   const handleDelete = async () => {
     if (!location) return;
@@ -314,6 +348,70 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
               </select>
             </div>
 
+            <div style={{ marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text)', cursor: saving ? 'not-allowed' : 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={editHasShelves}
+                    onChange={async (e) => {
+                      const checked = e.target.checked;
+                      setError(null);
+
+                      // Unchecking an already-shelved location on disk is a
+                      // destructive action: every placement's shelf index will
+                      // be flattened to NULL on save. Confirm explicitly.
+                      const wasConfiguredWithShelves = Boolean(
+                        location && location.shelf_count && location.shelf_count > 0
+                      );
+                      if (!checked && wasConfiguredWithShelves) {
+                        // Optimistically reflect the click so the dialog lines
+                        // up with what the user just toggled, then revert if
+                        // they cancel.
+                        setEditHasShelves(false);
+                        setEditShelfCount(0);
+                        const confirmed = await showConfirm(
+                          'All Shelf Locations for items in the location will be lost. They will just belong to the location without shelves now. Proceed?',
+                          { title: 'Remove shelves?', danger: true, confirmLabel: 'Yes', cancelLabel: 'Cancel' }
+                        );
+                        if (!confirmed) {
+                          setEditHasShelves(true);
+                          setEditShelfCount(location.shelf_count);
+                        }
+                        return;
+                      }
+
+                      setEditHasShelves(checked);
+                      setEditShelfCount(checked ? Math.max(1, parseInt(editShelfCount, 10) || 6) : 0);
+                    }}
+                    disabled={saving}
+                  />
+                  Has shelves
+                </label>
+                {editHasShelves && (
+                  <input
+                    type="number"
+                    min="1"
+                    max="15"
+                    step="1"
+                    aria-label="Number of shelves"
+                    value={editShelfCount}
+                    onChange={(e) => { setEditShelfCount(e.target.value); setError(null); }}
+                    disabled={saving}
+                    style={{ ...inputStyle, width: '70px', padding: '0.3rem 0.4rem' }}
+                  />
+                )}
+                {editHasShelves && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text)', opacity: 0.7 }}>
+                    top = 1, bottom = {Math.max(1, parseInt(editShelfCount, 10) || 1)}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text)', opacity: 0.55, marginTop: '0.25rem' }}>
+                Reducing shelf count is blocked while supplies sit on removed shelves — move them first.
+              </div>
+            </div>
+
             <div style={{ marginBottom: '0.25rem', fontSize: '0.85rem', color: 'var(--text)', opacity: 0.8 }}>
               Position & Size <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>(drag edges on map)</span>
             </div>
@@ -414,6 +512,15 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
               <strong>Size:</strong>
               <div className="master-preview-location-item">
                 Width: {location.width}, Height: {location.height}
+              </div>
+            </div>
+
+            <div className="master-preview-locations" style={{ marginTop: '0.75rem' }}>
+              <strong>Shelves:</strong>
+              <div className="master-preview-location-item">
+                {location.shelf_count && location.shelf_count > 0
+                  ? `${location.shelf_count} (top = Shelf 1, bottom = Shelf ${location.shelf_count})`
+                  : 'None'}
               </div>
             </div>
 

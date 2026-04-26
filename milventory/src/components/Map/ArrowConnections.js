@@ -1,15 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { useInventory, MASTER_ARROWS_REDRAW_EVENT } from '../../context/InventoryContext';
 import * as d3 from 'd3';
-
-const SHELF_NAMES = [
-  'Shelf 6 (Top)',
-  'Shelf 5',
-  'Shelf 4',
-  'Shelf 3',
-  'Shelf 2',
-  'Shelf 1 (Bottom)'
-];
+import { hasShelves, getShelfCount } from '../../utils/shelfLabels';
 
 const ArrowConnections = () => {
   const {
@@ -95,22 +87,23 @@ const ArrowConnections = () => {
         const matchingItems = boxData.inventory.filter(item => item.name === moveModeItem);
         if (matchingItems.length === 0) return;
         
-        const isTallCabinet = boxTitle.startsWith('Tall Cabinet');
-        
-        if (isTallCabinet) {
-          // For Tall Cabinets, point to each shelf's move box
+        const isShelved = hasShelves(boxData);
+
+        if (isShelved) {
+          // For shelved boxes, point to each shelf's move-handle
+          const shelfCount = getShelfCount(boxData);
           matchingItems.forEach(item => {
             const shelfIdx = item.shelf ?? 0;
-            const shelfH = boxData.height / SHELF_NAMES.length;
+            const shelfH = boxData.height / shelfCount;
             const shelfY = boxData.y + shelfIdx * shelfH;
-            
+
             const boxSize = Math.min(shelfH * 0.6, boxData.width * 0.4, 60);
             boxX = boxData.x + (boxData.width - boxSize) / 2 + boxSize / 2;
             boxY = shelfY + (shelfH - boxSize) / 2 + boxSize / 2;
-            
+
             drawArrowToPoint(previewX, previewY, boxX, boxY, arrowsGroup);
           });
-          return; // Skip the regular box arrow for Tall Cabinets
+          return; // Shelf arrows already drawn; skip the whole-box arrow.
         } else {
           // For regular boxes, point to the center move box
           const boxSize = Math.min(boxData.height * 0.5, boxData.width * 0.4, 60);

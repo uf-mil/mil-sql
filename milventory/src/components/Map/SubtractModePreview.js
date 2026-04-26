@@ -1,5 +1,6 @@
 import React from 'react';
 import { useInventory, FREE_SUBTRACT_DOT_PREFIX } from '../../context/InventoryContext';
+import { getShelfCount, getShelfLabel } from '../../utils/shelfLabels';
 
 const SubtractModePreview = () => {
   const {
@@ -13,7 +14,8 @@ const SubtractModePreview = () => {
     leftPaneCollapsed,
     resolveMasterItem,
     subtractModePreviewRef,
-    freePlacementsBySupplyPublicId
+    freePlacementsBySupplyPublicId,
+    inventoryData
   } = useInventory();
 
   const item = subtractModeItem ? resolveMasterItem(subtractModeItem) : null;
@@ -37,19 +39,10 @@ const SubtractModePreview = () => {
 
   if (!subtractModeItem || !item) return null;
 
-  const SHELF_NAMES = [
-    'Shelf 6 (Top)',
-    'Shelf 5',
-    'Shelf 4',
-    'Shelf 3',
-    'Shelf 2',
-    'Shelf 1 (Bottom)'
-  ];
-
   const pendingCount = Array.from(subtractModePending.values()).reduce((sum, qty) => sum + qty, 0);
   const pendingEntries = Array.from(subtractModePending.entries());
 
-  // Format a pending key for display
+  // Format a pending key for display.
   const formatPendingKey = (key) => {
     const parts = key.split('||');
     if (parts[0] === FREE_SUBTRACT_DOT_PREFIX && parts[1] != null && parts[1] !== '') {
@@ -61,7 +54,9 @@ const SubtractModePreview = () => {
     }
     if (parts.length > 1) {
       const shelfIdx = parseInt(parts[1], 10);
-      return `${parts[0]} → ${SHELF_NAMES[shelfIdx] || `Shelf ${shelfIdx}`}`;
+      const target = inventoryData?.get(parts[0]);
+      const shelfCount = getShelfCount(target);
+      return `${parts[0]} → ${getShelfLabel(shelfIdx, shelfCount)}`;
     }
     return parts[0];
   };

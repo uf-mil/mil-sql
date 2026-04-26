@@ -1,14 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-
-const SHELF_NAMES = [
-  'Shelf 6 (Top)',
-  'Shelf 5',
-  'Shelf 4',
-  'Shelf 3',
-  'Shelf 2',
-  'Shelf 1 (Bottom)'
-];
+import { hasShelves, getShelfCount } from '../../utils/shelfLabels';
 
 const MoveModeBoxes = () => {
   const {
@@ -80,11 +72,12 @@ const MoveModeBoxes = () => {
             worldPt.y >= boxData.y && worldPt.y <= boxData.y + boxData.height) {
           targetBox = boxTitle;
           
-          // If it's a Tall Cabinet, determine shelf
-          if (boxTitle.startsWith('Tall Cabinet')) {
-            const shelfH = boxData.height / SHELF_NAMES.length;
+          // If it has shelves, determine which one was dropped on.
+          if (hasShelves(boxData)) {
+            const shelfCount = getShelfCount(boxData);
+            const shelfH = boxData.height / shelfCount;
             const relativeY = worldPt.y - boxData.y;
-            targetShelf = Math.max(0, Math.min(SHELF_NAMES.length - 1, Math.floor(relativeY / shelfH)));
+            targetShelf = Math.max(0, Math.min(shelfCount - 1, Math.floor(relativeY / shelfH)));
           }
           break;
         }
@@ -130,13 +123,14 @@ const MoveModeBoxes = () => {
     });
     if (matchingItems.length === 0) return;
 
-    const isTallCabinet = box.title.startsWith('Tall Cabinet');
+    const isShelved = hasShelves(box);
 
-    if (isTallCabinet) {
-      // For Tall Cabinets, show a box per shelf
+    if (isShelved) {
+      // For shelved boxes, show one draggable handle per used shelf.
+      const shelfCount = getShelfCount(box);
       matchingItems.forEach(item => {
         const shelfIdx = item.shelf ?? 0;
-        const shelfH = box.height / SHELF_NAMES.length;
+        const shelfH = box.height / shelfCount;
         const shelfY = box.y + shelfIdx * shelfH;
         
         // Position box in center of shelf

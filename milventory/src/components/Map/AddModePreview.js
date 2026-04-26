@@ -1,5 +1,6 @@
 import React from 'react';
 import { useInventory } from '../../context/InventoryContext';
+import { getShelfCount, getShelfLabel } from '../../utils/shelfLabels';
 
 const AddModePreview = () => {
   const {
@@ -12,7 +13,8 @@ const AddModePreview = () => {
     leftPaneWidth,
     leftPaneCollapsed,
     resolveMasterItem,
-    addModePreviewRef
+    addModePreviewRef,
+    inventoryData
   } = useInventory();
 
   const item = addModeItem ? resolveMasterItem(addModeItem) : null;
@@ -36,24 +38,18 @@ const AddModePreview = () => {
 
   if (!addModeItem || !item) return null;
 
-  const SHELF_NAMES = [
-    'Shelf 6 (Top)',
-    'Shelf 5',
-    'Shelf 4',
-    'Shelf 3',
-    'Shelf 2',
-    'Shelf 1 (Bottom)'
-  ];
-
   const pendingCount = Array.from(addModePending.values()).reduce((sum, qty) => sum + qty, 0);
   const pendingEntries = Array.from(addModePending.entries());
 
-  // Format a pending key for display
+  // Format a pending key for display. Shelf labels are derived from the target
+  // box's current shelf_count so the numbering matches the rest of the UI.
   const formatPendingKey = (key) => {
     const parts = key.split('||');
     if (parts.length > 1) {
       const shelfIdx = parseInt(parts[1], 10);
-      return `${parts[0]} → ${SHELF_NAMES[shelfIdx] || `Shelf ${shelfIdx}`}`;
+      const target = inventoryData?.get(parts[0]);
+      const shelfCount = getShelfCount(target);
+      return `${parts[0]} → ${getShelfLabel(shelfIdx, shelfCount)}`;
     }
     return parts[0];
   };

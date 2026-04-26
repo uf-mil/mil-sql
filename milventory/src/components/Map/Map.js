@@ -8,15 +8,7 @@ import MoveModeBoxes from './MoveModeBoxes';
 import SubtractModePreview from './SubtractModePreview';
 import FreePlaceDots from './FreePlaceDots';
 import { svgMarkupToDataUrl } from '../../utils/svgDataUrl';
-
-const SHELF_NAMES = [
-  'Shelf 6 (Top)',
-  'Shelf 5',
-  'Shelf 4',
-  'Shelf 3',
-  'Shelf 2',
-  'Shelf 1 (Bottom)'
-];
+import { hasShelves, getShelfCount, getShelfLabels } from '../../utils/shelfLabels';
 
 function inventoryRowMatchesSupplyPublicId(invItem, supplyPublicId) {
   if (!supplyPublicId) return false;
@@ -128,8 +120,8 @@ const MapComponent = forwardRef((props, ref) => {
       const boxData = inventoryData.get(boxTitle);
       let targetShelf = undefined;
       
-      if (boxData && boxTitle.startsWith('Tall Cabinet') && worldRef.current) {
-        // Calculate which shelf based on mouse position
+      if (boxData && hasShelves(boxData) && worldRef.current) {
+        const shelfCount = getShelfCount(boxData);
         const svg = e.currentTarget.ownerSVGElement;
         if (svg) {
           const pt = svg.createSVGPoint();
@@ -138,9 +130,9 @@ const MapComponent = forwardRef((props, ref) => {
           const ctm = worldRef.current.getScreenCTM();
           if (ctm) {
             const worldPt = pt.matrixTransform(ctm.inverse());
-            const shelfH = boxData.height / SHELF_NAMES.length;
+            const shelfH = boxData.height / shelfCount;
             const relativeY = worldPt.y - boxData.y;
-            targetShelf = Math.max(0, Math.min(SHELF_NAMES.length - 1, Math.floor(relativeY / shelfH)));
+            targetShelf = Math.max(0, Math.min(shelfCount - 1, Math.floor(relativeY / shelfH)));
           }
         }
       }
@@ -196,9 +188,9 @@ const MapComponent = forwardRef((props, ref) => {
 
   const boxPointerBlockFreePlace = freePlaceModeItem ? { pointerEvents: 'none' } : undefined;
 
-  // All Tall Cabinets get shelf overlays in add mode, subtract mode, or move mode
-  const tallCabinets = (addModeItem || subtractModeItem || moveModeItem)
-    ? boxes.filter(b => b.title.startsWith('Tall Cabinet'))
+  // Boxes with shelves get shelf overlays in add/subtract/move mode
+  const shelvedBoxes = (addModeItem || subtractModeItem || moveModeItem)
+    ? boxes.filter(hasShelves)
     : [];
 
   return (
@@ -219,8 +211,9 @@ const MapComponent = forwardRef((props, ref) => {
           />
           
           {boxes.map((box, idx) => {
-            // For regular boxes (not Tall Cabinets), check if they have pending items
-            const isRegularBox = !box.title.startsWith('Tall Cabinet');
+            // For boxes without shelves, show box-level pending/subtract badges.
+            // Shelved boxes get per-shelf overlays rendered separately below.
+            const isRegularBox = !hasShelves(box);
             const hasAddPending = isRegularBox && addModeItem && addModePending.has(box.title);
             const addPendingQty = hasAddPending ? addModePending.get(box.title) : null;
             
@@ -267,13 +260,12 @@ const MapComponent = forwardRef((props, ref) => {
                   onClick={(e) => {
                     e.stopPropagation();
                     if (addModeItem) {
-                      // For Tall Cabinets, shelf rects on top handle clicks
-                      if (!box.title.startsWith('Tall Cabinet')) {
+                      // Shelved boxes delegate clicks to per-shelf rects overlaid on top.
+                      if (!hasShelves(box)) {
                         handleBoxClickAddMode(box.title);
                       }
                     } else if (subtractModeItem) {
-                      // For Tall Cabinets, shelf rects on top handle clicks
-                      if (!box.title.startsWith('Tall Cabinet')) {
+                      if (!hasShelves(box)) {
                         handleBoxClickSubtractMode(box.title);
                       }
                     } else {
@@ -317,12 +309,14 @@ const MapComponent = forwardRef((props, ref) => {
             );
           })}
 
-          {/* Shelf overlays for all Tall Cabinets in add mode, subtract mode, or move mode */}
-          {tallCabinets.map(box => {
-            const shelfH = box.height / SHELF_NAMES.length;
+          {/* Shelf overlays for every box with shelves in add/subtract/move mode */}
+          {shelvedBoxes.map(box => {
+            const shelfCount = getShelfCount(box);
+            const shelfH = box.height / shelfCount;
+            const shelfLabels = getShelfLabels(shelfCount);
             return (
               <g key={`shelves-${box.title}`} className="add-mode-shelf-group">
-                {SHELF_NAMES.map((name, idx) => {
+                {shelfLabels.map((name, idx) => {
                   const shelfY = box.y + idx * shelfH;
                   const pendingKey = `${box.title}||${idx}`;
                   const isAddAffected = addModeItem && addModePending.has(pendingKey);

@@ -5,6 +5,7 @@ import { getCategories, api } from '../../api';
 import { formatCustomValue } from './MasterTableRow';
 import { formatEasternDateTime } from '../../utils/appTimeZone';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
+import { hasShelves, getShelfCount, getShelfLabel } from '../../utils/shelfLabels';
 
 const MasterItemPreview = () => {
   const { showConfirm } = useBlockingDialog();
@@ -29,11 +30,6 @@ const MasterItemPreview = () => {
     cancelFreePlaceMode,
     finishFreePlaceMode
   } = useInventory();
-
-  const SHELF_NAMES = [
-    'Shelf 6 (Top)', 'Shelf 5', 'Shelf 4',
-    'Shelf 3', 'Shelf 2', 'Shelf 1 (Bottom)'
-  ];
 
   const previewRef = useRef(null);
   const [editingItem, setEditingItem] = useState(null);
@@ -85,10 +81,11 @@ const MasterItemPreview = () => {
           (i.supplyId != null ? `__legacy_id_${i.supplyId}` : null);
         return k === selectedMasterItem;
       });
-      if (boxTitle.startsWith('Tall Cabinet')) {
+      if (hasShelves(boxData)) {
+        const shelfCount = getShelfCount(boxData);
         matchingItems.forEach(i => {
           const shelfIdx = i.shelf ?? 0;
-          const shelfName = SHELF_NAMES[shelfIdx] || `Shelf ${shelfIdx}`;
+          const shelfName = getShelfLabel(shelfIdx, shelfCount);
           boxLocationDetails.push({ label: `${boxTitle} → ${shelfName}`, qty: i.qty });
         });
       } else {

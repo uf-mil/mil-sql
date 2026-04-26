@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
+import { hasShelves, getShelfCount, getShelfLabels } from '../../utils/shelfLabels';
 
 const AddModal = () => {
   const { currentAddingBox, currentAddingIndex, setCurrentAddingBox, setCurrentAddingIndex, inventoryData, updateInventory, masterInventoryItems } = useInventory();
@@ -10,16 +11,9 @@ const AddModal = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const nameInputRef = useRef(null);
 
-  const isFileCabinet = currentAddingBox && currentAddingBox.startsWith('Tall Cabinet');
-
-  const SHELF_NAMES = [
-    'Shelf 6 (Top)',
-    'Shelf 5',
-    'Shelf 4',
-    'Shelf 3',
-    'Shelf 2',
-    'Shelf 1 (Bottom)'
-  ];
+  const currentBox = currentAddingBox ? inventoryData.get(currentAddingBox) : null;
+  const isShelved = hasShelves(currentBox);
+  const shelfLabels = useMemo(() => getShelfLabels(getShelfCount(currentBox)), [currentBox]);
 
   const masterRows = useMemo(
     () =>
@@ -51,14 +45,14 @@ const AddModal = () => {
       setSelectedSupplyPublicId('');
       setQty(1);
       setSearchQuery('');
-      if (isFileCabinet) {
+      if (isShelved) {
         setSelectedShelf(0);
       } else {
         setSelectedShelf(null);
       }
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
-  }, [currentAddingBox, isFileCabinet]);
+  }, [currentAddingBox, isShelved]);
 
   const handleSave = () => {
     if (currentAddingBox && selectedSupplyPublicId) {
@@ -74,13 +68,13 @@ const AddModal = () => {
           qty: parseInt(qty, 10) || 1
         };
 
-        if (isFileCabinet && selectedShelf !== null) {
+        if (isShelved && selectedShelf !== null) {
           newItem.shelf = selectedShelf;
         }
 
         const newInventory = [...boxData.inventory];
 
-        if (isFileCabinet && selectedShelf !== null) {
+        if (isShelved && selectedShelf !== null) {
           let lastIndexInShelf = -1;
           for (let i = newInventory.length - 1; i >= 0; i--) {
             if ((newInventory[i].shelf ?? 0) === selectedShelf) {
@@ -132,13 +126,13 @@ const AddModal = () => {
     >
       <div className="modal">
         <h3>Add Item</h3>
-        {isFileCabinet && (
+        {isShelved && (
           <select
             value={selectedShelf !== null ? selectedShelf : 0}
             onChange={(e) => setSelectedShelf(parseInt(e.target.value, 10))}
             className="styled-select"
           >
-            {SHELF_NAMES.map((name, index) => (
+            {shelfLabels.map((name, index) => (
               <option key={index} value={index}>
                 {name}
               </option>

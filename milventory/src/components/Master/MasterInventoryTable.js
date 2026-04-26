@@ -33,6 +33,7 @@ const MasterInventoryTable = () => {
   const [categoryNameToId, setCategoryNameToId] = useState(new Map());
   const filterButtonRef = React.useRef(null);
   const columnButtonRef = React.useRef(null);
+  const groupButtonRef = React.useRef(null);
   
   // Column visibility state - default hide category and team, show others
   const [showTypeColumn, setShowTypeColumn] = useState(false);
@@ -44,6 +45,12 @@ const MasterInventoryTable = () => {
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState([]);
   const [visibleCustomColumns, setVisibleCustomColumns] = useState(new Set());
+
+  // Grouping state - null (no grouping) or 'type'
+  const [groupBy, setGroupBy] = useState(null);
+  const [showGroupMenu, setShowGroupMenu] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  const [supplyTypes, setSupplyTypes] = useState([]);
   
   // Sorting state - default to lastModified ascending (earliest first)
   const [sortColumn, setSortColumn] = useState('lastModified');
@@ -152,6 +159,17 @@ const MasterInventoryTable = () => {
       .then(setCustomFieldDefinitions)
       .catch(() => setCustomFieldDefinitions([]));
   }, []);
+
+  // Lazy-fetch supply types when grouping by type is activated
+  useEffect(() => {
+    if (groupBy !== 'type') return;
+    if (!api.getSupplyTypes) return;
+    let cancelled = false;
+    api.getSupplyTypes()
+      .then((data) => { if (!cancelled) setSupplyTypes(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setSupplyTypes([]); });
+    return () => { cancelled = true; };
+  }, [groupBy]);
 
   const toggleCustomColumn = useCallback((fieldName) => {
     setVisibleCustomColumns(prev => {
@@ -301,6 +319,26 @@ const MasterInventoryTable = () => {
     };
   }, [showColumnMenu]);
 
+  // Close group menu when clicking outside
+  useEffect(() => {
+    if (!showGroupMenu) return;
+
+    const handleClickOutside = (event) => {
+      if (groupButtonRef.current && !groupButtonRef.current.contains(event.target)) {
+        setShowGroupMenu(false);
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showGroupMenu]);
+
   const sortedItems = useMemo(() => {
     const items = [...filteredItems];
     
@@ -446,6 +484,62 @@ const MasterInventoryTable = () => {
     showTeamColumn,
     showLastModifiedColumn
   ].filter(Boolean).length + visibleCustomColumns.size;
+
+  // Total columns including the always-visible Name column (used for group-header colSpan)
+  const totalVisibleColumns = 1 + visibleColumnCount;
+
+  const TYPE_GROUP_UNTYPED = '__NO_TYPE__';
+
+  const summarizeType = useCallback((typeRow) => {
+    if (!typeRow) return '';
+    const parts = [];
+    if (typeRow.item_name_prefix) parts.push(`Prefix "${typeRow.item_name_prefix}"`);
+    if (typeRow.item_description_prefix) parts.push(`Desc prefix "${typeRow.item_description_prefix}"`);
+    const locked = Array.isArray(typeRow.locked_custom_field_keys) ? typeRow.locked_custom_field_keys : [];
+    if (locked.length > 0) parts.push(`Required fields: ${locked.join(', ')}`);
+    const catIds = Array.isArray(typeRow.locked_category_ids) ? typeRow.locked_category_ids : [];
+    if (catIds.length > 0) {
+      const names = catIds.map((id) => categoryIdToName.get(id)).filter(Boolean);
+      if (names.length > 0) parts.push(`Categories: ${names.join(', ')}`);
+    }
+    const teamNames = Array.isArray(typeRow.locked_team_names) ? typeRow.locked_team_names : [];
+    if (teamNames.length > 0) parts.push(`Teams: ${teamNames.join(', ')}`);
+    if (typeRow.is_unique) parts.push('Unique');
+    if (typeRow.prevent_user_edit) parts.push('Admin-only edits');
+    return parts.join(' \u2022 ');
+  }, [categoryIdToName]);
+
+  const groupedRows = useMemo(() => {
+    if (groupBy !== 'type') return null;
+    const byName = new Map((supplyTypes || []).map((t) => [t.name, t]));
+    const buckets = new Map();
+    for (const entry of sortedItems) {
+      const [, itemData] = entry;
+      const key = itemData.type_name || TYPE_GROUP_UNTYPED;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(entry);
+    }
+    const keys = Array.from(buckets.keys()).sort((a, b) => {
+      if (a === TYPE_GROUP_UNTYPED) return 1;
+      if (b === TYPE_GROUP_UNTYPED) return -1;
+      return a.localeCompare(b);
+    });
+    return keys.map((key) => ({
+      key,
+      label: key === TYPE_GROUP_UNTYPED ? '(No type)' : key,
+      typeRow: key === TYPE_GROUP_UNTYPED ? null : byName.get(key) || null,
+      items: buckets.get(key),
+    }));
+  }, [groupBy, supplyTypes, sortedItems]);
+
+  const toggleGroup = (key) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const SortIcon = ({ column }) => {
     if (sortColumn !== column) {
@@ -1333,6 +1427,151 @@ const MasterInventoryTable = () => {
                 </div>
               )}
             </div>
+            {/* Group Button */}
+            <div style={{ position: 'relative' }} ref={groupButtonRef}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowGroupMenu(!showGroupMenu);
+                }}
+                style={{
+                  padding: '0.4rem',
+                  fontSize: '1rem',
+                  background: groupBy ? 'var(--accent)' : 'transparent',
+                  border: '1px solid var(--stroke)',
+                  color: groupBy ? 'white' : 'var(--text)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  position: 'relative',
+                  transition: 'all 0.2s'
+                }}
+                title="Group rows"
+                onMouseEnter={(e) => {
+                  if (!groupBy) {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!groupBy) {
+                    e.currentTarget.style.background = 'transparent';
+                  }
+                }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M8 1.5L2 4.5l6 3 6-3-6-3z" />
+                  <path d="M2 8l6 3 6-3" />
+                  <path d="M2 11.5l6 3 6-3" />
+                </svg>
+              </button>
+
+              {/* Group Dropdown Menu */}
+              {showGroupMenu && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: '0.5rem',
+                    background: '#0a0d12',
+                    border: '1px solid var(--stroke)',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+                    zIndex: 1000,
+                    minWidth: '200px',
+                    padding: '0.75rem',
+                    animation: 'slideDown 0.15s ease-out',
+                    transformOrigin: 'top'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: '600', color: 'var(--text)' }}>
+                    Group by
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        background: groupBy === null ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (groupBy !== null) {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (groupBy !== null) {
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="master-group-by"
+                        checked={groupBy === null}
+                        onChange={() => {
+                          setGroupBy(null);
+                          setCollapsedGroups(new Set());
+                        }}
+                        style={{ marginRight: '0.75rem', width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>None</span>
+                    </label>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0.5rem',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        background: groupBy === 'type' ? 'rgba(100, 150, 255, 0.2)' : 'transparent',
+                        transition: 'background 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (groupBy !== 'type') {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (groupBy !== 'type') {
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="master-group-by"
+                        checked={groupBy === 'type'}
+                        onChange={() => {
+                          setGroupBy('type');
+                          setCollapsedGroups(new Set());
+                        }}
+                        style={{ marginRight: '0.75rem', width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.85rem' }}>Type</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="master-table-content">
@@ -1442,27 +1681,117 @@ const MasterInventoryTable = () => {
                 </tr>
               </thead>
               <tbody>
-                {sortedItems.map(([itemName, itemData]) => (
-                  <MasterTableRow
-                    key={itemName}
-                    itemName={itemName}
-                    itemData={itemData}
-                    quantity={quantities.get(itemName) || 0}
-                    locations={getItemLocations(itemName)}
-                    categories={getItemCategories(itemName)}
-                    teams={getItemTeams(itemName)}
-                    showType={showTypeColumn}
-                    showQty={showQtyColumn}
-                    showLocation={showLocationColumn}
-                    showCategory={showCategoryColumn}
-                    showTeam={showTeamColumn}
-                    showLastModified={showLastModifiedColumn}
-                    visibleCustomColumns={visibleCustomColumns}
-                    customFieldDefinitions={customFieldDefinitions}
-                    isSelected={selectedMasterItem === itemName}
-                    onClick={() => handleRowClick(itemName)}
-                  />
-                ))}
+                {groupBy === 'type' && groupedRows ? (
+                  groupedRows.map((group) => {
+                    const isCollapsed = collapsedGroups.has(group.key);
+                    const summary = summarizeType(group.typeRow);
+                    return (
+                      <React.Fragment key={`group-${group.key}`}>
+                        <tr
+                          className="master-group-header"
+                          onClick={() => toggleGroup(group.key)}
+                          style={{
+                            background: 'rgba(100, 150, 255, 0.08)',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            borderTop: '1px solid var(--stroke)',
+                          }}
+                        >
+                          <td
+                            colSpan={totalVisibleColumns}
+                            style={{ padding: '0.5rem 0.75rem' }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                              <svg
+                                width="12"
+                                height="12"
+                                viewBox="0 0 12 12"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.75"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                style={{
+                                  flexShrink: 0,
+                                  transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                                  transition: 'transform 0.15s',
+                                }}
+                              >
+                                <path d="M3 4.5L6 7.5L9 4.5" />
+                              </svg>
+                              <strong style={{ color: 'var(--text)', fontSize: '0.9rem' }}>
+                                {group.label}
+                              </strong>
+                              <span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>
+                                ({group.items.length})
+                              </span>
+                              {summary && (
+                                <span
+                                  style={{
+                                    color: 'var(--muted)',
+                                    fontSize: '0.78rem',
+                                    marginLeft: '0.75rem',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    minWidth: 0,
+                                    flex: 1,
+                                  }}
+                                  title={summary}
+                                >
+                                  {summary}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {!isCollapsed && group.items.map(([itemName, itemData]) => (
+                          <MasterTableRow
+                            key={itemName}
+                            itemName={itemName}
+                            itemData={itemData}
+                            quantity={quantities.get(itemName) || 0}
+                            locations={getItemLocations(itemName)}
+                            categories={getItemCategories(itemName)}
+                            teams={getItemTeams(itemName)}
+                            showType={showTypeColumn}
+                            showQty={showQtyColumn}
+                            showLocation={showLocationColumn}
+                            showCategory={showCategoryColumn}
+                            showTeam={showTeamColumn}
+                            showLastModified={showLastModifiedColumn}
+                            visibleCustomColumns={visibleCustomColumns}
+                            customFieldDefinitions={customFieldDefinitions}
+                            isSelected={selectedMasterItem === itemName}
+                            onClick={() => handleRowClick(itemName)}
+                          />
+                        ))}
+                      </React.Fragment>
+                    );
+                  })
+                ) : (
+                  sortedItems.map(([itemName, itemData]) => (
+                    <MasterTableRow
+                      key={itemName}
+                      itemName={itemName}
+                      itemData={itemData}
+                      quantity={quantities.get(itemName) || 0}
+                      locations={getItemLocations(itemName)}
+                      categories={getItemCategories(itemName)}
+                      teams={getItemTeams(itemName)}
+                      showType={showTypeColumn}
+                      showQty={showQtyColumn}
+                      showLocation={showLocationColumn}
+                      showCategory={showCategoryColumn}
+                      showTeam={showTeamColumn}
+                      showLastModified={showLastModifiedColumn}
+                      visibleCustomColumns={visibleCustomColumns}
+                      customFieldDefinitions={customFieldDefinitions}
+                      isSelected={selectedMasterItem === itemName}
+                      onClick={() => handleRowClick(itemName)}
+                    />
+                  ))
+                )}
               </tbody>
             </table>
           )}

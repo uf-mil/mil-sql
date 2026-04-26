@@ -155,6 +155,7 @@ for (let i = 0; i < 4; i++) {
     width: tallCabinetWidth,
     height: tallCabinetHeight,
     fill: 'var(--files)',
+    shelf_count: 6,
     inventory: []
   });
 }
@@ -171,6 +172,7 @@ const tallCabinet104 = {
   width: tallCabinetWidth,
   height: tallCabinetHeight,
   fill: 'var(--files)',
+  shelf_count: 6,
   inventory: []
 };
 
@@ -268,7 +270,7 @@ const output = {
 // Format function to align columns
 function formatInventoryData(data) {
   // Define attribute order
-  const attributeOrder = ['title', 'x', 'y', 'width', 'height', 'fill', 'isWorkbench', 'inventory'];
+  const attributeOrder = ['title', 'x', 'y', 'width', 'height', 'fill', 'shelf_count', 'isWorkbench', 'inventory'];
   
   // Find the maximum width for each attribute's value across all boxes
   const maxValueWidths = {};

@@ -174,8 +174,14 @@ def seed_locations():
             
             json_names.add(name)
             location_type = derive_location_type(name)
-            shelf_count = 6 if location_type == 'tall_cabinet' else 0
-            
+            # shelf_count is authoritative from JSON. Legacy JSON entries that
+            # omit it fall back to 0 (no shelves) — add `"shelf_count": N` in
+            # inventory-locations.json to turn shelves on for a location.
+            try:
+                shelf_count = max(0, int(box.get('shelf_count', 0) or 0))
+            except (TypeError, ValueError):
+                shelf_count = 0
+
             # Get coordinates from JSON box
             x = box.get('x', 0)
             y = box.get('y', 0)
