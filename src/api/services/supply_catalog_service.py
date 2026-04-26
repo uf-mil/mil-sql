@@ -527,14 +527,26 @@ def update_supply(supply_id: int, data: dict, current_user_id: str) -> dict:
         old_teams = current_state["teams"]
         old_categories = current_state["categories"]
 
-        unlink_from_type = bool(data.get("unlink_from_type"))
+        requested_type_present = "supply_type_id" in data
+        unlink_from_type = bool(data.get("unlink_from_type")) or (
+            requested_type_present and (data.get("supply_type_id") is None or data.get("supply_type_id") == "")
+        )
         old_type_id = supply_check.get("supply_type_id")
         effective_type_id = None if unlink_from_type else old_type_id
         type_row_update = None
-        if effective_type_id:
+        if requested_type_present and not unlink_from_type:
+            try:
+                effective_type_id = int(data.get("supply_type_id"))
+            except (TypeError, ValueError):
+                raise CatalogError(400, {"error": "Invalid supply_type_id"})
             type_row_update = repo.fetch_supply_type_row(cur, effective_type_id)
             if not type_row_update:
-                effective_type_id = None
+                raise CatalogError(400, {"error": "Supply type not found"})
+        if effective_type_id:
+            if not type_row_update:
+                type_row_update = repo.fetch_supply_type_row(cur, effective_type_id)
+                if not type_row_update:
+                    effective_type_id = None
 
         has_type_template_image = type_has_template_image(type_row_update)
 
@@ -604,9 +616,9 @@ def update_supply(supply_id: int, data: dict, current_user_id: str) -> dict:
             updates.append("custom_fields = %s")
             values.append(json.dumps(merged_cf_for_update) if merged_cf_for_update else None)
 
-        if unlink_from_type:
+        if unlink_from_type or requested_type_present:
             updates.append("supply_type_id = %s")
-            values.append(None)
+            values.append(None if unlink_from_type else effective_type_id)
 
         updates.append("last_modified_by = %s")
         values.append(current_user_id)

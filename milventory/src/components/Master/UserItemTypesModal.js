@@ -5,6 +5,7 @@ import {
   areNumberCustomFieldsValid,
   buildCustomFieldsPayload,
   emptyForm,
+  typeCustomFieldsFromTypeRow,
   TypeFormBody
 } from './ItemTypeFormFields';
 import '../History/HistoryModal.css';
@@ -16,7 +17,7 @@ function formatDefaultValue(v) {
   return String(v);
 }
 
-function TypeDetailPane({ typeRow, customFieldDefinitions, categoryOptions = [] }) {
+function TypeDetailPane({ typeRow, customFieldDefinitions, categoryOptions = [], actions = null }) {
   const locked = Array.isArray(typeRow.locked_custom_field_keys) ? typeRow.locked_custom_field_keys : [];
   const defaults = typeRow.default_custom_fields && typeof typeRow.default_custom_fields === 'object'
     ? typeRow.default_custom_fields
@@ -30,7 +31,10 @@ function TypeDetailPane({ typeRow, customFieldDefinitions, categoryOptions = [] 
 
   return (
     <div className="user-types-detail user-types-right-inner">
-      <h3>{typeRow.name}</h3>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+        <h3>{typeRow.name}</h3>
+        {actions}
+      </div>
       <dl className="user-types-detail-dl">
         <dt>Type name</dt>
         <dd>{typeRow.name}</dd>
@@ -79,7 +83,7 @@ function TypeDetailPane({ typeRow, customFieldDefinitions, categoryOptions = [] 
 }
 
 const UserItemTypesModal = ({ isOpen, onClose }) => {
-  const { reloadMasterItems } = useInventory();
+  const { reloadMasterItems, setError: setToastError } = useInventory();
   const [types, setTypes] = useState([]);
   const [loadingTypes, setLoadingTypes] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -197,8 +201,30 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
     setAddFieldDropdownOpen(false);
   };
 
-  const cancelCreate = () => {
-    setPanelMode('idle');
+  const startEdit = (typeRow) => {
+    if (!typeRow || typeRow.prevent_user_edit) return;
+    setSelectedTypeId(typeRow.id);
+    setPanelMode('edit');
+    setForm({
+      name: typeRow.name || '',
+      template_description: typeRow.template_description || '',
+      item_name_prefix: typeRow.item_name_prefix || '',
+      item_description_prefix: typeRow.item_description_prefix || '',
+      image: typeRow.image || null,
+      typeCustomFields: typeCustomFieldsFromTypeRow(typeRow),
+      locked_category_ids: Array.isArray(typeRow.locked_category_ids) ? [...typeRow.locked_category_ids] : [],
+      locked_team_names: Array.isArray(typeRow.locked_team_names)
+        ? typeRow.locked_team_names.map((x) => String(x).toLowerCase())
+        : [],
+      is_unique: !!typeRow.is_unique,
+      prevent_user_edit: !!typeRow.prevent_user_edit
+    });
+    setFormError(null);
+    setAddFieldDropdownOpen(false);
+  };
+
+  const cancelForm = () => {
+    setPanelMode(selectedTypeId != null ? 'detail' : 'idle');
     setForm(emptyForm());
     setFormError(null);
     setAddFieldDropdownOpen(false);
@@ -269,6 +295,60 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
       setForm(emptyForm());
     } catch (err) {
       setFormError(err.message || 'Failed to create type');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedType || selectedType.prevent_user_edit) {
+      setFormError('This item type can only be edited by a leader.');
+      return;
+    }
+    if (!form.name.trim()) {
+      setFormError('Type name is required');
+      return;
+    }
+    if (!areNumberCustomFieldsValid(form.typeCustomFields || {}, customFieldDefinitions)) {
+      setFormError('Enter a valid number for number fields (or leave them empty).');
+      return;
+    }
+    const { default_custom_fields, locked_custom_field_keys } = buildCustomFieldsPayload(
+      form.typeCustomFields || {},
+      customFieldDefinitions
+    );
+    try {
+      setSubmitting(true);
+      setFormError(null);
+      await api.updateSupplyType(selectedType.id, {
+        name: form.name.trim(),
+        template_description: form.template_description.trim() || null,
+        item_name_prefix: form.item_name_prefix.trim(),
+        item_description_prefix: form.item_description_prefix.trim() || null,
+        image: form.image,
+        default_custom_fields,
+        locked_custom_field_keys,
+        is_unique: form.is_unique,
+        locked_category_ids: [...(form.locked_category_ids || [])].sort((a, b) => Number(a) - Number(b)),
+        locked_team_names: form.locked_team_names || []
+      });
+      await reloadMasterItems();
+      try {
+        localStorage.setItem('milventory-master-catalog-bump', String(Date.now()));
+      } catch (_) {
+        /* ignore */
+      }
+      await loadTypes({ silent: true });
+      setPanelMode('detail');
+      setForm(emptyForm());
+    } catch (err) {
+      const message = err.message || 'Failed to update type';
+      if (message.includes('Cannot mark this item type as unique')) {
+        setToastError(message);
+      } else {
+        setFormError(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -348,6 +428,18 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
                 typeRow={selectedType}
                 customFieldDefinitions={customFieldDefinitions}
                 categoryOptions={categoryOptions}
+                actions={
+                  !selectedType.prevent_user_edit ? (
+                    <button
+                      type="button"
+                      className="user-types-create-btn"
+                      onClick={() => startEdit(selectedType)}
+                      style={{ width: 'auto', flexShrink: 0 }}
+                    >
+                      Edit type
+                    </button>
+                  ) : null
+                }
               />
             )}
             {panelMode === 'detail' && !selectedType && !loadingTypes && (
@@ -371,11 +463,39 @@ const UserItemTypesModal = ({ isOpen, onClose }) => {
                     teamOptions={teamOptions}
                   />
                   <div className="modal-actions">
-                    <button type="button" className="cancel" onClick={cancelCreate}>
+                    <button type="button" className="cancel" onClick={cancelForm}>
                       Cancel
                     </button>
                     <button type="submit" className="save" disabled={submitting}>
                       Create type
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+            {panelMode === 'edit' && selectedType && (
+              <div className="modal user-types-type-form user-types-right-inner">
+                <h3 style={{ margin: '0 0 0.25rem 0' }}>Edit item type</h3>
+                {formError && <div style={{ color: '#f88', fontSize: '0.85rem' }}>{formError}</div>}
+                <form onSubmit={handleEditSubmit}>
+                  <TypeFormBody
+                    form={form}
+                    setForm={setForm}
+                    imageLabel="Replace image (optional)"
+                    onImagePick={handleImagePick}
+                    customFieldDefinitions={customFieldDefinitions}
+                    addFieldDropdownOpen={addFieldDropdownOpen}
+                    setAddFieldDropdownOpen={setAddFieldDropdownOpen}
+                    addFieldDropdownRef={addFieldDropdownRef}
+                    categoryOptions={categoryOptions}
+                    teamOptions={teamOptions}
+                  />
+                  <div className="modal-actions">
+                    <button type="button" className="cancel" onClick={cancelForm}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="save" disabled={submitting}>
+                      Save type
                     </button>
                   </div>
                 </form>

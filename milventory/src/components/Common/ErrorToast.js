@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 const ErrorToast = ({ error, onClose }) => {
   useEffect(() => {
@@ -12,7 +13,7 @@ const ErrorToast = ({ error, onClose }) => {
 
   if (!error) return null;
 
-  return (
+  const toast = (
     <div
       style={{
         position: 'fixed',
@@ -23,7 +24,7 @@ const ErrorToast = ({ error, onClose }) => {
         padding: '1rem 1.5rem',
         borderRadius: '4px',
         boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        zIndex: 10000,
+        zIndex: 12000,
         maxWidth: '400px',
         display: 'flex',
         alignItems: 'center',
@@ -52,6 +53,8 @@ const ErrorToast = ({ error, onClose }) => {
       </button>
     </div>
   );
+
+  return createPortal(toast, document.body);
 };
 
 export default ErrorToast;

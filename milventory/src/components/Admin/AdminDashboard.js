@@ -8,10 +8,11 @@ import AddLocationModal from './AddLocationModal';
 import LocationPreview from './LocationPreview';
 import MoveLocationsModal from './MoveLocationsModal';
 import HistoryModal from '../History/HistoryModal';
+import ErrorToast from '../Common/ErrorToast';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const { wrapRef, leftPaneWidth, leftPaneCollapsed, dismissMasterWorkbenchUI } = useInventory();
+  const { wrapRef, leftPaneWidth, leftPaneCollapsed, dismissMasterWorkbenchUI, error, setError } = useInventory();
   const svgRef = useRef(null);
   const [drawMode, setDrawMode] = useState(false);
   const [showAddLocationModal, setShowAddLocationModal] = useState(false);
@@ -277,6 +278,7 @@ const AdminDashboard = () => {
           onClose={() => setShowHistoryModal(false)} 
           isAdmin={true}
         />
+        <ErrorToast error={error} onClose={() => setError(null)} />
       </div>
     </>
   );

@@ -329,7 +329,10 @@ def update_supply_type(type_id, current_user_id=None):
                 cur.close()
                 conn.close()
                 return jsonify({
-                    'error': 'Cannot enable unique: an item using this type already has more than 1 total quantity on the map.'
+                    'error': (
+                        'Cannot mark this item type as unique: one item using this type already has more than '
+                        '1 quantity on the map. Reduce that item to 1 quantity before enabling unique.'
+                    )
                 }), 400
 
         fields = []

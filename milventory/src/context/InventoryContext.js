@@ -1552,6 +1552,9 @@ export const InventoryProvider = ({ children }) => {
       if (newItem.unlink_from_type) {
         payload.unlink_from_type = true;
       }
+      if (newItem.supply_type_id !== undefined) {
+        payload.supply_type_id = newItem.supply_type_id;
+      }
       const updated = await api.updateSupply(oldItem.id, payload);
 
       setMasterInventoryItems((prev) => {

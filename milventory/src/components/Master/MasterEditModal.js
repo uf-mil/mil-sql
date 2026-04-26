@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { getCategories, getTeams, api } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
@@ -214,6 +214,182 @@ const TagDropdown = ({
   );
 };
 
+/** Single-select supply type with search. */
+const SupplyTypeSearchSelect = ({ supplyTypes, value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
+  const containerRef = useRef(null);
+  const triggerRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const updateMenuPos = () => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setMenuPos({ top: r.bottom + 4, left: r.left, width: r.width });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateMenuPos();
+    const onScrollOrResize = () => updateMenuPos();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      const menu = document.getElementById('edit-supply-type-search-menu');
+      if (menu?.contains(e.target)) return;
+      if (containerRef.current?.contains(e.target)) return;
+      setOpen(false);
+      setQuery('');
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const selected = supplyTypes.find((x) => String(x.id) === String(value));
+  const label = selected
+    ? `${selected.name}${selected.is_unique ? ' (max 1 qty per item)' : ''}`
+    : 'None';
+
+  const q = query.trim().toLowerCase();
+  const filteredTypes = q
+    ? supplyTypes
+        .map((t) => {
+          const nameLower = (t.name || '').toLowerCase();
+          const isSubstring = nameLower.includes(q);
+          const distance = levenshteinDistance(q, nameLower);
+          return { t, score: isSubstring ? distance - 10 : distance };
+        })
+        .sort((a, b) => a.score !== b.score ? a.score - b.score : (a.t.name || '').localeCompare(b.t.name || ''))
+        .map((s) => s.t)
+    : supplyTypes;
+
+  const pick = (id) => {
+    onChange(id === '' || id === null || id === undefined ? '' : String(id));
+    setOpen(false);
+    setQuery('');
+  };
+
+  const rowStyle = (active) => ({
+    padding: '0.5rem 0.75rem',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+    color: 'var(--text)',
+    background: active ? 'rgba(255,255,255,.08)' : 'transparent',
+  });
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', marginBottom: '0.75rem' }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="styled-select"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: '100%',
+          padding: '0.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.5rem',
+          textAlign: 'left',
+          cursor: 'pointer',
+          boxSizing: 'border-box',
+          appearance: 'none',
+          WebkitAppearance: 'none',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ flexShrink: 0, fontSize: '0.65rem', color: 'var(--muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div
+          id="edit-supply-type-search-menu"
+          style={{
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: Math.max(menuPos.width, 200),
+            zIndex: 2000,
+            background: 'var(--panel)',
+            border: '1px solid rgba(255,255,255,.15)',
+            borderRadius: '6px',
+            boxShadow: '0 8px 24px rgba(0,0,0,.45)',
+            overflow: 'hidden',
+          }}
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Search item types..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '0.5rem 0.65rem',
+              border: 'none',
+              borderBottom: '1px solid rgba(255,255,255,.1)',
+              background: 'rgba(0,0,0,.25)',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+              outline: 'none',
+            }}
+          />
+          <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+            <div
+              role="option"
+              onClick={() => pick('')}
+              style={rowStyle(!value)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,.1)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = !value ? 'rgba(255,255,255,.08)' : 'transparent'; }}
+            >
+              None
+            </div>
+            {filteredTypes.length === 0 ? (
+              <div style={{ padding: '0.6rem 0.75rem', color: 'var(--muted)', fontSize: '0.8rem' }}>
+                No matching types
+              </div>
+            ) : (
+              filteredTypes.map((t) => {
+                const active = String(t.id) === String(value);
+                return (
+                  <div
+                    key={t.id}
+                    role="option"
+                    onClick={() => pick(t.id)}
+                    style={rowStyle(active)}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,.1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = active ? 'rgba(255,255,255,.08)' : 'transparent'; }}
+                  >
+                    {t.name}
+                    {t.is_unique ? ' (max 1 qty per item)' : ''}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   const { updateMasterItem, resolveMasterItem } = useInventory();
   const { showAlert } = useBlockingDialog();
@@ -233,6 +409,8 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
   const [addFieldDropdownOpen, setAddFieldDropdownOpen] = useState(false);
   const addFieldDropdownRef = useRef(null);
   const nameInputRef = useRef(null);
+  const [supplyTypes, setSupplyTypes] = useState([]);
+  const [selectedSupplyTypeId, setSelectedSupplyTypeId] = useState('');
   const [linkedType, setLinkedType] = useState(null);
   const [unlinkFromType, setUnlinkFromType] = useState(false);
   const [nameSuffix, setNameSuffix] = useState('');
@@ -256,6 +434,9 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
       api.getCustomFieldDefinitions()
         .then(setCustomFieldDefinitions)
         .catch(() => setCustomFieldDefinitions([]));
+      api.getSupplyTypes()
+        .then(setSupplyTypes)
+        .catch(() => setSupplyTypes([]));
       getCategories()
         .then(categories => {
           const categoryList = categories.map(c => typeof c === 'string' ? c : c.name);
@@ -297,6 +478,7 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     setSelectedTeams(originalItem.teams || []);
     setUnlinkFromType(false);
     setLinkedType(null);
+    setSelectedSupplyTypeId(originalItem.supply_type_id ? String(originalItem.supply_type_id) : '');
     setNameSuffix('');
     setDescSuffix('');
 
@@ -471,6 +653,105 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     setImagePreview(null);
   };
 
+  const getCurrentNameDescription = () => {
+    if (!unlinkFromType && linkedType) {
+      return {
+        currentName: joinPrefixSuffix(linkedType.item_name_prefix, nameSuffix).trim(),
+        currentDesc: joinPrefixSuffix(linkedType.item_description_prefix || '', descSuffix).trim()
+      };
+    }
+    return {
+      currentName: name.trim(),
+      currentDesc: description.trim()
+    };
+  };
+
+  const applyTypeToEditableFields = (type, baseName, baseDesc) => {
+    const namePrefix = (type.item_name_prefix || '').trimEnd();
+    if (namePrefix && baseName.startsWith(namePrefix)) {
+      setNameSuffix(baseName.slice(namePrefix.length).replace(/^\s+/, ''));
+    } else {
+      setNameSuffix(baseName);
+    }
+
+    const descPrefix = (type.item_description_prefix || '').trim();
+    if (descPrefix && baseDesc.startsWith(descPrefix)) {
+      setDescSuffix(baseDesc.slice(descPrefix.length).replace(/^\s+/, ''));
+    } else {
+      setDescSuffix(baseDesc);
+    }
+
+    setName('');
+    setDescription('');
+    setCustomFields((prev) => {
+      const cf = { ...prev };
+      const defaults = type.default_custom_fields || {};
+      Object.entries(defaults).forEach(([key, value]) => {
+        cf[key] = value;
+      });
+      const locked = Array.isArray(type.locked_custom_field_keys) ? type.locked_custom_field_keys : [];
+      for (const key of locked) {
+        if (!(key in cf)) cf[key] = Object.prototype.hasOwnProperty.call(defaults, key) ? defaults[key] : '';
+      }
+      return cf;
+    });
+
+    const lockedTeams = (Array.isArray(type.locked_team_names) ? type.locked_team_names : []).map((x) =>
+      String(x).toLowerCase()
+    );
+    setSelectedTeams((prev) => Array.from(new Set([...lockedTeams, ...prev])));
+
+    if (categoryIdToName.size) {
+      const lockedCategoryNames = (Array.isArray(type.locked_category_ids) ? type.locked_category_ids : [])
+        .map((id) => categoryIdToName.get(id))
+        .filter(Boolean);
+      setSelectedCategories((prev) => Array.from(new Set([...lockedCategoryNames, ...prev])));
+    }
+
+    if (type.image) {
+      setImage(null);
+      setImagePreview(type.image);
+    } else if (originalItem?.type_has_template_image) {
+      setImage(null);
+      setImagePreview(null);
+    }
+  };
+
+  const handleSupplyTypeChange = async (nextId) => {
+    if (String(nextId || '') === String(selectedSupplyTypeId || '')) return;
+
+    const { currentName, currentDesc } = getCurrentNameDescription();
+    setSelectedSupplyTypeId(nextId);
+
+    if (!nextId) {
+      setName(currentName);
+      setDescription(currentDesc);
+      setNameSuffix('');
+      setDescSuffix('');
+      setLinkedType(null);
+      setUnlinkFromType(true);
+      if (originalItem?.type_has_template_image) {
+        setImage(null);
+        setImagePreview(null);
+      }
+      return;
+    }
+
+    setUnlinkFromType(false);
+    let type = supplyTypes.find((x) => String(x.id) === String(nextId));
+    if (!type) {
+      try {
+        type = await api.getSupplyType(nextId);
+      } catch {
+        type = null;
+      }
+    }
+    if (!type) return;
+
+    setLinkedType(type);
+    applyTypeToEditableFields(type, currentName, currentDesc);
+  };
+
   const handleSave = async () => {
     let finalName;
     let finalDesc;
@@ -518,6 +799,9 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
       if (unlinkFromType) {
         updatedItem.unlink_from_type = true;
       }
+      if (String(selectedSupplyTypeId || '') !== String(originalItem?.supply_type_id || '')) {
+        updatedItem.supply_type_id = selectedSupplyTypeId ? Number(selectedSupplyTypeId) : null;
+      }
 
       updateMasterItem(itemName, updatedItem);
       onClose();
@@ -553,27 +837,14 @@ const MasterEditModal = ({ isOpen, onClose, itemName }) => {
     >
       <div className="modal master-item-edit-modal">
         <h3>Edit Master Item</h3>
-        {originalItem?.supply_type_id && !unlinkFromType && (
-          <label style={{ display: 'block', marginBottom: '0.65rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
-            <input
-              type="checkbox"
-              style={{ marginRight: '0.35rem' }}
-              onChange={(e) => {
-                if (!e.target.checked) return;
-                if (linkedType) {
-                  setName(joinPrefixSuffix(linkedType.item_name_prefix, nameSuffix).trim());
-                  setDescription(joinPrefixSuffix(linkedType.item_description_prefix || '', descSuffix).trim());
-                } else {
-                  setName(originalItem.name || '');
-                  setDescription(originalItem.description || '');
-                }
-                setUnlinkFromType(true);
-                setLinkedType(null);
-              }}
-            />
-            Unlink from type (keep current text; you can edit freely after saving)
-          </label>
-        )}
+        <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>
+          Item type (optional)
+        </label>
+        <SupplyTypeSearchSelect
+          supplyTypes={supplyTypes}
+          value={selectedSupplyTypeId}
+          onChange={handleSupplyTypeChange}
+        />
         {useTypePrefixUi ? (
           <>
             <label style={{ display: 'block', marginBottom: '0.35rem', fontSize: '0.85rem', color: 'var(--muted)' }}>

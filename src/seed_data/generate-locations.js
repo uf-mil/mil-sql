@@ -237,15 +237,35 @@ const bottomTables = [
 ];
 
 /** Outside the room rect, just below the lab (room bottom ~3920). */
-const toBeDeliveredBox = {
-  title: 'To Be Delivered',
-  x: 1660,
-  y: 3940,
-  width: 440,
-  height: 120,
-  fill: 'var(--table)',
-  inventory: []
-};
+const statusLocations = [
+  {
+    title: 'To Be Delivered',
+    x: 400,
+    y: 4000,
+    width: 800,
+    height: 800,
+    fill: 'var(--table)',
+    inventory: []
+  },
+  {
+    title: 'Lost Items',
+    x: 1250,
+    y: 4000,
+    width: 800,
+    height: 800,
+    fill: 'var(--table)',
+    inventory: []
+  },
+  {
+    title: 'Unsorted Items',
+    x: 2100,
+    y: 4000,
+    width: 800,
+    height: 800,
+    fill: 'var(--table)',
+    inventory: []
+  }
+];
 
 // Combine all boxes in the desired order
 const allBoxes = [
@@ -258,7 +278,7 @@ const allBoxes = [
   tallCabinet104,
   ...tables,
   ...bottomTables,
-  toBeDeliveredBox
+  ...statusLocations
 ];
 
 // Create the full JSON structure

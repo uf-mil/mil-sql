@@ -12,7 +12,7 @@ import {
 
 const ItemTypesTable = () => {
   const { showConfirm } = useBlockingDialog();
-  const { reloadMasterItems } = useInventory();
+  const { reloadMasterItems, setError: setToastError } = useInventory();
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -197,7 +197,12 @@ const ItemTypesTable = () => {
       closeEditModal();
       await loadTypes();
     } catch (err) {
-      setError(err.message);
+      const message = err.message || 'Failed to update type';
+      if (message.includes('Cannot mark this item type as unique')) {
+        setToastError(message);
+      } else {
+        setError(message);
+      }
     }
   };
 
