@@ -492,12 +492,7 @@ const MasterInventoryTable = () => {
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(entry);
     }
-    const keys = Array.from(buckets.keys()).sort((a, b) => {
-      if (a === TYPE_GROUP_UNTYPED) return 1;
-      if (b === TYPE_GROUP_UNTYPED) return -1;
-      return a.localeCompare(b);
-    });
-    return keys.map((key) => {
+    const groups = Array.from(buckets.keys()).map((key) => {
       const items = buckets.get(key);
       const lastModifiedDates = items
         .map(([, itemData]) => itemData.lastModified ? new Date(itemData.lastModified) : null)
@@ -517,7 +512,80 @@ const MasterInventoryTable = () => {
         latestLastModified
       };
     });
-  }, [groupBy, sortedItems, quantities, getItemLocations, getItemCategories, getItemTeams]);
+
+    const compareGroupLists = (aList, bList) => {
+      if (aList.length === 0 && bList.length === 0) return 0;
+      if (aList.length === 0) return 1;
+      if (bList.length === 0) return -1;
+      return aList[0].localeCompare(bList[0]) || (aList.length - bList.length);
+    };
+
+    groups.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortColumn) {
+        case 'typeName':
+        case 'name':
+          comparison = a.label.localeCompare(b.label);
+          break;
+        case 'qty':
+          comparison = a.totalQty - b.totalQty;
+          break;
+        case 'location':
+          comparison = compareGroupLists(a.locations, b.locations);
+          break;
+        case 'category':
+          comparison = compareGroupLists(a.categories, b.categories);
+          break;
+        case 'team':
+          comparison = compareGroupLists(a.teams, b.teams);
+          break;
+        case 'lastModified': {
+          const aTime = a.latestLastModified ? new Date(a.latestLastModified).getTime() : 0;
+          const bTime = b.latestLastModified ? new Date(b.latestLastModified).getTime() : 0;
+          comparison = aTime - bTime;
+          break;
+        }
+        default: {
+          const customDef = customFieldDefinitions.find(d => d.name === sortColumn);
+          if (customDef) {
+            const firstValue = (group) => {
+              const values = uniqueSorted(
+                group.items.map(([, itemData]) => formatCustomValue(itemData.custom_fields?.[customDef.name], customDef.type))
+                  .filter((value) => value !== '—')
+              );
+              return values[0] || '';
+            };
+            if (customDef.type === 'number') {
+              const toNumber = (group) => {
+                const n = Number(firstValue(group));
+                return Number.isNaN(n) ? Number.POSITIVE_INFINITY : n;
+              };
+              comparison = toNumber(a) - toNumber(b);
+            } else {
+              comparison = firstValue(a).localeCompare(firstValue(b));
+            }
+          }
+          break;
+        }
+      }
+
+      if (comparison === 0) comparison = a.label.localeCompare(b.label);
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return groups;
+  }, [
+    groupBy,
+    sortedItems,
+    quantities,
+    getItemLocations,
+    getItemCategories,
+    getItemTeams,
+    sortColumn,
+    sortDirection,
+    customFieldDefinitions
+  ]);
 
   const toggleGroup = (key) => {
     setCollapsedGroups((prev) => {
