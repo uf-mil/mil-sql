@@ -6,7 +6,7 @@ COMPOSE=docker-compose -p $(PROJECT_NAME)
 check-docker:
 	@docker info >nul 2>&1 || (echo. && echo ERROR: Docker is not running. Please start Docker Desktop and try again. && echo. && exit /b 1)
 
-## up:          Start the mysql, api (port 5000), and api-test (port 5001) containers and seed default locations. Provides detailed error messages if anything fails
+## up:          Start mysql, api (5000), and api-test (5001). Waits briefly and verifies mysql_api is running. Seeding runs inside the API when src.api.app loads (seed_data).
 .PHONY: up
 up: check-docker
 	$(COMPOSE) up -d
@@ -15,9 +15,8 @@ up: check-docker
 	@echo Checking API container status...
 	@docker inspect mysql_api --format "{{.State.Status}}" 2>nul >nul || (echo. && echo ======================================== && echo ERROR: API container 'mysql_api' does not exist! && echo ======================================== && echo. && echo Try running: make build && echo. && exit /b 1)
 	@docker inspect mysql_api --format "{{.State.Status}}" 2>nul | findstr /C:"running" >nul 2>&1 || (echo. && echo ======================================== && echo ERROR: API container is not running! && echo ======================================== && echo. && echo Container status: && docker inspect mysql_api --format "Status: {{.State.Status}} (Exit Code: {{.State.ExitCode}})" 2>nul && echo. && echo Container logs: && echo. && docker logs mysql_api 2>&1 && echo. && echo ======================================== && echo. && exit /b 1)
-	@docker exec mysql_api python src/scripts/seed_locations.py || (echo. && echo ======================================== && echo ERROR: seed_locations.py failed! && echo ======================================== && echo. && echo Recent container logs: && echo. && docker logs --tail 50 mysql_api 2>&1 && echo. && echo ======================================== && echo. && exit /b 1)
 
-## up-empty:    Start the mysql, api (port 5000), and api-test (port 5001) containers without seeding data
+## up-empty:    docker compose up -d only (no wait or API checks). Seeding still runs when each API process starts (same as up).
 .PHONY: up-empty
 up-empty: check-docker
 	$(COMPOSE) up -d
@@ -37,9 +36,9 @@ status: check-docker
 logs: check-docker
 	$(COMPOSE) logs -f
 
-## mysql:      Open a mysql shell into the mysql container
-.PHONY: mysql
-mysql: check-docker
+## mysql-shell:      Open a mysql shell into the mysql container
+.PHONY: mysql-shell
+mysql-shell: check-docker
 	$(COMPOSE) exec db mysql -u mysqluser -pmysqlpassword mydb
 
 ## build:       Build or rebuild services
@@ -60,25 +59,7 @@ install:
 	sudo apt-get install -y docker.io docker-compose make python3-pip
 	pip3 install -r requirements.txt
 
-## locations:   Generate inventory-locations.json from generate-locations.js
-.PHONY: locations
-locations:
-	@cd milventory && node generate-locations.js
-
 ## milventory:  Start the milventory React app
 .PHONY: milventory
 milventory:
 	@cd milventory && npm install && npm start
-
-## test-api:    Run history API integration tests
-.PHONY: test-api
-test-api:
-	@echo Installing test dependencies...
-	@if not exist tests\node_modules (cd tests & npm install)
-	@echo Running history API tests...
-	@cd tests & node test-history-api.js
-
-## help:        Show this help menu
-help:
-	@echo "Available commands:"
-	@grep -E '^##' Makefile | sed 's/## //'

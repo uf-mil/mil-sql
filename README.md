@@ -20,7 +20,7 @@ Inventory management system for MIL with database-backed storage.
    ```bash
    make up
    ```
-   This starts MySQL and the Flask API, and seeds initial data.
+   This starts MySQL and the Flask API. Initial data is seeded when the API process loads (`src/scripts/seed_data.py` via `src.api.app`).
 
 2. **Start frontend** (in a new terminal):
    ```bash
@@ -32,17 +32,15 @@ Inventory management system for MIL with database-backed storage.
    - Email: `test@ufl.edu`
    - Password: `test`
 
-## Available Commands
+## Available Commands (Ordered by importance)
 
-- `make up` - Start all services and seed data
-- `make up-empty` - Start services without seeding
-- `make down` - Stop services (keeps data)
-- `make clean` - Stop services and remove all data
+- `make up` - Start all backend services
 - `make milventory` - Start React frontend
-- `make mysql` - Open MySQL shell
+- `make down` - Stop backend services (keeps data)
+- `make clean` - Stop backend services and remove all data
 - `make logs` - View service logs
 - `make status` - Check service status
-- `make help` - Show all commands
+- `make mysql-shell` - Open MySQL shell
 
 ## Project Structure
 
