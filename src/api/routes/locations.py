@@ -14,6 +14,7 @@ from src.api.db import get_db
 from src.api.models.location import Location
 from src.api.middleware.auth import require_leader
 from src.api.repositories import locations_repository as repo
+from src.scripts.location_type_constants import LEADER_ASSIGNABLE_LOCATION_TYPES
 
 locations_bp = Blueprint('locations', __name__)
 
@@ -26,8 +27,7 @@ def get_fill_for_type(location_type):
         'tall_cabinet': 'var(--table)',
         'table': 'var(--table)',
         'other': 'var(--table)',
-        'special': '#ff69b4',  # Special category - pink
-        'external': '#ff9800',  # External category - orange
+        'special': '#ff69b4',  # System map locations with custom SVG
     }
     return type_fills.get(location_type, 'var(--table)')
 
@@ -197,6 +197,9 @@ def create_location(current_user_id=None):
         
         location = Location.from_dict(data)
 
+        if location.type not in LEADER_ASSIGNABLE_LOCATION_TYPES:
+            return jsonify({'error': 'Invalid location type'}), 400
+
         # shelf_count is authoritative from the request (defaults to 0 via the model).
         # Leaders explicitly control whether a location has shelves and how many.
         # Capped at 15 for sanity — no real storage unit has more shelves than that,
@@ -278,6 +281,17 @@ def update_location(name):
             cur.close()
             conn.close()
             return jsonify({'error': 'Location not found'}), 404
+
+        existing_row = repo.fetch_by_name_tuple(cur, name)
+        existing = Location.from_db_row(existing_row)
+
+        if 'type' in update_data:
+            if existing.type == 'special':
+                update_data.pop('type')
+            elif update_data['type'] not in LEADER_ASSIGNABLE_LOCATION_TYPES:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Invalid location type'}), 400
 
         new_name = update_data.pop('name', None)
 

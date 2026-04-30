@@ -8,3 +8,8 @@ export const LOCATION_SVG_MARKUP_BY_NAME = {
   'Lost Items': lostItemsSvg,
   'Unsorted Items': unsortedItemsSvg
 };
+
+/** Names that use the SVG map treatment; keep in sync with `SYSTEM_SPECIAL_LOCATION_NAMES` in Python. */
+export const SYSTEM_SPECIAL_LOCATION_NAMES = Object.freeze(
+  Object.keys(LOCATION_SVG_MARKUP_BY_NAME)
+);

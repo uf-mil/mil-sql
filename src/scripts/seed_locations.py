@@ -14,6 +14,7 @@ import time
 import json
 import bcrypt
 from helpers import parse_database_url, get_sql_base_path, execute_sql_file, table_exists
+from location_type_constants import SYSTEM_SPECIAL_LOCATION_NAMES
 
 
 def load_locations_from_json():
@@ -41,19 +42,20 @@ def load_locations_from_json():
 
 def derive_location_type(title):
     """Derive location type from box title."""
+    if title and title.strip() in SYSTEM_SPECIAL_LOCATION_NAMES:
+        return 'special'
     title_lower = title.lower()
     if title_lower.startswith('drawer'):
         return 'drawer'
-    elif title_lower.startswith('cabinet') and not title_lower.startswith('tall cabinet'):
+    if title_lower.startswith('cabinet') and not title_lower.startswith('tall cabinet'):
         return 'cabinet'
-    elif title_lower.startswith('tall cabinet'):
+    if title_lower.startswith('tall cabinet'):
         return 'tall_cabinet'
-    elif title_lower.startswith('table'):
+    if title_lower.startswith('table'):
         return 'table'
-    elif 'workbench' in title_lower or title_lower == 'workbench':
+    if 'workbench' in title_lower or title_lower == 'workbench':
         return 'other'
-    else:
-        return 'other'  # Default to 'other' instead of 'unknown'
+    return 'other'
 
 
 def seed_locations():

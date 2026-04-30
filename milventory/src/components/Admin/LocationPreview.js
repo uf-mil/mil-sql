@@ -2,14 +2,12 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { admin } from '../../api';
 import { useBlockingDialog } from '../Common/BlockingDialogContext';
 
-const LOCATION_TYPES = [
+const LEADER_ASSIGNABLE_LOCATION_TYPES = [
   { value: 'drawer', label: 'Drawer' },
   { value: 'cabinet', label: 'Cabinet' },
   { value: 'tall_cabinet', label: 'Tall Cabinet' },
   { value: 'table', label: 'Table' },
-  { value: 'other', label: 'Other' },
-  { value: 'special', label: 'Special' },
-  { value: 'external', label: 'External' }
+  { value: 'other', label: 'Other' }
 ];
 
 const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneCollapsed, onEditStart, onEditEnd, onPreviewUpdate, onEdgeDrag }) => {
@@ -177,9 +175,11 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
 
       const updateData = {
         x, y, width, height,
-        type: editType,
         shelf_count: nextShelfCount
       };
+      if (location.type !== 'special') {
+        updateData.type = editType;
+      }
 
       // Include name if it changed
       if (editName.trim() !== location.name) {
@@ -334,18 +334,24 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
               <div style={{ fontSize: '0.75rem', marginBottom: '0.25rem', color: 'var(--text)', opacity: 0.7, fontWeight: '600' }}>
                 Type
               </div>
-              <select
-                value={editType}
-                onChange={(e) => setEditType(e.target.value)}
-                disabled={saving}
-                style={{ ...inputStyle, width: '90%' }}
-              >
-                {LOCATION_TYPES.map(type => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
+              {location.type === 'special' ? (
+                <div style={{ ...inputStyle, width: '90%', opacity: 0.85 }}>
+                  Special (system map — not editable)
+                </div>
+              ) : (
+                <select
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value)}
+                  disabled={saving}
+                  style={{ ...inputStyle, width: '90%' }}
+                >
+                  {LEADER_ASSIGNABLE_LOCATION_TYPES.map(type => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div style={{ marginBottom: '0.75rem' }}>

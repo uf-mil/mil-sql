@@ -31,6 +31,15 @@ const AdminDashboard = () => {
   const [moveTransform, setMoveTransform] = useState({ x: 0, y: 0 }); // current dx, dy offset
 
   const handleAddLocation = () => {
+    setSelectedLocation(null);
+    setIsEditingLocation(false);
+    setPreviewBox(null);
+    setShowHistoryModal(false);
+    setMoveMode('idle');
+    setMoveSelectedBoxes([]);
+    setMoveTransform({ x: 0, y: 0 });
+    setShowAddLocationModal(false);
+    setDrawnBox(null);
     setDrawMode(true);
   };
 
@@ -133,7 +142,6 @@ const AdminDashboard = () => {
       />
       <div className="wrap" ref={wrapRef}>
         <div className="titlebar">
-          Admin Dashboard
           <span style={{ float: 'right', marginRight: '1rem' }}>
             <button
               onClick={() => {

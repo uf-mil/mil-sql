@@ -1,14 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { admin } from '../../api';
 
-const LOCATION_TYPES = [
+const LEADER_ASSIGNABLE_LOCATION_TYPES = [
   { value: 'drawer', label: 'Drawer' },
   { value: 'cabinet', label: 'Cabinet' },
   { value: 'tall_cabinet', label: 'Tall Cabinet' },
   { value: 'table', label: 'Table' },
-  { value: 'other', label: 'Other' },
-  { value: 'special', label: 'Special' },
-  { value: 'external', label: 'External' }
+  { value: 'other', label: 'Other' }
 ];
 
 const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidth, leftPaneCollapsed, onPreviewUpdate, previewBox, onEdgeDrag }) => {
@@ -313,7 +311,7 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
               fontSize: '0.9rem'
             }}
         >
-          {LOCATION_TYPES.map(type => (
+          {LEADER_ASSIGNABLE_LOCATION_TYPES.map(type => (
             <option key={type.value} value={type.value}>
               {type.label}
             </option>

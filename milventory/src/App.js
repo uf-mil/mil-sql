@@ -184,7 +184,6 @@ function AppContent({ user, onLogout }) {
       <LeftPanel />
       <div className="wrap" ref={wrapRef}>
         <div className="titlebar">
-          Zoom: <span className="kbd">wheel</span> · Pan: <span className="kbd">drag</span> · Hover for name · Click for details
           {user && (
             <span style={{ float: 'right', marginRight: '1rem' }}>
               Logged in as {user.first_name} {user.last_name} ({user.email})
@@ -257,6 +256,10 @@ function AppContent({ user, onLogout }) {
                   marginLeft: '1rem',
                   padding: '0.25rem 0.5rem',
                   fontSize: '0.85rem',
+                  background: 'rgba(255,0,0,1)',
+                  color: 'var(--text, #e6ebf4)',
+                  border: '1px solid rgba(255,255,255,.15)',
+                  borderRadius: '4px',
                   cursor: 'pointer',
                 }}
               >

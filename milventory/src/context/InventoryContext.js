@@ -231,8 +231,7 @@ export const InventoryProvider = ({ children }) => {
       'tall_cabinet': 'var(--files)', // Tall cabinets use files color
               'table': 'var(--table)',
       'other': '#e7ebf3', // Other category (includes workbench) has special color
-      'special': '#ff69b4', // Special category - pink
-      'external': '#ff9800', // External category - orange
+      'special': '#ff69b4', // System map locations with custom SVG
     };
     return typeFills[type] || 'var(--table)';
   };

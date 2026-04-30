@@ -146,6 +146,11 @@ try:
 except Exception as e:
     print(f"⚠ Warning: Could not run migrations: {e}")
 try:
+    from src.scripts.migrate_location_types_cleanup import migrate_location_types_cleanup
+    migrate_location_types_cleanup()
+except Exception as e:
+    print(f"⚠ Warning: Could not run location types cleanup migration: {e}")
+try:
     from src.scripts.migrate_supplies_custom_fields import migrate_supplies_custom_fields
     migrate_supplies_custom_fields()
 except Exception as e:

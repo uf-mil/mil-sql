@@ -335,7 +335,7 @@ const MasterItemPreview = () => {
             )}
             {isInMoveMode && (
               <p className="master-preview-actions-hint">
-                Box drops update the map only until you choose Apply Move, which saves box and floor moves. Cancel Move reloads from the server and discards unsaved changes.
+                You are in Move mode. Number in boxes represents qty.
               </p>
             )}
             <div className="master-preview-actions-buttons">
