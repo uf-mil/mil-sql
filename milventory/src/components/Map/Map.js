@@ -8,7 +8,12 @@ import MoveModeBoxes from './MoveModeBoxes';
 import SubtractModePreview from './SubtractModePreview';
 import FreePlaceDots from './FreePlaceDots';
 import { svgMarkupToDataUrl } from '../../utils/svgDataUrl';
-import { hasShelves, getShelfCount, getShelfLabels } from '../../utils/shelfLabels';
+import {
+  hasShelves,
+  getShelfCount,
+  getShelfLabel,
+  getShelfIndicesTopToBottom
+} from '../../utils/shelfLabels';
 
 function inventoryRowMatchesSupplyPublicId(invItem, supplyPublicId) {
   if (!supplyPublicId) return false;
@@ -132,7 +137,11 @@ const MapComponent = forwardRef((props, ref) => {
             const worldPt = pt.matrixTransform(ctm.inverse());
             const shelfH = boxData.height / shelfCount;
             const relativeY = worldPt.y - boxData.y;
-            targetShelf = Math.max(0, Math.min(shelfCount - 1, Math.floor(relativeY / shelfH)));
+            const rowFromTop = Math.max(
+              0,
+              Math.min(shelfCount - 1, Math.floor(relativeY / shelfH))
+            );
+            targetShelf = shelfCount - 1 - rowFromTop;
           }
         }
       }
@@ -313,12 +322,12 @@ const MapComponent = forwardRef((props, ref) => {
           {shelvedBoxes.map(box => {
             const shelfCount = getShelfCount(box);
             const shelfH = box.height / shelfCount;
-            const shelfLabels = getShelfLabels(shelfCount);
+            const shelfIndices = getShelfIndicesTopToBottom(shelfCount);
             return (
               <g key={`shelves-${box.title}`} className="add-mode-shelf-group">
-                {shelfLabels.map((name, idx) => {
-                  const shelfY = box.y + idx * shelfH;
-                  const pendingKey = `${box.title}||${idx}`;
+                {shelfIndices.map((shelfIdx, rowFromTop) => {
+                  const shelfY = box.y + rowFromTop * shelfH;
+                  const pendingKey = `${box.title}||${shelfIdx}`;
                   const isAddAffected = addModeItem && addModePending.has(pendingKey);
                   const addPendingQty = addModePending.get(pendingKey);
                   
@@ -334,7 +343,7 @@ const MapComponent = forwardRef((props, ref) => {
                       const matchingItems = boxData.inventory.filter(
                         (item) =>
                           inventoryRowMatchesSupplyPublicId(item, subtractModeItem) &&
-                          (item.shelf ?? 0) === idx
+                          (item.shelf ?? 0) === shelfIdx
                       );
                       currentQty = matchingItems.reduce((sum, item) => sum + (item.qty || 0), 0);
                       remainingQty = Math.max(0, currentQty - subtractPendingQty);
@@ -345,7 +354,7 @@ const MapComponent = forwardRef((props, ref) => {
                   const isAffected = isAddAffected || isSubtractAffected || hasSubtractItemOnShelf;
 
                   return (
-                    <g key={idx}>
+                    <g key={shelfIdx}>
                       <rect
                         className={`add-mode-shelf ${isAffected ? 'add-mode-shelf-affected' : ''}`}
                         x={box.x}
@@ -355,9 +364,9 @@ const MapComponent = forwardRef((props, ref) => {
                         onClick={(addModeItem || subtractModeItem) ? (e) => {
                           e.stopPropagation();
                           if (addModeItem) {
-                            handleBoxClickAddMode(box.title, idx);
+                            handleBoxClickAddMode(box.title, shelfIdx);
                           } else if (subtractModeItem) {
-                            handleBoxClickSubtractMode(box.title, idx);
+                            handleBoxClickSubtractMode(box.title, shelfIdx);
                           }
                         } : undefined}
                         style={
@@ -374,7 +383,7 @@ const MapComponent = forwardRef((props, ref) => {
                         dominantBaseline="middle"
                         pointerEvents="none"
                       >
-                        {name}
+                        {getShelfLabel(shelfIdx, shelfCount)}
                       </text>
                       {isAddAffected && (
                         <text

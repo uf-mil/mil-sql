@@ -50,7 +50,7 @@ const HistoryTableRow = ({ entry, onUndo, index = 0, isAdmin = false }) => {
       if (entry.location_name) {
         let location = entry.location_name;
         if (entry.shelf !== null && entry.shelf !== undefined) {
-          location += ` (Shelf ${entry.shelf})`;
+          location += ` (Shelf ${Number(entry.shelf) + 1})`;
         }
         changes.push(`Location: ${location}`);
       }

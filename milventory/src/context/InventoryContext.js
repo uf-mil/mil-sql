@@ -4,6 +4,7 @@ import { api, admin, handleApiError } from '../api';
 import { LOCATION_SVG_MARKUP_BY_NAME } from '../constants/locationSvgByName';
 import { clampPointToRoom } from '../constants/mapBounds';
 import { LEFT_PANE_MIN_WIDTH, LEFT_PANE_MAX_WIDTH } from '../constants/leftPaneLayout';
+import { normalizeShelfIndex } from '../utils/shelfLabels';
 
 export const MASTER_ARROWS_REDRAW_EVENT = 'milventory-master-arrows-redraw';
 
@@ -29,7 +30,7 @@ function locationsListFromSupplyLocs(locations) {
       return;
     }
     if (loc.shelf !== null && loc.shelf !== undefined) {
-      out.push(`${loc.location} (Shelf ${loc.shelf})`);
+      out.push(`${loc.location} (Shelf ${Number(loc.shelf) + 1})`);
     } else {
       out.push(loc.location);
     }
@@ -40,11 +41,17 @@ function locationsListFromSupplyLocs(locations) {
   return out;
 }
 
-/** Treat undefined/null shelf as the same for regular (non–tall-cabinet) rows. */
+/** Match shelf indices loosely (undefined/null ↔ null), coercing string/number mismatches from API/UI. */
 function shelvesMatchForMove(invShelf, locShelf) {
-  const a = invShelf === undefined || invShelf === null ? null : invShelf;
-  const b = locShelf === undefined || locShelf === null ? null : locShelf;
-  return a === b;
+  return normalizeShelfIndex(invShelf) === normalizeShelfIndex(locShelf);
+}
+
+/** Stable row key for a placement, even when public_id is missing (legacy rows). */
+function movePlacementKey(item) {
+  return (
+    item?.supplyPublicId ||
+    (item?.supplyId != null ? `__legacy_id_${item.supplyId}` : null)
+  );
 }
 
 /**
@@ -67,13 +74,62 @@ function applyOptimisticMoveBetweenBoxes(
   if (!src || !dst || moveQty <= 0 || !supplyPublicId) return inventoryMap;
 
   const next = new Map(inventoryMap);
+
+  if (sourceBox === targetBox) {
+    let inv = src.inventory.map((i) => ({ ...i }));
+    let rem = moveQty;
+    const afterRemove = [];
+    for (const it of inv) {
+      if (
+        rem <= 0 ||
+        movePlacementKey(it) !== supplyPublicId ||
+        !shelvesMatchForMove(it.shelf, sourceShelf)
+      ) {
+        afterRemove.push({ ...it });
+        continue;
+      }
+      const take = Math.min(rem, it.qty);
+      if (it.qty > take) afterRemove.push({ ...it, qty: it.qty - take });
+      rem -= take;
+    }
+    inv = afterRemove;
+
+    let merged = false;
+    const nsTarget = normalizeShelfIndex(targetShelf);
+    for (let i = 0; i < inv.length; i++) {
+      const it = inv[i];
+      if (
+        movePlacementKey(it) === supplyPublicId &&
+        normalizeShelfIndex(it.shelf) === nsTarget
+      ) {
+        inv[i] = { ...it, qty: it.qty + moveQty };
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) {
+      const shelfVal =
+        targetShelf === undefined || targetShelf === null ? undefined : targetShelf;
+      inv.push({
+        name: itemName,
+        qty: moveQty,
+        shelf: shelfVal,
+        supplyId: numericSupplyId,
+        supplyPublicId
+      });
+    }
+
+    next.set(sourceBox, { ...src, inventory: inv });
+    return next;
+  }
+
   let rem = moveQty;
   const newSrc = [];
 
   for (const it of src.inventory) {
     if (
       rem <= 0 ||
-      it.supplyPublicId !== supplyPublicId ||
+      movePlacementKey(it) !== supplyPublicId ||
       !shelvesMatchForMove(it.shelf, sourceShelf)
     ) {
       newSrc.push({ ...it });
@@ -90,7 +146,7 @@ function applyOptimisticMoveBetweenBoxes(
   let merged = false;
   for (let i = 0; i < dstInv.length; i++) {
     const it = dstInv[i];
-    if (it.supplyPublicId === supplyPublicId && shelvesMatchForMove(it.shelf, targetShelf)) {
+    if (movePlacementKey(it) === supplyPublicId && shelvesMatchForMove(it.shelf, targetShelf)) {
       dstInv[i] = { ...it, qty: it.qty + moveQty };
       merged = true;
       break;
@@ -1293,7 +1349,9 @@ export const InventoryProvider = ({ children }) => {
     const itemName = moveModeDragging.itemName || '';
     const { boxTitle: sourceBoxTitle, shelf: sourceShelf, qty } = moveModeDragging;
 
-    if (sourceBoxTitle === targetBoxTitle && sourceShelf === targetShelf) {
+    const sameShelf =
+      normalizeShelfIndex(sourceShelf) === normalizeShelfIndex(targetShelf);
+    if (sourceBoxTitle === targetBoxTitle && sameShelf) {
       setMoveModeDragging(null);
       isDraggingMoveBoxRef.current = false;
       return;

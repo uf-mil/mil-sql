@@ -409,7 +409,7 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
                 )}
                 {editHasShelves && (
                   <span style={{ fontSize: '0.75rem', color: 'var(--text)', opacity: 0.7 }}>
-                    top = 1, bottom = {Math.max(1, parseInt(editShelfCount, 10) || 1)}
+                    top = {Math.max(1, parseInt(editShelfCount, 10) || 1)}, bottom = 1
                   </span>
                 )}
               </div>
@@ -525,7 +525,7 @@ const LocationPreview = ({ location, onClose, onDelete, leftPaneWidth, leftPaneC
               <strong>Shelves:</strong>
               <div className="master-preview-location-item">
                 {location.shelf_count && location.shelf_count > 0
-                  ? `${location.shelf_count} (top = Shelf 1, bottom = Shelf ${location.shelf_count})`
+                  ? `${location.shelf_count} (top = Shelf ${location.shelf_count}, bottom = Shelf 1)`
                   : 'None'}
               </div>
             </div>

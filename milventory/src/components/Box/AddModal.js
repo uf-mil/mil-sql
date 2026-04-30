@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { hasShelves, getShelfCount, getShelfLabels } from '../../utils/shelfLabels';
+import {
+  hasShelves,
+  getShelfCount,
+  getShelfLabel,
+  getShelfIndicesTopToBottom
+} from '../../utils/shelfLabels';
 
 const AddModal = () => {
   const { currentAddingBox, currentAddingIndex, setCurrentAddingBox, setCurrentAddingIndex, inventoryData, updateInventory, masterInventoryItems } = useInventory();
@@ -13,7 +18,13 @@ const AddModal = () => {
 
   const currentBox = currentAddingBox ? inventoryData.get(currentAddingBox) : null;
   const isShelved = hasShelves(currentBox);
-  const shelfLabels = useMemo(() => getShelfLabels(getShelfCount(currentBox)), [currentBox]);
+  const shelfOptions = useMemo(() => {
+    const shelfCount = getShelfCount(currentBox);
+    return getShelfIndicesTopToBottom(shelfCount).map((shelfIdx) => ({
+      value: shelfIdx,
+      label: getShelfLabel(shelfIdx, shelfCount)
+    }));
+  }, [currentBox]);
 
   const masterRows = useMemo(
     () =>
@@ -46,13 +57,14 @@ const AddModal = () => {
       setQty(1);
       setSearchQuery('');
       if (isShelved) {
-        setSelectedShelf(0);
+        const shelfCount = getShelfCount(currentBox);
+        setSelectedShelf(Math.max(0, shelfCount - 1));
       } else {
         setSelectedShelf(null);
       }
       setTimeout(() => nameInputRef.current?.focus(), 0);
     }
-  }, [currentAddingBox, isShelved]);
+  }, [currentAddingBox, isShelved, currentBox]);
 
   const handleSave = () => {
     if (currentAddingBox && selectedSupplyPublicId) {
@@ -128,13 +140,13 @@ const AddModal = () => {
         <h3>Add Item</h3>
         {isShelved && (
           <select
-            value={selectedShelf !== null ? selectedShelf : 0}
+            value={selectedShelf !== null ? selectedShelf : (shelfOptions[0]?.value ?? 0)}
             onChange={(e) => setSelectedShelf(parseInt(e.target.value, 10))}
             className="styled-select"
           >
-            {shelfLabels.map((name, index) => (
-              <option key={index} value={index}>
-                {name}
+            {shelfOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>

@@ -351,7 +351,7 @@ const AddLocationModal = ({ isOpen, onClose, onSuccess, initialBox, leftPaneWidt
           )}
           {formData.hasShelves && (
             <span style={{ fontSize: '0.75rem', color: 'var(--text)', opacity: 0.7 }}>
-              shelves (top = 1, bottom = {Math.max(1, parseInt(formData.shelfCount, 10) || 1)})
+              shelves (top = {Math.max(1, parseInt(formData.shelfCount, 10) || 1)}, bottom = 1)
             </span>
           )}
         </div>

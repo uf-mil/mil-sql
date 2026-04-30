@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useInventory } from '../../context/InventoryContext';
-import { hasShelves, getShelfCount } from '../../utils/shelfLabels';
+import { hasShelves, getShelfCount, normalizeShelfIndex } from '../../utils/shelfLabels';
 
 const MoveModeBoxes = () => {
   const {
@@ -77,17 +77,23 @@ const MoveModeBoxes = () => {
             const shelfCount = getShelfCount(boxData);
             const shelfH = boxData.height / shelfCount;
             const relativeY = worldPt.y - boxData.y;
-            targetShelf = Math.max(0, Math.min(shelfCount - 1, Math.floor(relativeY / shelfH)));
+            const rowFromTop = Math.max(
+              0,
+              Math.min(shelfCount - 1, Math.floor(relativeY / shelfH))
+            );
+            targetShelf = shelfCount - 1 - rowFromTop;
           }
           break;
         }
       }
       
       // Check if dropped on a different location (different box or different shelf of same box)
-      const isDifferentLocation = targetBox && (
-        targetBox !== dragStartRef.current.boxTitle ||
-        (targetBox === dragStartRef.current.boxTitle && targetShelf !== dragStartRef.current.shelf)
-      );
+      const isDifferentLocation =
+        targetBox &&
+        (targetBox !== dragStartRef.current.boxTitle ||
+          (targetBox === dragStartRef.current.boxTitle &&
+            normalizeShelfIndex(targetShelf) !==
+              normalizeShelfIndex(dragStartRef.current.shelf)));
       
       if (isDifferentLocation) {
         // Dropped on a different location - move the item
@@ -131,7 +137,7 @@ const MoveModeBoxes = () => {
       matchingItems.forEach(item => {
         const shelfIdx = item.shelf ?? 0;
         const shelfH = box.height / shelfCount;
-        const shelfY = box.y + shelfIdx * shelfH;
+        const shelfY = box.y + (shelfCount - 1 - shelfIdx) * shelfH;
         
         // Position box in center of shelf
         const boxSize = Math.min(shelfH * 0.6, box.width * 0.4, 60);

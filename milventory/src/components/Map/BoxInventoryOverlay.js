@@ -1,7 +1,12 @@
 import React, { useMemo } from 'react';
 import { useInventory } from '../../context/InventoryContext';
 import { escapeHtml } from '../../utils';
-import { hasShelves, getShelfCount, getShelfLabels } from '../../utils/shelfLabels';
+import {
+  hasShelves,
+  getShelfCount,
+  getShelfLabel,
+  getShelfIndicesTopToBottom
+} from '../../utils/shelfLabels';
 
 const BoxInventoryOverlay = () => {
   const { selectedBox, inventoryData, addModeItem, setMasterFilterLocation } = useInventory();
@@ -10,13 +15,14 @@ const BoxInventoryOverlay = () => {
   const inventory = boxData ? boxData.inventory : [];
   const shelved = hasShelves(boxData);
 
-  // Group inventory items by shelf index (0 = top), using the authoritative shelf_count.
+  // Group inventory items by shelf index (0 = bottom), rendered top-to-bottom.
   const shelves = useMemo(() => {
     if (!shelved) return null;
-    const labels = getShelfLabels(getShelfCount(boxData));
-    return labels.map((name, shelfNum) => {
-      const items = inventory.filter(item => (item.shelf ?? 0) === shelfNum);
-      return { name, shelfNum, items };
+    const shelfCount = getShelfCount(boxData);
+    const orderedShelfIndices = getShelfIndicesTopToBottom(shelfCount);
+    return orderedShelfIndices.map((shelfIdx) => {
+      const items = inventory.filter((item) => (item.shelf ?? 0) === shelfIdx);
+      return { name: getShelfLabel(shelfIdx, shelfCount), shelfNum: shelfIdx, items };
     });
   }, [inventory, shelved, boxData]);
 

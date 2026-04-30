@@ -133,7 +133,7 @@ const HistoryTab = () => {
   const formatLocation = (entry) => {
     let loc = entry.location_name;
     if (entry.shelf !== null && entry.shelf !== undefined) {
-      loc += ` (Shelf ${entry.shelf})`;
+      loc += ` (Shelf ${Number(entry.shelf) + 1})`;
     }
     return loc;
   };
