@@ -32,7 +32,8 @@ const MasterInventoryTable = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [createFromType, setCreateFromType] = useState(true);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const [filterType, setFilterType] = useState('location'); // 'location' | 'category' | 'type'
+  /** Which facet list is visible; selections in all facets still combine with AND */
+  const [filterType, setFilterType] = useState('location');
   const [selectedLocations, setSelectedLocations] = useState(new Set());
   const [selectedCategories, setSelectedCategories] = useState(new Set());
   const [selectedTypes, setSelectedTypes] = useState(new Set());
@@ -66,16 +67,27 @@ const MasterInventoryTable = () => {
   const quantities = computeMasterQuantities();
 
   const filterHasSelection =
-    (filterType === 'location' && selectedLocations.size > 0) ||
-    (filterType === 'category' && selectedCategories.size > 0) ||
-    (filterType === 'type' && selectedTypes.size > 0);
+    selectedLocations.size > 0 ||
+    selectedCategories.size > 0 ||
+    selectedTypes.size > 0;
 
   const filterSelectionCount =
-    filterType === 'location'
-      ? selectedLocations.size
-      : filterType === 'category'
-        ? selectedCategories.size
-        : selectedTypes.size;
+    selectedLocations.size + selectedCategories.size + selectedTypes.size;
+
+  const filterStatusFooterText = useMemo(() => {
+    const parts = [];
+    if (selectedLocations.size > 0) {
+      parts.push(`${selectedLocations.size} location${selectedLocations.size === 1 ? '' : 's'}`);
+    }
+    if (selectedCategories.size > 0) {
+      parts.push(`${selectedCategories.size} categor${selectedCategories.size === 1 ? 'y' : 'ies'}`);
+    }
+    if (selectedTypes.size > 0) {
+      parts.push(`${selectedTypes.size} type${selectedTypes.size === 1 ? '' : 's'}`);
+    }
+    if (parts.length === 0) return 'No filters active — all items shown.';
+    return `Active filters (AND): ${parts.join(' · ')}`;
+  }, [selectedLocations, selectedCategories, selectedTypes]);
 
   // Get all available locations from inventoryData
   const availableLocations = useMemo(() => {
@@ -120,13 +132,11 @@ const MasterInventoryTable = () => {
 
   const typeFilterLabel = (key) => (key === TYPE_FILTER_NONE ? '(No type)' : key);
 
-  // Sync with context filter location
+  // Sync with context filter location (merge; keeps category/type selections)
   useEffect(() => {
     if (masterFilterLocation) {
       setFilterType('location');
-      setSelectedLocations(new Set([masterFilterLocation]));
-      setSelectedTypes(new Set());
-      // Clear the context filter after applying it
+      setSelectedLocations((prev) => new Set(prev).add(masterFilterLocation));
       setMasterFilterLocation(null);
     }
   }, [masterFilterLocation, setMasterFilterLocation]);
@@ -191,34 +201,33 @@ const MasterInventoryTable = () => {
       });
     }
     
-    // Filter by location OR category (not both)
-    if (filterType === 'location' && selectedLocations.size > 0) {
+    // AND across dimensions: each active facet must match
+    if (selectedLocations.size > 0) {
       filtered = filtered.filter(([supplyPublicId]) => {
         const itemLocations = getItemLocations(supplyPublicId);
-        // Show item if it appears in at least one selected location
         return itemLocations.some(loc => selectedLocations.has(loc));
       });
-    } else if (filterType === 'category' && selectedCategories.size > 0) {
+    }
+    if (selectedCategories.size > 0) {
       filtered = filtered.filter(([, itemData]) => {
         if (!itemData.categories || itemData.categories.length === 0) {
-          return false; // Item has no categories, exclude if categories are selected
+          return false;
         }
-        // Convert item's category IDs to names and check if any match selected categories
         const itemCategoryNames = itemData.categories
           .map(catId => categoryIdToName.get(catId))
           .filter(name => name !== undefined);
-        // Show item if it has at least one selected category
         return itemCategoryNames.some(catName => selectedCategories.has(catName));
       });
-    } else if (filterType === 'type' && selectedTypes.size > 0) {
+    }
+    if (selectedTypes.size > 0) {
       filtered = filtered.filter(([, itemData]) => {
         const key = itemData.type_name ? itemData.type_name : TYPE_FILTER_NONE;
         return selectedTypes.has(key);
       });
     }
-    
+
     return filtered;
-  }, [masterInventoryItems, searchQuery, filterType, selectedLocations, selectedCategories, selectedTypes, getItemLocations, categoryIdToName]);
+  }, [masterInventoryItems, searchQuery, selectedLocations, selectedCategories, selectedTypes, getItemLocations, categoryIdToName]);
 
   const handleLocationToggle = (location) => {
     setSelectedLocations(prev => {
@@ -252,16 +261,6 @@ const MasterInventoryTable = () => {
 
   const handleFilterTypeChange = (type) => {
     setFilterType(type);
-    if (type === 'location') {
-      setSelectedCategories(new Set());
-      setSelectedTypes(new Set());
-    } else if (type === 'category') {
-      setSelectedLocations(new Set());
-      setSelectedTypes(new Set());
-    } else if (type === 'type') {
-      setSelectedLocations(new Set());
-      setSelectedCategories(new Set());
-    }
   };
 
   const handleTypeToggle = (typeKey) => {
@@ -763,33 +762,37 @@ const MasterInventoryTable = () => {
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div style={{ padding: '1rem', borderBottom: '1px solid var(--stroke)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600', color: 'var(--text)' }}>
-                    Filter
-                  </h4>
-                  <select
-                    value={filterType}
-                    onChange={(e) => handleFilterTypeChange(e.target.value)}
-                    style={{
-                      padding: '0.3rem 0.6rem',
-                      fontSize: '0.85rem',
-                      background: 'var(--panel, #0e1116)',
-                      border: '1px solid var(--stroke)',
-                      color: 'var(--text)',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      flex: '0 0 auto'
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <option value="location">Location</option>
-                    <option value="category">Category</option>
-                    <option value="type">Type</option>
-                  </select>
+                <div style={{ padding: '1rem', borderBottom: '1px solid var(--stroke)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600', color: 'var(--text)' }}>
+                      Filter
+                    </h4>
+                    <select
+                      value={filterType}
+                      onChange={(e) => handleFilterTypeChange(e.target.value)}
+                      style={{
+                        padding: '0.3rem 0.6rem',
+                        fontSize: '0.85rem',
+                        background: 'var(--panel, #0e1116)',
+                        border: '1px solid var(--stroke)',
+                        color: 'var(--text)',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        flex: '0 0 auto'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="location">Location</option>
+                      <option value="category">Category</option>
+                      <option value="type">Type</option>
+                    </select>
+                  </div>
+                  <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: 'var(--muted)', lineHeight: 1.35 }}>
+                    Switch dimension to edit another facet; selections combine with AND.
+                  </p>
                 </div>
-                
+
                 {filterType === 'location' ? (
-                  /* Locations Section */
                   <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
                     {availableLocations.length === 0 ? (
                       <div style={{ padding: '0.5rem', fontSize: '0.8rem', color: 'var(--muted)' }}>
@@ -799,6 +802,7 @@ const MasterInventoryTable = () => {
                       <>
                         <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
                           <button
+                            type="button"
                             onClick={() => setSelectedLocations(new Set(availableLocations))}
                             style={{
                               padding: '0.3rem 0.6rem',
@@ -814,6 +818,7 @@ const MasterInventoryTable = () => {
                             Select All
                           </button>
                           <button
+                            type="button"
                             onClick={() => setSelectedLocations(new Set())}
                             style={{
                               padding: '0.3rem 0.6rem',
@@ -829,7 +834,6 @@ const MasterInventoryTable = () => {
                             Clear
                           </button>
                         </div>
-                        
                         <div style={{
                           display: 'flex',
                           flexDirection: 'column',
@@ -881,7 +885,6 @@ const MasterInventoryTable = () => {
                     )}
                   </div>
                 ) : filterType === 'category' ? (
-                  /* Categories Section */
                   <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
                     {availableCategories.length === 0 ? (
                       <div style={{ padding: '0.5rem', fontSize: '0.8rem', color: 'var(--muted)' }}>
@@ -891,6 +894,7 @@ const MasterInventoryTable = () => {
                       <>
                         <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
                           <button
+                            type="button"
                             onClick={() => setSelectedCategories(new Set(availableCategories))}
                             style={{
                               padding: '0.3rem 0.6rem',
@@ -906,6 +910,7 @@ const MasterInventoryTable = () => {
                             Select All
                           </button>
                           <button
+                            type="button"
                             onClick={() => setSelectedCategories(new Set())}
                             style={{
                               padding: '0.3rem 0.6rem',
@@ -921,7 +926,6 @@ const MasterInventoryTable = () => {
                             Clear
                           </button>
                         </div>
-                        
                         <div style={{
                           display: 'flex',
                           flexDirection: 'column',
@@ -972,7 +976,7 @@ const MasterInventoryTable = () => {
                       </>
                     )}
                   </div>
-                ) : filterType === 'type' ? (
+                ) : (
                   <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
                     {availableTemplateTypes.length === 0 ? (
                       <div style={{ padding: '0.5rem', fontSize: '0.8rem', color: 'var(--muted)' }}>
@@ -1066,27 +1070,17 @@ const MasterInventoryTable = () => {
                       </>
                     )}
                   </div>
-                ) : null}
-                
+                )}
+
                 {/* Status Footer */}
-                <div style={{ 
-                  padding: '0.75rem', 
-                  borderTop: '1px solid var(--stroke)', 
-                  background: 'rgba(0, 0, 0, 0.2)', 
-                  fontSize: '0.8rem', 
-                  color: 'var(--muted)' 
+                <div style={{
+                  padding: '0.75rem',
+                  borderTop: '1px solid var(--stroke)',
+                  background: 'rgba(0, 0, 0, 0.2)',
+                  fontSize: '0.8rem',
+                  color: 'var(--muted)'
                 }}>
-                  {filterType === 'location' 
-                    ? (selectedLocations.size === 0
-                        ? 'No locations selected - showing all items'
-                        : `${selectedLocations.size} location${selectedLocations.size === 1 ? '' : 's'} selected`)
-                    : filterType === 'category'
-                      ? (selectedCategories.size === 0
-                          ? 'No categories selected - showing all items'
-                          : `${selectedCategories.size} categor${selectedCategories.size === 1 ? 'y' : 'ies'} selected`)
-                      : (selectedTypes.size === 0
-                          ? 'No types selected - showing all items'
-                          : `${selectedTypes.size} type${selectedTypes.size === 1 ? '' : 's'} selected`)}
+                  {filterStatusFooterText}
                 </div>
               </div>
             )}
