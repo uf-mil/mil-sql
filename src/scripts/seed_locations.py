@@ -14,14 +14,15 @@ import time
 import json
 import bcrypt
 from helpers import parse_database_url, get_sql_base_path, execute_sql_file, table_exists
+from location_type_constants import SYSTEM_SPECIAL_LOCATION_NAMES
 
 
 def load_locations_from_json():
-    """Load locations from milventory/public/inventory-locations.json."""
+    """Load locations from src/seed_data/inventory-locations.json."""
     # Get project root (go up from src/scripts to project root)
     script_dir = Path(__file__).parent
     project_root = script_dir.parent.parent
-    json_path = project_root / "milventory" / "public" / "inventory-locations.json"
+    json_path = project_root / "src" / "seed_data" / "inventory-locations.json"
     
     if not json_path.exists():
         print(f"⚠ Warning: {json_path} not found, using empty locations list")
@@ -41,23 +42,24 @@ def load_locations_from_json():
 
 def derive_location_type(title):
     """Derive location type from box title."""
+    if title and title.strip() in SYSTEM_SPECIAL_LOCATION_NAMES:
+        return 'special'
     title_lower = title.lower()
     if title_lower.startswith('drawer'):
         return 'drawer'
-    elif title_lower.startswith('cabinet') and not title_lower.startswith('tall cabinet'):
+    if title_lower.startswith('cabinet') and not title_lower.startswith('tall cabinet'):
         return 'cabinet'
-    elif title_lower.startswith('tall cabinet'):
+    if title_lower.startswith('tall cabinet'):
         return 'tall_cabinet'
-    elif title_lower.startswith('table'):
+    if title_lower.startswith('table'):
         return 'table'
-    elif 'workbench' in title_lower or title_lower == 'workbench':
-        return 'workbench'
-    else:
-        return 'unknown'
+    if 'workbench' in title_lower or title_lower == 'workbench':
+        return 'other'
+    return 'other'
 
 
 def seed_locations():
-    """Sync locations from milventory/public/inventory-locations.json with database."""
+    """Sync locations from src/seed_data/inventory-locations.json with database."""
     try:
         # Get database connection parameters
         database_url = os.getenv("DATABASE_URL", "mysql://mysqluser:mysqlpassword@db:3306/mydb")
@@ -174,22 +176,34 @@ def seed_locations():
             
             json_names.add(name)
             location_type = derive_location_type(name)
-            shelf_count = 6 if location_type == 'tall_cabinet' else 0
+            # shelf_count is authoritative from JSON. Legacy JSON entries that
+            # omit it fall back to 0 (no shelves) — add `"shelf_count": N` in
+            # inventory-locations.json to turn shelves on for a location.
+            try:
+                shelf_count = max(0, int(box.get('shelf_count', 0) or 0))
+            except (TypeError, ValueError):
+                shelf_count = 0
+
+            # Get coordinates from JSON box
+            x = box.get('x', 0)
+            y = box.get('y', 0)
+            width = box.get('width', 150)
+            height = box.get('height', 150)
             
             if name in existing_names:
-                # Update existing location (preserve if exists, but update type/shelf_count if changed)
+                # Update existing location (update all fields including coordinates and protected status)
                 cur.execute(
-                    "UPDATE locations SET type = %s, shelf_count = %s WHERE name = %s",
-                    (location_type, shelf_count, name)
+                    "UPDATE locations SET type = %s, shelf_count = %s, x = %s, y = %s, width = %s, height = %s, protected = %s WHERE name = %s",
+                    (location_type, shelf_count, x, y, width, height, True, name)
                 )
                 if cur.rowcount > 0:
                     update_count += 1
             else:
-                # Insert new location
+                # Insert new location with coordinates - set protected=True for locations from JSON
                 try:
                     cur.execute(
-                        "INSERT INTO locations (name, type, shelf_count) VALUES (%s, %s, %s)",
-                        (name, location_type, shelf_count)
+                        "INSERT INTO locations (name, type, shelf_count, x, y, width, height, protected) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        (name, location_type, shelf_count, x, y, width, height, True)
                     )
                     insert_count += 1
                 except mysql.connector.IntegrityError:

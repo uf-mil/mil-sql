@@ -1,0 +1,137 @@
+import React, { useState } from 'react';
+import { useInventory } from '../../context/InventoryContext';
+import { LEFT_PANE_MIN_WIDTH, LEFT_PANE_MAX_WIDTH } from '../../constants/leftPaneLayout';
+import InventoryBoxesTable from './InventoryBoxesTable';
+import CategoriesTable from './CategoriesTable';
+import CustomFieldsTable from './CustomFieldsTable';
+import ItemTypesTable from './ItemTypesTable';
+
+const AdminLeftPanel = ({ selectedLocation, onLocationSelect }) => {
+  const { leftPaneWidth, setLeftPaneWidth, leftPaneCollapsed, setLeftPaneCollapsed } = useInventory();
+  const [isResizing, setIsResizing] = useState(false);
+  const [activeTab, setActiveTab] = useState('boxes'); // 'boxes' | 'categories' | 'customfields' | 'itemtypes'
+  const leftPaneRef = React.useRef(null);
+  const resizeRef = React.useRef(null);
+
+  const handleResizeStart = (e) => {
+    setIsResizing(true);
+    e.preventDefault();
+  };
+
+  React.useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isResizing) {
+        const newWidth = Math.max(LEFT_PANE_MIN_WIDTH, Math.min(LEFT_PANE_MAX_WIDTH, e.clientX));
+        setLeftPaneWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isResizing, setLeftPaneWidth]);
+
+  const handleToggleCollapse = () => {
+    setLeftPaneCollapsed(!leftPaneCollapsed);
+  };
+
+  const buttonLeft = leftPaneCollapsed ? 40 : leftPaneWidth;
+
+  if (leftPaneCollapsed) {
+    return (
+      <>
+        <div className="left-pane collapsed" ref={leftPaneRef}></div>
+        <button
+          className="collapse-button collapse-button-right"
+          onClick={handleToggleCollapse}
+          title="Admin Dashboard"
+          style={{ left: `${buttonLeft}px` }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="left-pane" ref={leftPaneRef} style={{ width: `${leftPaneWidth}px` }}>
+        <div
+          ref={resizeRef}
+          className={`left-pane-resize ${isResizing ? 'dragging' : ''}`}
+          onMouseDown={handleResizeStart}
+        />
+        <div className="master-inventory-table">
+          <div className="master-table-header">
+            <h2>Admin Dashboard</h2>
+          </div>
+          
+          {/* Subtabs */}
+          <div className="admin-subtabs">
+            <button
+              className={`admin-subtab ${activeTab === 'boxes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('boxes')}
+            >
+              Boxes
+            </button>
+            <button
+              className={`admin-subtab ${activeTab === 'categories' ? 'active' : ''}`}
+              onClick={() => setActiveTab('categories')}
+            >
+              Categories
+            </button>
+            <button
+              className={`admin-subtab ${activeTab === 'customfields' ? 'active' : ''}`}
+              onClick={() => setActiveTab('customfields')}
+            >
+              Custom Fields
+            </button>
+            <button
+              className={`admin-subtab ${activeTab === 'itemtypes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('itemtypes')}
+            >
+              Item types
+            </button>
+          </div>
+
+          {/* Tab content */}
+          <div className="master-table-content">
+            {activeTab === 'boxes' && (
+              <InventoryBoxesTable 
+                selectedLocation={selectedLocation}
+                onLocationSelect={onLocationSelect}
+              />
+            )}
+            {activeTab === 'categories' && <CategoriesTable />}
+            {activeTab === 'customfields' && <CustomFieldsTable />}
+            {activeTab === 'itemtypes' && <ItemTypesTable />}
+          </div>
+        </div>
+      </div>
+      <button
+        className="collapse-button collapse-button-right"
+        onClick={handleToggleCollapse}
+        title="Collapse Inventory Boxes"
+        style={{ left: `${buttonLeft}px` }}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 4L6 8L10 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+    </>
+  );
+};
+
+export default AdminLeftPanel;
+

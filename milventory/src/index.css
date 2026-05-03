@@ -16,6 +16,46 @@
   --files: #b72a2a;     /* red file cabinets */
 }
 
+/* Global scrollbars: transparent track; thumb stays visible */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(154, 168, 194, 0.45) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track-piece {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.34);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 html, body { height: 100%; margin: 0; }
 body {
   background: radial-gradient(1200px 800px at 50% 0%, #0d0f14, #07080c);
@@ -324,9 +364,10 @@ body {
   flex-shrink: 0;
 }
 
+/* Modal / form image preview: full image visible, scaled down — no crop */
 .edit-form-image-container {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  max-height: min(50vh, 26rem);
   background: rgba(0,0,0,.3);
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 6px;
@@ -336,12 +377,18 @@ body {
   justify-content: center;
   flex-shrink: 0;
   position: relative;
+  box-sizing: border-box;
+  padding: 0.35rem;
 }
 
 .edit-form-image-container img {
-  width: 100%;
-  height: 100%;
+  display: block;
+  max-width: 100%;
+  max-height: min(50vh, 26rem);
+  width: auto;
+  height: auto;
   object-fit: contain;
+  object-position: center;
 }
 
 .edit-form-image-placeholder {
@@ -421,6 +468,29 @@ body {
   gap: 0.75rem;
 }
 
+.modal form {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.type-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Master create/edit: cap height (40px inset top + bottom), scroll body */
+.modal.master-item-edit-modal,
+.modal.master-item-create-modal {
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
 .modal h3 {
   margin: 0 0 0.5rem 0;
   font-size: 1rem;
@@ -430,6 +500,7 @@ body {
 
 .modal input[type="text"],
 .modal input[type="number"],
+.modal input[type="date"],
 .modal textarea,
 .modal select {
   background: rgba(0,0,0,.3);
@@ -444,6 +515,30 @@ body {
   font-family: inherit;
 }
 
+/* Hide number input up/down spinners in modals and elsewhere */
+.modal input[type="number"]::-webkit-inner-spin-button,
+.modal input[type="number"]::-webkit-outer-spin-button,
+input[type="number"].no-spinner::-webkit-inner-spin-button,
+input[type="number"].no-spinner::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.modal input[type="number"],
+input[type="number"].no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Date input: match app style; tone down native calendar icon */
+.modal input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+  opacity: 0.8;
+}
+.modal input[type="date"]::-webkit-datetime-edit {
+  color: var(--text);
+}
+
 .modal select {
   cursor: pointer;
 }
@@ -453,11 +548,47 @@ body {
   background: rgba(0,0,0,.4);
 }
 
+/* Reusable select styling (modals, admin panel, etc.) */
+.styled-select,
+select.styled-select {
+  background: rgba(0,0,0,.3);
+  border: 1px solid rgba(255,255,255,.1);
+  color: var(--text);
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  cursor: pointer;
+}
+.styled-select:focus,
+select.styled-select:focus {
+  border-color: var(--accent);
+  background: rgba(0,0,0,.4);
+}
+
 .modal input[type="text"]:focus,
 .modal input[type="number"]:focus,
+.modal input[type="date"]:focus,
 .modal textarea:focus {
   border-color: var(--accent);
   background: rgba(0,0,0,.4);
+}
+
+/* Tag/category dropdown: compact trigger (override .modal input padding) */
+.tag-dropdown-trigger input {
+  padding: 0 !important;
+  margin: 0;
+  border: none !important;
+  background: transparent !important;
+  line-height: 1.35;
+  min-height: 0;
+}
+.tag-dropdown-trigger input:focus {
+  border: none !important;
+  background: transparent !important;
 }
 
 .modal textarea {
@@ -465,30 +596,92 @@ body {
   min-height: 60px;
 }
 
-.modal .edit-form-image-container {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  background: rgba(0,0,0,.3);
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: 6px;
-  overflow: hidden;
+/* Master create/edit: one bordered field with type-fixed text + editable tail */
+.modal .modal-field-composite {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.modal .edit-form-image-container img {
   width: 100%;
-  height: 100%;
-  object-fit: contain;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
 }
 
-.modal .edit-form-image-placeholder {
+.modal .modal-field-composite:focus-within {
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.modal .modal-field-composite__prefix {
+  padding: 0.5rem 0 0.5rem 0.5rem;
   color: var(--muted);
-  font-style: italic;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  pointer-events: none;
+}
+
+.modal .modal-field-composite__input {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0.5rem;
+  color: var(--text);
+  font-size: inherit;
+  font-family: inherit;
+  border-radius: 0 6px 6px 0;
+}
+
+.modal .modal-field-composite__input:focus {
+  border: none !important;
+  background: transparent !important;
+}
+
+.modal .modal-field-composite--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.modal .modal-field-composite__prefix-block {
+  padding: 0.5rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: none;
+  pointer-events: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 0.85rem;
+}
+
+.modal .modal-field-composite__textarea {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0.5rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+  border-radius: 0 0 6px 6px;
+  box-sizing: border-box;
+}
+
+.modal .modal-field-composite__textarea:focus {
+  border: none !important;
+  background: transparent !important;
 }
 
 .modal-actions {
@@ -572,6 +765,12 @@ svg.map { width: 100%; height: 100%; display: block; touch-action: none; user-se
 svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
 
 .room { fill: var(--room); stroke: #2c3344; stroke-width: 6; }
+
+.room-free-place-active {
+  stroke: var(--accent);
+  stroke-width: 8;
+  opacity: 0.98;
+}
 
 .box {
   vector-effect: non-scaling-stroke;
@@ -719,6 +918,8 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   height: 100%;
   padding: 1rem;
   overflow: hidden;
+  container-type: inline-size;
+  container-name: admin-inv-panel;
 }
 
 .master-table-header {
@@ -731,6 +932,34 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   font-size: 1.2rem;
   color: var(--text);
   font-weight: 600;
+}
+
+.master-subtabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  flex-shrink: 0;
+}
+
+.master-subtab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.master-subtab:hover {
+  color: var(--text);
+}
+
+.master-subtab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .master-table-search {
@@ -758,12 +987,13 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 .master-table-content {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   min-height: 0;
 }
 
 .master-table {
   width: 100%;
+  min-width: max-content;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
@@ -799,12 +1029,38 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   background: rgba(155, 183, 255, 0.1);
 }
 
+.master-table .name-cell {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+  max-width: 200px;
+}
+
 .master-table .qty-cell {
   width: 60px;
   text-align: center;
 }
 
 .master-table .location-cell {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.master-table .category-cell {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.master-table .team-cell {
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -827,6 +1083,54 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   padding: 2rem 1rem;
 }
 
+/* Admin Subtabs — grid keeps all labels visible; 2×2 when panel is narrow */
+.admin-subtabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem 0.4rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  padding-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+@container admin-inv-panel (max-width: 440px) {
+  .admin-subtabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.admin-subtab {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0.4rem 0.35rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+  margin-bottom: -0.5rem;
+  min-width: 0;
+  min-height: 2.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-subtab:hover {
+  color: var(--text);
+}
+
+.admin-subtab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
 .master-table-actions {
   flex-shrink: 0;
   margin-top: 0.5rem;
@@ -842,7 +1146,9 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 
 .master-preview-pane-overlay .master-preview-pane {
   width: 400px;
-  max-height: 300px;
+  /* Match overlay top offset (20px) with equal inset from viewport bottom */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   overflow-y: auto;
 }
 
@@ -871,6 +1177,13 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+  flex: 1;
+  min-width: 0;
+  margin-right: 0.5rem;
 }
 
 .master-preview-pane-close {
@@ -907,8 +1220,129 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   line-height: 1.5;
 }
 
+/* Description + image: landscape/square → column (image below, centered); portrait → row (text left, image right) */
+.master-preview-description-body {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.master-preview-description-body--text-only {
+  flex-direction: column;
+}
+
+.master-preview-description-body--landscape {
+  flex-direction: column;
+  align-items: center;
+}
+
+.master-preview-description-body--landscape .master-preview-description-text {
+  align-self: stretch;
+  width: 100%;
+}
+
+.master-preview-description-body--portrait {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.master-preview-description-body--portrait .master-preview-description-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.master-preview-description-image {
+  flex-shrink: 0;
+}
+
+/* Portrait: fixed-width strip on the right; center the image in that strip */
+.master-preview-description-body--portrait .master-preview-description-image {
+  flex: 0 0 min(42%, 14rem);
+  width: min(42%, 14rem);
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.master-preview-description-body--landscape .master-preview-description-image {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.master-preview-description-image img {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 4px;
+}
+
+/* Landscape / stacked: cap height so tall assets do not dominate */
+.master-preview-description-body--landscape .master-preview-description-image img {
+  max-height: min(45vh, 22rem);
+}
+
+/* Portrait / beside text: stay within the image column; cap height */
+.master-preview-description-body--portrait .master-preview-description-image img {
+  max-width: 100%;
+  max-height: min(40vh, 18rem);
+  width: auto;
+  height: auto;
+}
+
+.master-preview-custom-fields strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .master-preview-locations {
   margin-top: 0.75rem;
+}
+
+.master-preview-free-coords-group {
+  margin: 0;
+}
+
+/* Strips native button chrome only — do not set font here; specificity would beat
+   .master-preview-location-item and block font-size from applying to this button. */
+button.master-preview-locations-row-button {
+  appearance: none;
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  margin: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.master-preview-free-coords-list {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.65rem;
+  align-items: baseline;
+}
+
+.master-preview-free-coord-item {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #9aa8c2;
+  white-space: nowrap;
 }
 
 .master-preview-locations strong {
@@ -931,16 +1365,10 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   font-size: 0.85em;
 }
 
-.master-preview-image {
-  margin-top: 0.75rem;
-}
-
-.master-preview-image img {
-  max-width: 100%;
-  border-radius: 4px;
-}
-
 .master-preview-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid rgba(255,255,255,.1);
@@ -948,19 +1376,35 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 
 .master-preview-actions strong {
   display: block;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
   color: var(--muted);
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
+/* Tight to the heading; space before buttons lives on the hint’s bottom margin */
+.master-preview-actions-hint {
+  margin: 0.2rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .master-preview-actions-buttons {
   display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.master-preview-actions:has(.master-preview-actions-hint) .master-preview-actions-buttons {
+  margin-top: 0;
 }
 
 .master-action-button {
+  flex: 0 0 auto;
   background: rgba(255,255,255,.1);
   border: none;
   color: var(--text);
@@ -969,6 +1413,7 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   cursor: pointer;
   font-size: 0.8rem;
   transition: background 0.2s, opacity 0.2s;
+  white-space: nowrap;
 }
 
 .master-action-button:hover {
@@ -991,6 +1436,16 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 
 .master-action-button.add-button:hover {
   background: rgba(74, 222, 128, 0.5);
+}
+
+.master-action-button.free-place-button {
+  background: rgba(56, 189, 248, 0.35);
+  color: #fff;
+  font-weight: 400;
+}
+
+.master-action-button.free-place-button:hover {
+  background: rgba(56, 189, 248, 0.5);
 }
 
 /* Arrow Connections */
@@ -1067,14 +1522,22 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   pointer-events: none;
 }
 
+/* Re-enable pointer events inside the foreignObject so buttons/scrolling work */
+.box-inventory-overlay foreignObject {
+  pointer-events: all;
+}
+
 .box-inventory-table {
   background: var(--panel);
   border: 1px solid rgba(255,255,255,.15);
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0,0,0,.4);
   padding: 0.75rem;
-  max-height: 400px;
-  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   color: var(--text);
   font-size: 0.85rem;
 }
@@ -1083,6 +1546,7 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   margin-bottom: 0.5rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid rgba(255,255,255,.1);
+  flex-shrink: 0;
 }
 
 .box-inventory-header h4 {
@@ -1093,8 +1557,10 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
 }
 
 .box-inventory-content {
-  max-height: 350px;
+  flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
 }
 
 .box-inventory-shelf {
@@ -1197,6 +1663,7 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   text-align: center;
   width: 80px;
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .number-input::-webkit-inner-spin-button,
@@ -1300,12 +1767,296 @@ svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-e
   padding: 0.25rem 0.75rem;
   border-radius: 4px;
   cursor: pointer;
-  font-weight: 600;
-  font-size: 0.85rem;
-  margin-right: 0.5rem;
 }
 
 .add-button:hover {
   opacity: 0.9;
+}
+
+/* Admin Actions Panel */
+.admin-actions-panel {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: var(--panel);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  padding: 1rem;
+  min-width: 200px;
+  z-index: 100;
+}
+
+.admin-actions-header {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+
+.admin-actions-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.admin-actions-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-action-button {
+  background: var(--accent);
+  color: var(--panel);
+  border: none;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: opacity 0.2s;
+  width: 100%;
+}
+
+.admin-action-button:hover {
+  opacity: 0.9;
+}
+
+.admin-action-button:active {
+  opacity: 0.8;
+}
+
+/* Move Locations Modal */
+.move-locations-modal {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: var(--panel);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.5);
+  padding: 1rem;
+  min-width: 280px;
+  max-width: 340px;
+  z-index: 200;
+}
+
+.move-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 193, 7, 0.2);
+}
+
+.move-modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffc107;
+}
+
+.move-modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.move-modal-close:hover {
+  color: var(--text);
+  background: rgba(255,255,255,.1);
+}
+
+.move-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.move-modal-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.move-modal-select-btn {
+  background: #ffc107;
+  color: #1a1a2e;
+  border: none;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: opacity 0.2s;
+  width: 100%;
+}
+
+.move-modal-select-btn:hover {
+  opacity: 0.9;
+}
+
+.move-modal-selected {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.move-modal-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.move-modal-box-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.move-modal-box-tag {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid rgba(255, 193, 7, 0.25);
+}
+
+.move-modal-transform {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.move-modal-transform-fields {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.move-modal-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.move-modal-field-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  min-width: 14px;
+}
+
+.move-modal-input {
+  flex: 1;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  outline: none;
+  width: 0;
+}
+
+.move-modal-input:focus {
+  border-color: #ffc107;
+  box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.15);
+}
+
+.move-modal-preview-coords {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.4rem 0.5rem;
+  background: rgba(0,0,0,.2);
+  border-radius: 6px;
+  max-height: 65px;
+  overflow-y: auto;
+}
+
+.move-modal-coord-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.move-modal-coord-name {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.move-modal-coord-val {
+  font-size: 0.72rem;
+  color: var(--text);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  white-space: nowrap;
+}
+
+.move-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.move-modal-apply-btn {
+  flex: 1;
+  background: #ffc107;
+  color: #1a1a2e;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: opacity 0.2s;
+}
+
+.move-modal-apply-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.move-modal-apply-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.move-modal-cancel-btn {
+  padding: 0.6rem 1rem;
+  background: rgba(255,255,255,.1);
+  color: var(--text);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.move-modal-cancel-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,.15);
+}
+
+.move-modal-cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 

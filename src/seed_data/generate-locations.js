@@ -155,6 +155,7 @@ for (let i = 0; i < 4; i++) {
     width: tallCabinetWidth,
     height: tallCabinetHeight,
     fill: 'var(--files)',
+    shelf_count: 6,
     inventory: []
   });
 }
@@ -171,6 +172,7 @@ const tallCabinet104 = {
   width: tallCabinetWidth,
   height: tallCabinetHeight,
   fill: 'var(--files)',
+  shelf_count: 6,
   inventory: []
 };
 
@@ -234,6 +236,37 @@ const bottomTables = [
   }
 ];
 
+/** Outside the room rect, just below the lab (room bottom ~3920). */
+const statusLocations = [
+  {
+    title: 'To Be Delivered',
+    x: 400,
+    y: 4000,
+    width: 800,
+    height: 800,
+    fill: 'var(--table)',
+    inventory: []
+  },
+  {
+    title: 'Lost Items',
+    x: 1250,
+    y: 4000,
+    width: 800,
+    height: 800,
+    fill: 'var(--table)',
+    inventory: []
+  },
+  {
+    title: 'Unsorted Items',
+    x: 2100,
+    y: 4000,
+    width: 800,
+    height: 800,
+    fill: 'var(--table)',
+    inventory: []
+  }
+];
+
 // Combine all boxes in the desired order
 const allBoxes = [
   ...topDrawers,
@@ -244,7 +277,8 @@ const allBoxes = [
   ...tallCabinets,
   tallCabinet104,
   ...tables,
-  ...bottomTables
+  ...bottomTables,
+  ...statusLocations
 ];
 
 // Create the full JSON structure
@@ -256,7 +290,7 @@ const output = {
 // Format function to align columns
 function formatInventoryData(data) {
   // Define attribute order
-  const attributeOrder = ['title', 'x', 'y', 'width', 'height', 'fill', 'isWorkbench', 'inventory'];
+  const attributeOrder = ['title', 'x', 'y', 'width', 'height', 'fill', 'shelf_count', 'isWorkbench', 'inventory'];
   
   // Find the maximum width for each attribute's value across all boxes
   const maxValueWidths = {};

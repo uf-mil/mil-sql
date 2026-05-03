@@ -13,9 +13,12 @@ from flask_cors import CORS
 from src.api.routes.locations import locations_bp
 from src.api.routes.supplies import supplies_bp
 from src.api.routes.supplies_location import supplies_location_bp
+from src.api.routes.supplies_location_history import supplies_location_history_bp
 from src.api.routes.auth import auth_bp
 from src.api.routes.categories import categories_bp
 from src.api.routes.teams import teams_bp
+from src.api.routes.custom_field_definitions import custom_field_definitions_bp
+from src.api.routes.supply_types import supply_types_bp
 
 # Import helpers for schema initialization
 from src.scripts.helpers import (
@@ -31,23 +34,42 @@ app = Flask(__name__)
 # Set secret key for sessions
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 # Configure CORS to allow credentials (cookies)
-CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'http://localhost:5000'])
+CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'http://localhost:5000', 'http://localhost:6001'])
 
 # Register blueprints
 app.register_blueprint(locations_bp, url_prefix='/api/locations')
 app.register_blueprint(supplies_bp, url_prefix='/api/supplies')
 app.register_blueprint(supplies_location_bp, url_prefix='/api/supplies-location')
+app.register_blueprint(supplies_location_history_bp, url_prefix='/api/supplies-location-history')
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(categories_bp, url_prefix='/api')
 app.register_blueprint(teams_bp, url_prefix='/api')
+app.register_blueprint(custom_field_definitions_bp, url_prefix='/api/custom-field-definitions')
+app.register_blueprint(supply_types_bp, url_prefix='/api/supply-types')
 
 
 def initialize_schema():
     """Initialize database schema if tables are missing."""
+    max_retries = 5
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print("🔍 Checking database schema...")
+            conn = get_db()
+            cur = conn.cursor()
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"⚠ Database connection attempt {attempt + 1}/{max_retries} failed: {e}")
+                print(f"  Retrying in {retry_delay} seconds...")
+                import time
+                time.sleep(retry_delay)
+            else:
+                print(f"❌ Failed to connect to database after {max_retries} attempts: {e}")
+                raise
+    
     try:
-        print("🔍 Checking database schema...")
-        conn = get_db()
-        cur = conn.cursor()
         
         # Get SQL base path
         SQL_BASE_PATH = get_sql_base_path(__file__)
@@ -97,23 +119,57 @@ def initialize_schema():
         
         conn.commit()
         if failed_tables:
-            print(f"⚠ Schema initialization incomplete: {success_count}/{len(missing_tables)} tables created")
-            print(f"  Failed tables: {', '.join(failed_tables)}")
+            print(f"\n❌ SCHEMA INITIALIZATION FAILED: {success_count}/{len(missing_tables)} tables created successfully")
+            print(f"❌ FAILED TABLES ({len(failed_tables)}): {', '.join(failed_tables)}")
+            print("⚠️  The API will continue, but some endpoints may not work until these tables are created")
         else:
             print(f"✓ Schema initialization complete ({success_count}/{len(missing_tables)} tables created)")
         
         cur.close()
         conn.close()
-        
+    
     except Exception as e:
         print(f"⚠ Schema initialization warning: {e}")
         import traceback
         traceback.print_exc()
         print("  API will continue, but some endpoints may not work until tables are created")
+        # Don't raise - allow the API to start even if schema init fails
 
 
 # Initialize schema on startup
 initialize_schema()
+
+# Run migrations for existing tables
+try:
+    from src.scripts.migrate_locations_schema import migrate_locations_schema
+    migrate_locations_schema()
+except Exception as e:
+    print(f"⚠ Warning: Could not run migrations: {e}")
+try:
+    from src.scripts.migrate_location_types_cleanup import migrate_location_types_cleanup
+    migrate_location_types_cleanup()
+except Exception as e:
+    print(f"⚠ Warning: Could not run location types cleanup migration: {e}")
+try:
+    from src.scripts.migrate_supplies_custom_fields import migrate_supplies_custom_fields
+    migrate_supplies_custom_fields()
+except Exception as e:
+    print(f"⚠ Warning: Could not run supplies custom_fields migration: {e}")
+try:
+    from src.scripts.migrate_supplies_public_id import migrate_supplies_public_id
+    migrate_supplies_public_id()
+except Exception as e:
+    print(f"⚠ Warning: Could not run supplies public_id migration: {e}")
+try:
+    from src.scripts.migrate_supply_types import migrate_supply_types
+    migrate_supply_types()
+except Exception as e:
+    print(f"⚠ Warning: Could not run supply_types migration: {e}")
+try:
+    from src.scripts.migrate_supplies_location_free_place import migrate_supplies_location_free_place
+    migrate_supplies_location_free_place()
+except Exception as e:
+    print(f"⚠ Warning: Could not run supplies_location free_place migration: {e}")
 
 # Seed test user, teams, categories, and locations
 try:
@@ -130,6 +186,16 @@ except Exception as e:
 def health_check():
     """Health check endpoint."""
     return {'status': 'healthy'}, 200
+
+
+# Error handler to ensure CORS headers are always sent
+@app.errorhandler(500)
+def handle_500_error(e):
+    """Handle 500 errors and ensure CORS headers are sent."""
+    from flask import jsonify
+    response = jsonify({'error': str(e) if hasattr(e, 'description') and e.description else 'Internal server error'})
+    response.status_code = 500
+    return response
 
 
 if __name__ == '__main__':

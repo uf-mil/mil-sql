@@ -4,6 +4,7 @@ Database connection pool for the API.
 import mysql.connector
 from mysql.connector import pooling
 import os
+import time
 
 # Database configuration from environment variables
 config = {
@@ -17,12 +18,24 @@ config = {
     'pool_reset_session': True
 }
 
-# Create connection pool
-try:
-    connection_pool = pooling.MySQLConnectionPool(**config)
-except Exception as e:
-    print(f"Error creating connection pool: {e}")
-    connection_pool = None
+# Create connection pool with retry logic
+connection_pool = None
+max_retries = 10
+retry_delay = 2  # seconds
+
+for attempt in range(max_retries):
+    try:
+        connection_pool = pooling.MySQLConnectionPool(**config)
+        print(f"✓ Database connection pool initialized successfully")
+        break
+    except Exception as e:
+        if attempt < max_retries - 1:
+            print(f"⚠ Database connection attempt {attempt + 1}/{max_retries} failed: {e}")
+            print(f"  Retrying in {retry_delay} seconds...")
+            time.sleep(retry_delay)
+        else:
+            print(f"❌ Error creating connection pool after {max_retries} attempts: {e}")
+            connection_pool = None
 
 
 def get_db():

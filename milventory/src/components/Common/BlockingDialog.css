@@ -1,0 +1,39 @@
+.blocking-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 11000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.blocking-dialog.modal {
+  max-width: 420px;
+  width: 100%;
+  margin: 0;
+}
+
+.blocking-dialog-message {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.blocking-dialog .modal-actions {
+  margin-top: 1rem;
+}
+
+.modal button.blocking-dialog-confirm-danger {
+  background: #c53030;
+  color: #fff;
+}
+
+.modal button.blocking-dialog-confirm-danger:hover {
+  opacity: 0.92;
+}

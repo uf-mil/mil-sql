@@ -2,6 +2,7 @@
 Location API routes.
 """
 import sys
+import json
 from pathlib import Path
 
 # Add src to path for imports (must be before other imports)
@@ -11,8 +12,107 @@ from flask import Blueprint, request, jsonify
 import mysql.connector
 from src.api.db import get_db
 from src.api.models.location import Location
+from src.api.middleware.auth import require_leader
+from src.api.repositories import locations_repository as repo
+from src.scripts.location_type_constants import LEADER_ASSIGNABLE_LOCATION_TYPES
 
 locations_bp = Blueprint('locations', __name__)
+
+
+def get_fill_for_type(location_type):
+    """Get CSS fill color variable for location type."""
+    type_fills = {
+        'drawer': 'var(--drawer)',
+        'cabinet': 'var(--table)',
+        'tall_cabinet': 'var(--table)',
+        'table': 'var(--table)',
+        'other': 'var(--table)',
+        'special': '#ff69b4',  # System map locations with custom SVG
+    }
+    return type_fills.get(location_type, 'var(--table)')
+
+
+def sync_locations_json():
+    """
+    Sync inventory-locations.json with database.
+    Updates the JSON file to match current database state.
+    NOTE: This function is deprecated and no longer called. JSON file is now seed data only.
+    """
+    try:
+        # Get project root (go up from src/api/routes to project root)
+        script_dir = Path(__file__).parent.parent.parent.parent
+        # JSON file is now in seed_data directory
+        json_path = script_dir / "src" / "seed_data" / "inventory-locations.json"
+        
+        if not json_path.exists():
+            # Try legacy path for backwards compatibility
+            json_path = script_dir / "milventory" / "public" / "inventory-locations.json"
+            if not json_path.exists():
+                print(f"⚠ Warning: inventory-locations.json not found at {json_path}")
+                return False
+        
+        # Fetch all locations from DB
+        conn = get_db()
+        cur = conn.cursor()
+        rows = repo.list_all_tuple_ordered(cur)
+        db_locations = {}
+        for row in rows:
+            db_locations[row[0]] = {
+                'name': row[0],
+                'x': row[1],
+                'y': row[2],
+                'width': row[3],
+                'height': row[4],
+                'type': row[5],
+                'protected': bool(row[6]) if len(row) > 6 else False
+            }
+        cur.close()
+        conn.close()
+        
+        # Load existing JSON to preserve inventory-bounds
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Create default structure if file doesn't exist or is invalid
+            data = {
+                "inventory-bounds": {
+                    "viewBox": {"x": 0, "y": 0, "width": 4000, "height": 4000},
+                    "room": {"x": 80, "y": 80, "width": 3600, "height": 3840, "rx": 18, "ry": 18}
+                },
+                "boxes": []
+            }
+        
+        # Convert DB locations to JSON boxes format
+        boxes = []
+        for name, loc_data in db_locations.items():
+            boxes.append({
+                'title': loc_data['name'],
+                'x': loc_data['x'],
+                'y': loc_data['y'],
+                'width': loc_data['width'],
+                'height': loc_data['height'],
+                'fill': get_fill_for_type(loc_data['type'])
+            })
+        
+        data['boxes'] = boxes
+        
+        # Write back to JSON
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        
+        # Also update the alternative path if it exists
+        alt_path = script_dir / "milventory" / "public" / "inventory-locations.json"
+        if alt_path.exists() and alt_path != json_path:
+            with open(alt_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+        
+        return True
+    except Exception as e:
+        print(f"⚠ Warning: Failed to sync locations JSON: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 @locations_bp.route('', methods=['GET'])
@@ -27,8 +127,7 @@ def get_locations():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT name, x, y, width, height, type FROM locations ORDER BY name")
-        rows = cur.fetchall()
+        rows = repo.list_all_tuple_ordered(cur)
         locations = [Location.from_db_row(row).to_dict() for row in rows]
         cur.close()
         conn.close()
@@ -52,8 +151,7 @@ def get_location(name):
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT name, x, y, width, height, type FROM locations WHERE name = %s", (name,))
-        row = cur.fetchone()
+        row = repo.fetch_by_name_tuple(cur, name)
         cur.close()
         conn.close()
         
@@ -67,7 +165,8 @@ def get_location(name):
 
 
 @locations_bp.route('', methods=['POST'])
-def create_location():
+@require_leader
+def create_location(current_user_id=None):
     """
     POST /api/locations
     Create a new location.
@@ -97,16 +196,37 @@ def create_location():
                 return jsonify({'error': f'Missing required field: {field}'}), 400
         
         location = Location.from_dict(data)
-        
+
+        if location.type not in LEADER_ASSIGNABLE_LOCATION_TYPES:
+            return jsonify({'error': 'Invalid location type'}), 400
+
+        # shelf_count is authoritative from the request (defaults to 0 via the model).
+        # Leaders explicitly control whether a location has shelves and how many.
+        # Capped at 15 for sanity — no real storage unit has more shelves than that,
+        # and the map rendering would become unreadable.
+        shelf_count = max(0, int(location.shelf_count or 0))
+        if shelf_count > 15:
+            return jsonify({'error': 'shelf_count cannot exceed 15'}), 400
+
         conn = get_db()
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO locations (name, x, y, width, height, type) VALUES (%s, %s, %s, %s, %s, %s)",
-            (location.name, location.x, location.y, location.width, location.height, location.type)
+        repo.insert_location(
+            cur,
+            location.name,
+            location.x,
+            location.y,
+            location.width,
+            location.height,
+            location.type,
+            shelf_count,
+            False,
         )
         conn.commit()
         cur.close()
         conn.close()
+        
+        # Note: New locations are stored only in the database with protected=FALSE by default.
+        # Protected status is managed via the database column, not the JSON file.
         
         return jsonify(location.to_dict()), 201
     except mysql.connector.IntegrityError as e:
@@ -114,6 +234,9 @@ def create_location():
             return jsonify({'error': 'Location with this name already exists'}), 409
         return jsonify({'error': str(e)}), 400
     except Exception as e:
+        print(f"Error creating location: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
@@ -144,38 +267,101 @@ def update_location(name):
         if not data:
             return jsonify({'error': 'Request body is required'}), 400
         
-        # Validate fields (name is not updatable via PUT)
-        updatable_fields = ['x', 'y', 'width', 'height', 'type']
+        # Validate fields
+        updatable_fields = ['x', 'y', 'width', 'height', 'type', 'name', 'shelf_count']
         update_data = {k: v for k, v in data.items() if k in updatable_fields}
-        
+
         if not update_data:
             return jsonify({'error': 'No valid fields to update'}), 400
-        
+
         conn = get_db()
         cur = conn.cursor()
-        
-        # Check if location exists
-        cur.execute("SELECT name FROM locations WHERE name = %s", (name,))
-        if not cur.fetchone():
+
+        if not repo.name_exists(cur, name):
             cur.close()
             conn.close()
             return jsonify({'error': 'Location not found'}), 404
+
+        existing_row = repo.fetch_by_name_tuple(cur, name)
+        existing = Location.from_db_row(existing_row)
+
+        if 'type' in update_data:
+            if existing.type == 'special':
+                update_data.pop('type')
+            elif update_data['type'] not in LEADER_ASSIGNABLE_LOCATION_TYPES:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'Invalid location type'}), 400
+
+        new_name = update_data.pop('name', None)
+
+        # Normalize + validate shelf_count reductions BEFORE committing any change.
+        # A reduction that would orphan existing placements is rejected with 409 so
+        # the admin must move/delete those supplies first.
+        if 'shelf_count' in update_data:
+            try:
+                new_shelf_count = max(0, int(update_data['shelf_count'] or 0))
+            except (TypeError, ValueError):
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'shelf_count must be an integer'}), 400
+            if new_shelf_count > 15:
+                cur.close()
+                conn.close()
+                return jsonify({'error': 'shelf_count cannot exceed 15'}), 400
+            update_data['shelf_count'] = new_shelf_count
+
+            if new_shelf_count == 0:
+                # Fully unchecking "has shelves" demotes every placement at this
+                # location to a box-level placement (shelf = NULL). The admin
+                # confirmed this loss-of-shelf-info in the UI before we got
+                # here; partial reductions (0 < new < old) still hit the 409
+                # orphan-block path below.
+                cur.execute(
+                    "UPDATE supplies_location SET shelf = NULL "
+                    "WHERE location_name = %s AND shelf IS NOT NULL",
+                    (name,),
+                )
+            else:
+                orphan_count = repo.count_orphans_if_shelf_count(cur, name, new_shelf_count)
+                if orphan_count > 0:
+                    max_shelf = repo.max_used_shelf(cur, name)
+                    cur.close()
+                    conn.close()
+                    return jsonify({
+                        'error': (
+                            f'Cannot reduce shelf_count to {new_shelf_count}: '
+                            f'{orphan_count} placement(s) would be orphaned '
+                            f'(highest shelf in use is {max_shelf}). '
+                            f'Move or delete those supplies first.'
+                        ),
+                        'orphaned_count': orphan_count,
+                        'max_used_shelf': max_shelf,
+                        'requested_shelf_count': new_shelf_count,
+                    }), 409
+
+        if update_data:
+            set_clauses = []
+            values = []
+            for field, value in update_data.items():
+                set_clauses.append(f"{field} = %s")
+                values.append(value)
+            values.append(name)
+            repo.update_by_name(cur, set_clauses, values)
+
+        final_name = name
+        if new_name and new_name != name:
+            if repo.name_exists(cur, new_name):
+                cur.close()
+                conn.close()
+                return jsonify({'error': f'Location "{new_name}" already exists'}), 409
+            repo.rename(cur, new_name, name)
+            final_name = new_name
         
-        # Build update query dynamically
-        set_clauses = []
-        values = []
-        for field, value in update_data.items():
-            set_clauses.append(f"{field} = %s")
-            values.append(value)
-        values.append(name)
-        
-        query = f"UPDATE locations SET {', '.join(set_clauses)} WHERE name = %s"
-        cur.execute(query, values)
         conn.commit()
         
-        # Fetch updated location
-        cur.execute("SELECT name, x, y, width, height, type FROM locations WHERE name = %s", (name,))
-        row = cur.fetchone()
+        # Fetch updated location using final name
+        row = repo.fetch_by_name_tuple(cur, final_name)
         location = Location.from_db_row(row).to_dict()
         
         cur.close()
@@ -187,7 +373,8 @@ def update_location(name):
 
 
 @locations_bp.route('/<name>', methods=['DELETE'])
-def delete_location(name):
+@require_leader
+def delete_location(name, current_user_id=None):
     """
     DELETE /api/locations/<name>
     Delete a location.
@@ -202,17 +389,18 @@ def delete_location(name):
         conn = get_db()
         cur = conn.cursor()
         
-        # Check if location exists
-        cur.execute("SELECT name FROM locations WHERE name = %s", (name,))
-        if not cur.fetchone():
+        if not repo.name_exists(cur, name):
             cur.close()
             conn.close()
             return jsonify({'error': 'Location not found'}), 404
-        
-        cur.execute("DELETE FROM locations WHERE name = %s", (name,))
+
+        repo.delete_by_name(cur, name)
         conn.commit()
         cur.close()
         conn.close()
+        
+        # Note: Deletions only affect the database.
+        # Protected locations cannot be deleted (enforced by frontend based on protected column).
         
         return '', 204
     except Exception as e:
